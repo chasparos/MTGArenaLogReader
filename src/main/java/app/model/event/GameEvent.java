@@ -7,6 +7,8 @@ import app.model.game.CombatAttackAssignment;
 import app.model.game.CombatBlockAssignment;
 import app.model.game.GameResult;
 import app.model.game.PlayerTurnSnapshot;
+import app.model.match.MatchResult;
+import app.model.match.MatchScore;
 import app.snapshot.BoardStateMonitor;
 import lombok.Data;
 
@@ -24,6 +26,7 @@ import java.util.List;
  * <p><strong>Architectural role:</strong> This type belongs to the immutable semantic-event boundary consumed by replay views and exporters.</p>
  */
 public class GameEvent {
+    private GameEventType type = GameEventType.GAMEPLAY;
     private long sequence;
     private Instant timestamp;
     private Integer turnNumber;
@@ -40,4 +43,6 @@ public class GameEvent {
     /** Canonical battlefield observation consumed by BoardStateMonitor. */
     private final List<BoardPermanentSnapshot> battlefieldObservation = new ArrayList<>();
     private GameResult gameResult;
+    private MatchScore matchScore;
+    private MatchResult matchResult;
 }

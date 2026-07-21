@@ -42,7 +42,7 @@ final class ArenaLogReplayHarnessTest {
         ));
 
         assertEquals(
-                List.of("Alice rolled 17"),
+                List.of("Game 2 started", "Alice rolled 17"),
                 result.requireGame("match-a", 2).snapshot().stream()
                         .map(event -> event.getText())
                         .toList());

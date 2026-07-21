@@ -78,7 +78,7 @@ public final class ArenaLogReplayHarness {
             GameSession session = sessions.computeIfAbsent(key, ignored -> createSession(key));
             session.model().addRawRecord(message.getRawText());
             session.model().addEvents(
-                    session.projector().project(message, message.getModelFuture().join()));
+                    session.project(message, message.getModelFuture().join()));
             session.model().setOpeningHand(
                     session.projector().openingHandPlayer(),
                     session.projector().mulliganCount(),

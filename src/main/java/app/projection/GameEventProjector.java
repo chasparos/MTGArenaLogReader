@@ -3,6 +3,7 @@ package app.projection;
 import app.model.event.AbilityReference;
 import app.model.card.CardInfo;
 import app.model.event.GameEvent;
+import app.model.event.GameEventType;
 import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.match.MatchState;
@@ -263,7 +264,9 @@ public final class GameEventProjector {
                 int seat = intAt(player, "systemSeatId", -1);
                 if (seat >= 0) state.getPlayers().put(seat, stringAt(player, "playerName"));
             }
-            result.add(event(message, "Match started"));
+            GameEvent matchStarted = event(message, "Match started");
+            matchStarted.setType(GameEventType.MATCH_STARTED);
+            result.add(matchStarted);
         }
     }
 
@@ -425,6 +428,7 @@ public final class GameEventProjector {
         }
 
         GameEvent event = event(source, text);
+        event.setType(GameEventType.GAME_RESULT);
         event.setGameResult(gameResult);
         return event;
     }

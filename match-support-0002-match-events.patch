@@ -1,0 +1,625 @@
+diff --git a/src/main/java/app/model/event/GameEvent.java b/src/main/java/app/model/event/GameEvent.java
+index c09ce61..6ad2a4b 100644
+--- a/src/main/java/app/model/event/GameEvent.java
++++ b/src/main/java/app/model/event/GameEvent.java
+@@ -7,6 +7,8 @@ import app.model.game.CombatAttackAssignment;
+ import app.model.game.CombatBlockAssignment;
+ import app.model.game.GameResult;
+ import app.model.game.PlayerTurnSnapshot;
++import app.model.match.MatchResult;
++import app.model.match.MatchScore;
+ import app.snapshot.BoardStateMonitor;
+ import lombok.Data;
+ 
+@@ -24,6 +26,7 @@ import java.util.List;
+  * <p><strong>Architectural role:</strong> This type belongs to the immutable semantic-event boundary consumed by replay views and exporters.</p>
+  */
+ public class GameEvent {
++    private GameEventType type = GameEventType.GAMEPLAY;
+     private long sequence;
+     private Instant timestamp;
+     private Integer turnNumber;
+@@ -40,4 +43,6 @@ public class GameEvent {
+     /** Canonical battlefield observation consumed by BoardStateMonitor. */
+     private final List<BoardPermanentSnapshot> battlefieldObservation = new ArrayList<>();
+     private GameResult gameResult;
++    private MatchScore matchScore;
++    private MatchResult matchResult;
+ }
+diff --git a/src/main/java/app/model/event/GameEventType.java b/src/main/java/app/model/event/GameEventType.java
+new file mode 100644
+index 0000000..56d431b
+--- /dev/null
++++ b/src/main/java/app/model/event/GameEventType.java
+@@ -0,0 +1,13 @@
++package app.model.event;
++
++/**
++ * Classifies semantic replay events without coupling reconstruction to presentation.
++ */
++public enum GameEventType {
++    GAMEPLAY,
++    MATCH_STARTED,
++    GAME_STARTED,
++    GAME_RESULT,
++    MATCH_SCORE,
++    MATCH_RESULT
++}
+diff --git a/src/main/java/app/model/match/MatchResult.java b/src/main/java/app/model/match/MatchResult.java
+new file mode 100644
+index 0000000..afaee9e
+--- /dev/null
++++ b/src/main/java/app/model/match/MatchResult.java
+@@ -0,0 +1,16 @@
++package app.model.match;
++
++/**
++ * Reconstructed match outcome attached to a semantic replay event.
++ */
++public record MatchResult(
++        Integer winnerSeatId,
++        String winnerName,
++        MatchScore finalScore,
++        Confidence confidence) {
++
++    public enum Confidence {
++        EXPLICIT,
++        INFERRED
++    }
++}
+diff --git a/src/main/java/app/model/match/MatchScore.java b/src/main/java/app/model/match/MatchScore.java
+new file mode 100644
+index 0000000..3ac3b36
+--- /dev/null
++++ b/src/main/java/app/model/match/MatchScore.java
+@@ -0,0 +1,14 @@
++package app.model.match;
++
++/**
++ * Immutable score for Arena's two player seats.
++ */
++public record MatchScore(int seatOneWins, int seatTwoWins, int draws) {
++    public int winsForSeat(int seatId) {
++        return switch (seatId) {
++            case 1 -> seatOneWins;
++            case 2 -> seatTwoWins;
++            default -> 0;
++        };
++    }
++}
+diff --git a/src/main/java/app/model/match/MatchState.java b/src/main/java/app/model/match/MatchState.java
+index 1f3dde8..2a931ce 100644
+--- a/src/main/java/app/model/match/MatchState.java
++++ b/src/main/java/app/model/match/MatchState.java
+@@ -3,6 +3,8 @@ package app.model.match;
+ import app.model.card.CardInfo;
+ import app.model.game.GameObjectState;
+ 
++import app.model.game.GameResult;
++
+ import java.util.LinkedHashMap;
+ import java.util.Map;
+ 
+@@ -18,6 +20,9 @@ public final class MatchState {
+     private final Map<Integer, String> players = new LinkedHashMap<>();
+     private final Map<Long, CardInfo> knownCards = new LinkedHashMap<>();
+     private final Map<Long, GameObjectState> observedCardsByGrpId = new LinkedHashMap<>();
++    private final Map<Integer, GameResult> completedGames = new LinkedHashMap<>();
++    private boolean matchStarted;
++    private MatchResult matchResult;
+ 
+     public MatchState(String matchId) {
+         this.matchId = matchId;
+@@ -27,6 +32,45 @@ public final class MatchState {
+         return matchId;
+     }
+ 
++
++    public synchronized boolean markMatchStarted() {
++        if (matchStarted) return false;
++        matchStarted = true;
++        return true;
++    }
++
++    public synchronized boolean recordGameResult(int gameNumber, GameResult result) {
++        if (gameNumber <= 0 || result == null || completedGames.containsKey(gameNumber)) return false;
++        completedGames.put(gameNumber, result);
++        return true;
++    }
++
++    public synchronized MatchScore score() {
++        int seatOneWins = 0;
++        int seatTwoWins = 0;
++        int draws = 0;
++        for (GameResult result : completedGames.values()) {
++            if (result.getReason() == GameResult.Reason.DRAW) {
++                draws++;
++            } else if (Integer.valueOf(1).equals(result.getWinnerSeatId())) {
++                seatOneWins++;
++            } else if (Integer.valueOf(2).equals(result.getWinnerSeatId())) {
++                seatTwoWins++;
++            }
++        }
++        return new MatchScore(seatOneWins, seatTwoWins, draws);
++    }
++
++    public synchronized MatchResult matchResult() {
++        return matchResult;
++    }
++
++    public synchronized boolean completeMatch(MatchResult result) {
++        if (matchResult != null || result == null) return false;
++        matchResult = result;
++        return true;
++    }
++
+     public synchronized Map<Integer, String> playerSnapshot() {
+         return Map.copyOf(players);
+     }
+diff --git a/src/main/java/app/model/session/GameSession.java b/src/main/java/app/model/session/GameSession.java
+index d0ca5c4..bfe6174 100644
+--- a/src/main/java/app/model/session/GameSession.java
++++ b/src/main/java/app/model/session/GameSession.java
+@@ -1,9 +1,39 @@
+ package app.model.session;
+ 
++import app.model.event.GameEvent;
++import app.model.log.LogMessageInterface;
++import app.model.log.ModelObject;
+ import app.projection.GameEventProjector;
++import app.projection.MatchProjector;
++
++import java.util.List;
+ 
+ /**
+- * Couples one per-game model with its per-game projector.
++ * Couples one per-game model with its per-game projector and the owning match projection.
+  */
+-public record GameSession(GameModel model, GameEventProjector projector) {
++public final class GameSession {
++    private final int gameNumber;
++    private final GameModel model;
++    private final GameEventProjector projector;
++    private final MatchProjector matchProjector;
++
++    public GameSession(int gameNumber, GameModel model,
++                       GameEventProjector projector, MatchProjector matchProjector) {
++        this.gameNumber = gameNumber;
++        this.model = model;
++        this.projector = projector;
++        this.matchProjector = matchProjector;
++    }
++
++    public GameModel model() {
++        return model;
++    }
++
++    public GameEventProjector projector() {
++        return projector;
++    }
++
++    public List<GameEvent> project(LogMessageInterface message, ModelObject modelObject) {
++        return matchProjector.project(gameNumber, projector.project(message, modelObject));
++    }
+ }
+diff --git a/src/main/java/app/model/session/MatchSession.java b/src/main/java/app/model/session/MatchSession.java
+index f3d0d1d..dd8ff1c 100644
+--- a/src/main/java/app/model/session/MatchSession.java
++++ b/src/main/java/app/model/session/MatchSession.java
+@@ -3,6 +3,7 @@ package app.model.session;
+ import app.model.match.MatchState;
+ import app.projection.AbilityNameStore;
+ import app.projection.GameEventProjector;
++import app.projection.MatchProjector;
+ 
+ import java.util.LinkedHashMap;
+ import java.util.Map;
+@@ -14,12 +15,14 @@ public final class MatchSession {
+     private final String matchId;
+     private final MatchState matchState;
+     private final AbilityNameStore abilityNames;
++    private final MatchProjector matchProjector;
+     private final Map<Integer, GameSession> games = new LinkedHashMap<>();
+ 
+     public MatchSession(String matchId, AbilityNameStore abilityNames) {
+         this.matchId = matchId;
+         this.matchState = new MatchState(matchId);
+         this.abilityNames = abilityNames;
++        this.matchProjector = new MatchProjector(matchState);
+     }
+ 
+     public synchronized GameSession game(int gameNumber) {
+@@ -34,6 +37,7 @@ public final class MatchSession {
+         GameModel model = new GameModel();
+         model.setMatchId(matchId);
+         model.setGameNumber(gameNumber);
+-        return new GameSession(model, new GameEventProjector(abilityNames, matchState));
++        return new GameSession(gameNumber, model,
++                new GameEventProjector(abilityNames, matchState), matchProjector);
+     }
+ }
+diff --git a/src/main/java/app/projection/GameEventProjector.java b/src/main/java/app/projection/GameEventProjector.java
+index b72e678..8930303 100644
+--- a/src/main/java/app/projection/GameEventProjector.java
++++ b/src/main/java/app/projection/GameEventProjector.java
+@@ -3,6 +3,7 @@ package app.projection;
+ import app.model.event.AbilityReference;
+ import app.model.card.CardInfo;
+ import app.model.event.GameEvent;
++import app.model.event.GameEventType;
+ import app.model.game.*;
+ import app.model.InformationBundle;
+ import app.model.match.MatchState;
+@@ -263,7 +264,9 @@ public final class GameEventProjector {
+                 int seat = intAt(player, "systemSeatId", -1);
+                 if (seat >= 0) state.getPlayers().put(seat, stringAt(player, "playerName"));
+             }
+-            result.add(event(message, "Match started"));
++            GameEvent matchStarted = event(message, "Match started");
++            matchStarted.setType(GameEventType.MATCH_STARTED);
++            result.add(matchStarted);
+         }
+     }
+ 
+@@ -425,6 +428,7 @@ public final class GameEventProjector {
+         }
+ 
+         GameEvent event = event(source, text);
++        event.setType(GameEventType.GAME_RESULT);
+         event.setGameResult(gameResult);
+         return event;
+     }
+diff --git a/src/main/java/app/projection/MatchProjector.java b/src/main/java/app/projection/MatchProjector.java
+new file mode 100644
+index 0000000..fe1278d
+--- /dev/null
++++ b/src/main/java/app/projection/MatchProjector.java
+@@ -0,0 +1,129 @@
++package app.projection;
++
++import app.model.event.GameEvent;
++import app.model.event.GameEventType;
++import app.model.game.GameResult;
++import app.model.match.MatchResult;
++import app.model.match.MatchScore;
++import app.model.match.MatchState;
++
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++/**
++ * Projects match-lifetime progression from already reconstructed game events.
++ *
++ * <p>GameEventProjector remains authoritative for game outcomes. This collaborator
++ * records each outcome once and appends match score and match result events without
++ * inspecting raw Arena payloads.</p>
++ */
++public final class MatchProjector {
++    private final MatchState state;
++    private final Set<Integer> startedGames = new HashSet<>();
++
++    public MatchProjector(MatchState state) {
++        this.state = state;
++    }
++
++    public synchronized List<GameEvent> project(int gameNumber, List<GameEvent> gameEvents) {
++        List<GameEvent> result = new ArrayList<>();
++        boolean gameStartEmitted = startedGames.contains(gameNumber);
++
++        for (GameEvent event : gameEvents) {
++            result.add(event);
++
++            if (event.getType() == GameEventType.MATCH_STARTED) {
++                state.markMatchStarted();
++                if (!gameStartEmitted) {
++                    result.add(gameStartedEvent(gameNumber, event));
++                    startedGames.add(gameNumber);
++                    gameStartEmitted = true;
++                }
++            }
++
++            if (event.getGameResult() != null
++                    && state.recordGameResult(gameNumber, event.getGameResult())) {
++                MatchScore score = state.score();
++                result.add(matchScoreEvent(score, event));
++
++                MatchResult matchResult = inferredMatchResult(score);
++                if (matchResult != null && state.completeMatch(matchResult)) {
++                    result.add(matchResultEvent(matchResult, event));
++                }
++            }
++        }
++
++        if (!gameStartEmitted) {
++            GameEvent anchor = gameEvents.isEmpty() ? null : gameEvents.get(0);
++            result.add(0, gameStartedEvent(gameNumber, anchor));
++            startedGames.add(gameNumber);
++        }
++        return result;
++    }
++
++    private MatchResult inferredMatchResult(MatchScore score) {
++        Integer winnerSeat = null;
++        if (score.seatOneWins() >= 2) winnerSeat = 1;
++        if (score.seatTwoWins() >= 2) winnerSeat = 2;
++        if (winnerSeat == null) return null;
++
++        return new MatchResult(
++                winnerSeat,
++                playerName(winnerSeat),
++                score,
++                MatchResult.Confidence.INFERRED);
++    }
++
++    private GameEvent gameStartedEvent(int gameNumber, GameEvent anchor) {
++        GameEvent event = derivedEvent(anchor, "Game " + gameNumber + " started");
++        event.setType(GameEventType.GAME_STARTED);
++        return event;
++    }
++
++    private GameEvent matchScoreEvent(MatchScore score, GameEvent anchor) {
++        String text = "Match score: "
++                + playerName(1) + " " + score.seatOneWins()
++                + " — " + score.seatTwoWins() + " " + playerName(2);
++        if (score.draws() > 0) text += " (" + score.draws() + " draw" + (score.draws() == 1 ? "" : "s") + ")";
++
++        GameEvent event = derivedEvent(anchor, text);
++        event.setType(GameEventType.MATCH_SCORE);
++        event.setMatchScore(score);
++        return event;
++    }
++
++    private GameEvent matchResultEvent(MatchResult matchResult, GameEvent anchor) {
++        MatchScore score = matchResult.finalScore();
++        GameEvent event = derivedEvent(anchor,
++                matchResult.winnerName() + " wins the match "
++                        + score.winsForSeat(matchResult.winnerSeatId())
++                        + "–" + score.winsForSeat(matchResult.winnerSeatId() == 1 ? 2 : 1));
++        event.setType(GameEventType.MATCH_RESULT);
++        event.setMatchScore(score);
++        event.setMatchResult(matchResult);
++        return event;
++    }
++
++    private GameEvent derivedEvent(GameEvent anchor, String text) {
++        GameEvent event = new GameEvent();
++        if (anchor != null) {
++            event.setSequence(anchor.getSequence());
++            event.setTimestamp(anchor.getTimestamp());
++            event.setTurnNumber(anchor.getTurnNumber());
++            event.setActivePlayerSeat(anchor.getActivePlayerSeat());
++            event.setActivePlayerName(anchor.getActivePlayerName());
++            event.setPhase(anchor.getPhase());
++            event.setStep(anchor.getStep());
++        }
++        event.setText(text);
++        return event;
++    }
++
++    private String playerName(int seatId) {
++        Map<Integer, String> players = state.playerSnapshot();
++        return players.getOrDefault(seatId, "Seat " + seatId);
++    }
++}
+diff --git a/src/main/java/app/replay/GameSessionsPanel.java b/src/main/java/app/replay/GameSessionsPanel.java
+index c7f59d1..1d13427 100644
+--- a/src/main/java/app/replay/GameSessionsPanel.java
++++ b/src/main/java/app/replay/GameSessionsPanel.java
+@@ -78,7 +78,7 @@ public final class GameSessionsPanel extends JPanel {
+                 key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
+         GameSession game = match.game(key.getGameNumber());
+ 
+-        GameView view = new GameView(game.model(), abilityNames, game.projector());
++        GameView view = new GameView(game, abilityNames);
+         JScrollPane scrollPane = new JScrollPane(view);
+         scrollPane.getVerticalScrollBar().setUnitIncrement(20);
+         gameTabs.addTab(key.displayName(), scrollPane);
+diff --git a/src/main/java/app/replay/GameView.java b/src/main/java/app/replay/GameView.java
+index 0c2bf55..4e143df 100644
+--- a/src/main/java/app/replay/GameView.java
++++ b/src/main/java/app/replay/GameView.java
+@@ -8,6 +8,7 @@ import app.model.game.PlayerTurnSnapshot;
+ import app.model.log.LogMessageInterface;
+ import app.model.log.ModelObject;
+ import app.model.session.GameModel;
++import app.model.session.GameSession;
+ import app.model.*;
+ import app.snapshot.BoardStateMonitor;
+ import app.enrichment.CardImageCache;
+@@ -49,6 +50,7 @@ public final class GameView extends JPanel implements Scrollable {
+ 
+     private final GameModel model;
+     private final GameEventProjector projector;
++    private final GameSession session;
+     private final Deque<PendingMessage> pending = new ArrayDeque<>();
+     private final List<CardHitbox> cardHitboxes = new ArrayList<>();
+     private final List<EventHitbox> eventHitboxes = new ArrayList<>();
+@@ -67,9 +69,19 @@ public final class GameView extends JPanel implements Scrollable {
+     }
+ 
+     public GameView(GameModel model, AbilityNameStore abilityNames, GameEventProjector projector) {
++        this(model, abilityNames, projector, null);
++    }
++
++    public GameView(GameSession session, AbilityNameStore abilityNames) {
++        this(session.model(), abilityNames, session.projector(), session);
++    }
++
++    private GameView(GameModel model, AbilityNameStore abilityNames,
++                     GameEventProjector projector, GameSession session) {
+         this.model = model;
+         this.abilityNames = abilityNames;
+         this.projector = projector;
++        this.session = session;
+         setOpaque(true);
+         setBackground(colorOr("Panel.background", new Color(0xF3F3F3)));
+         setForeground(colorOr("Label.foreground", Color.DARK_GRAY));
+@@ -116,7 +128,9 @@ public final class GameView extends JPanel implements Scrollable {
+             while (!pending.isEmpty() && pending.peekFirst().completed()) {
+                 PendingMessage completed = pending.removeFirst();
+                 if (completed.error() == null) {
+-                    additions.addAll(projector.project(completed.message(), completed.modelObject()));
++                    additions.addAll(session == null
++                            ? projector.project(completed.message(), completed.modelObject())
++                            : session.project(completed.message(), completed.modelObject()));
+                 }
+             }
+         }
+diff --git a/src/test/java/app/projection/MatchProjectorTest.java b/src/test/java/app/projection/MatchProjectorTest.java
+new file mode 100644
+index 0000000..a500e5a
+--- /dev/null
++++ b/src/test/java/app/projection/MatchProjectorTest.java
+@@ -0,0 +1,123 @@
++package app.projection;
++
++import app.model.event.GameEvent;
++import app.model.event.GameEventType;
++import app.model.game.GameResult;
++import app.model.match.MatchResult;
++import app.model.match.MatchScore;
++import app.model.match.MatchState;
++import org.junit.jupiter.api.Test;
++
++import java.time.Instant;
++import java.util.List;
++import java.util.Map;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNull;
++
++final class MatchProjectorTest {
++    @Test
++    void emitsGameResultThenScoreThenMatchResult() {
++        MatchState state = stateWithPlayers();
++        MatchProjector projector = new MatchProjector(state);
++
++        projector.project(1, List.of(gameResult(1, "Alice")));
++        List<GameEvent> second = projector.project(2, List.of(gameResult(1, "Alice")));
++
++        assertEquals(
++                List.of(
++                        GameEventType.GAME_STARTED,
++                        GameEventType.GAME_RESULT,
++                        GameEventType.MATCH_SCORE,
++                        GameEventType.MATCH_RESULT),
++                second.stream().map(GameEvent::getType).toList());
++        assertEquals("Alice wins the match 2–0", second.get(3).getText());
++        assertEquals(MatchResult.Confidence.INFERRED,
++                second.get(3).getMatchResult().confidence());
++    }
++
++    @Test
++    void reconstructsThreeGameScoreProgression() {
++        MatchState state = stateWithPlayers();
++        MatchProjector projector = new MatchProjector(state);
++
++        List<GameEvent> first = projector.project(1, List.of(gameResult(1, "Alice")));
++        List<GameEvent> second = projector.project(2, List.of(gameResult(2, "Bob")));
++        List<GameEvent> third = projector.project(3, List.of(gameResult(1, "Alice")));
++
++        assertEquals(new MatchScore(1, 0, 0), scoreEvent(first).getMatchScore());
++        assertEquals(new MatchScore(1, 1, 0), scoreEvent(second).getMatchScore());
++        assertEquals(new MatchScore(2, 1, 0), scoreEvent(third).getMatchScore());
++        assertEquals("Alice wins the match 2–1", third.get(3).getText());
++    }
++
++    @Test
++    void recordsDrawWithoutInventingWinner() {
++        MatchState state = stateWithPlayers();
++        MatchProjector projector = new MatchProjector(state);
++
++        List<GameEvent> events = projector.project(1, List.of(drawResult()));
++
++        assertEquals(new MatchScore(0, 0, 1), scoreEvent(events).getMatchScore());
++        assertNull(state.matchResult());
++    }
++
++    @Test
++    void emitsEachGameStartOnlyOnce() {
++        MatchProjector projector = new MatchProjector(stateWithPlayers());
++
++        List<GameEvent> first = projector.project(1, List.of(gameplay("Alice rolled 17")));
++        List<GameEvent> second = projector.project(1, List.of(gameplay("Bob rolled 12")));
++
++        assertEquals(GameEventType.GAME_STARTED, first.get(0).getType());
++        assertEquals(2, first.size());
++        assertEquals(1, second.size());
++        assertEquals(GameEventType.GAMEPLAY, second.get(0).getType());
++    }
++
++    private MatchState stateWithPlayers() {
++        MatchState state = new MatchState("match-a");
++        state.observePlayers(Map.of(1, "Alice", 2, "Bob"));
++        return state;
++    }
++
++    private GameEvent gameResult(int winnerSeat, String winnerName) {
++        GameResult result = new GameResult();
++        result.setWinnerSeatId(winnerSeat);
++        result.setWinnerName(winnerName);
++        result.setLoserSeatId(winnerSeat == 1 ? 2 : 1);
++        result.setReason(GameResult.Reason.OTHER);
++        result.setConfidence(GameResult.Confidence.INFERRED);
++
++        GameEvent event = gameplay(winnerName + " wins");
++        event.setType(GameEventType.GAME_RESULT);
++        event.setGameResult(result);
++        return event;
++    }
++
++    private GameEvent drawResult() {
++        GameResult result = new GameResult();
++        result.setReason(GameResult.Reason.DRAW);
++        result.setConfidence(GameResult.Confidence.EXPLICIT);
++
++        GameEvent event = gameplay("Game ends in a draw");
++        event.setType(GameEventType.GAME_RESULT);
++        event.setGameResult(result);
++        return event;
++    }
++
++    private GameEvent gameplay(String text) {
++        GameEvent event = new GameEvent();
++        event.setSequence(1);
++        event.setTimestamp(Instant.EPOCH);
++        event.setText(text);
++        return event;
++    }
++
++    private GameEvent scoreEvent(List<GameEvent> events) {
++        return events.stream()
++                .filter(event -> event.getType() == GameEventType.MATCH_SCORE)
++                .findFirst()
++                .orElseThrow();
++    }
++}
+diff --git a/src/test/java/app/testing/ArenaLogReplayHarness.java b/src/test/java/app/testing/ArenaLogReplayHarness.java
+index 9c5edcb..821f627 100644
+--- a/src/test/java/app/testing/ArenaLogReplayHarness.java
++++ b/src/test/java/app/testing/ArenaLogReplayHarness.java
+@@ -78,7 +78,7 @@ public final class ArenaLogReplayHarness {
+             GameSession session = sessions.computeIfAbsent(key, ignored -> createSession(key));
+             session.model().addRawRecord(message.getRawText());
+             session.model().addEvents(
+-                    session.projector().project(message, message.getModelFuture().join()));
++                    session.project(message, message.getModelFuture().join()));
+             session.model().setOpeningHand(
+                     session.projector().openingHandPlayer(),
+                     session.projector().mulliganCount(),
+diff --git a/src/test/java/app/testing/ArenaLogReplayHarnessTest.java b/src/test/java/app/testing/ArenaLogReplayHarnessTest.java
+index e133ebf..7e69687 100644
+--- a/src/test/java/app/testing/ArenaLogReplayHarnessTest.java
++++ b/src/test/java/app/testing/ArenaLogReplayHarnessTest.java
+@@ -42,7 +42,7 @@ final class ArenaLogReplayHarnessTest {
+         ));
+ 
+         assertEquals(
+-                List.of("Alice rolled 17"),
++                List.of("Game 2 started", "Alice rolled 17"),
+                 result.requireGame("match-a", 2).snapshot().stream()
+                         .map(event -> event.getText())
+                         .toList());

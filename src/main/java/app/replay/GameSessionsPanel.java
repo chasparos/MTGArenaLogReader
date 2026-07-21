@@ -78,7 +78,7 @@ public final class GameSessionsPanel extends JPanel {
                 key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
         GameSession game = match.game(key.getGameNumber());
 
-        GameView view = new GameView(game.model(), abilityNames, game.projector());
+        GameView view = new GameView(game, abilityNames);
         JScrollPane scrollPane = new JScrollPane(view);
         scrollPane.getVerticalScrollBar().setUnitIncrement(20);
         gameTabs.addTab(key.displayName(), scrollPane);

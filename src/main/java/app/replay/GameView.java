@@ -8,6 +8,7 @@ import app.model.game.PlayerTurnSnapshot;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
 import app.model.session.GameModel;
+import app.model.session.GameSession;
 import app.model.*;
 import app.snapshot.BoardStateMonitor;
 import app.enrichment.CardImageCache;
@@ -49,6 +50,7 @@ public final class GameView extends JPanel implements Scrollable {
 
     private final GameModel model;
     private final GameEventProjector projector;
+    private final GameSession session;
     private final Deque<PendingMessage> pending = new ArrayDeque<>();
     private final List<CardHitbox> cardHitboxes = new ArrayList<>();
     private final List<EventHitbox> eventHitboxes = new ArrayList<>();
@@ -67,9 +69,19 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     public GameView(GameModel model, AbilityNameStore abilityNames, GameEventProjector projector) {
+        this(model, abilityNames, projector, null);
+    }
+
+    public GameView(GameSession session, AbilityNameStore abilityNames) {
+        this(session.model(), abilityNames, session.projector(), session);
+    }
+
+    private GameView(GameModel model, AbilityNameStore abilityNames,
+                     GameEventProjector projector, GameSession session) {
         this.model = model;
         this.abilityNames = abilityNames;
         this.projector = projector;
+        this.session = session;
         setOpaque(true);
         setBackground(colorOr("Panel.background", new Color(0xF3F3F3)));
         setForeground(colorOr("Label.foreground", Color.DARK_GRAY));
@@ -116,7 +128,9 @@ public final class GameView extends JPanel implements Scrollable {
             while (!pending.isEmpty() && pending.peekFirst().completed()) {
                 PendingMessage completed = pending.removeFirst();
                 if (completed.error() == null) {
-                    additions.addAll(projector.project(completed.message(), completed.modelObject()));
+                    additions.addAll(session == null
+                            ? projector.project(completed.message(), completed.modelObject())
+                            : session.project(completed.message(), completed.modelObject()));
                 }
             }
         }
