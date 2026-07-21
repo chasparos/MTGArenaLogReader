@@ -1,0 +1,9 @@
+Mana SVG source attribution
+
+Source: https://github.com/andrewgioia/mana
+Project: Mana by Andrew Gioia
+
+The Mana project states that the Mana font is licensed under SIL OFL 1.1,
+its CSS/LESS/Sass files are MIT licensed, and the mana/card symbol imagery is
+copyright Wizards of the Coast. This application uses the individual SVG
+sources as fan-content UI assets. Keep this notice with redistributed assets.
