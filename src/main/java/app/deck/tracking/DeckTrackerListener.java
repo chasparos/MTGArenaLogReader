@@ -2,6 +2,7 @@ package app.deck.tracking;
 
 
 import app.deck.model.DeckGameState;
+import app.deck.model.SideboardChange;
 /**
  * Represents or implements DeckTrackerListener in the optional live deck-tracking subsystem.
  *
@@ -14,4 +15,6 @@ public interface DeckTrackerListener {
     void gameStarted(DeckGameState state);
     void gameUpdated(DeckGameState state);
     void gameCompleted(String matchId, int gameNumber);
+
+    default void sideboardChanged(SideboardChange change) {}
 }

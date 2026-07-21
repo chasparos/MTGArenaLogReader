@@ -1,9 +1,14 @@
 package app.deck.model;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Owns deck information whose lifetime spans one Arena match.
@@ -65,8 +70,71 @@ public final class MatchDeckState {
                 sameComposition(deck, previous) ? snapshot(refreshed) : deck);
     }
 
+
+    /**
+     * Applies a complete observed configuration to one game and returns the
+     * exact main-deck delta from the preceding game's configuration.
+     */
+    public synchronized Optional<SideboardChange> observeDeckForGame(
+            int gameNumber, CachedDeck observedDeck) {
+        if (gameNumber <= 0) throw new IllegalArgumentException("gameNumber must be positive");
+        if (observedDeck == null || selectedDeck == null) return Optional.empty();
+        if (!Objects.equals(selectedDeck.deckId(), observedDeck.deckId())) return Optional.empty();
+
+        CachedDeck previous = gameNumber == 1
+                ? selectedDeck
+                : deckForGame(gameNumber - 1);
+        CachedDeck observed = snapshot(observedDeck);
+        gameDecks.put(gameNumber, observed);
+
+        SideboardChange change = difference(previous, observed, gameNumber);
+        return change.changed() ? Optional.of(change) : Optional.empty();
+    }
+
     public synchronized Map<Integer, CachedDeck> gameDeckSnapshot() {
         return Map.copyOf(gameDecks);
+    }
+
+
+
+    private SideboardChange difference(CachedDeck previous, CachedDeck observed, int gameNumber) {
+        Map<Long, Integer> before = quantities(previous.mainDeck());
+        Map<Long, Integer> after = quantities(observed.mainDeck());
+        Map<Long, DeckEntry> entries = entriesById(previous, observed);
+        List<DeckEntry> broughtIn = new ArrayList<>();
+        List<DeckEntry> removed = new ArrayList<>();
+
+        Set<Long> ids = new TreeSet<>();
+        ids.addAll(before.keySet());
+        ids.addAll(after.keySet());
+        for (Long id : ids) {
+            int delta = after.getOrDefault(id, 0) - before.getOrDefault(id, 0);
+            if (delta > 0) broughtIn.add(copyWithQuantity(entries.get(id), delta));
+            if (delta < 0) removed.add(copyWithQuantity(entries.get(id), -delta));
+        }
+        return new SideboardChange(matchId, gameNumber, broughtIn, removed,
+                SideboardChange.Confidence.RECONSTRUCTED);
+    }
+
+    private static Map<Long, Integer> quantities(List<DeckEntry> entries) {
+        Map<Long, Integer> quantities = new TreeMap<>();
+        if (entries != null) {
+            for (DeckEntry entry : entries) {
+                quantities.merge(entry.arenaId(), entry.quantity(), Integer::sum);
+            }
+        }
+        return quantities;
+    }
+
+    private static Map<Long, DeckEntry> entriesById(CachedDeck first, CachedDeck second) {
+        Map<Long, DeckEntry> entries = new TreeMap<>();
+        for (DeckEntry entry : first.mainDeck()) entries.put(entry.arenaId(), entry);
+        for (DeckEntry entry : second.mainDeck()) entries.put(entry.arenaId(), entry);
+        return entries;
+    }
+
+    private static DeckEntry copyWithQuantity(DeckEntry entry, int quantity) {
+        return new DeckEntry(entry.arenaId(), quantity, entry.card());
     }
 
     private static boolean sameComposition(CachedDeck left, CachedDeck right) {

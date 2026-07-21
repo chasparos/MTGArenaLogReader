@@ -1,0 +1,289 @@
+diff --git a/docs/architecture/match-support.md b/docs/architecture/match-support.md
+index 018f4c3..fe9472a 100644
+--- a/docs/architecture/match-support.md
++++ b/docs/architecture/match-support.md
+@@ -198,13 +198,19 @@ The UI and exporters should consume structured match information rather than rep
+ - Present current score and final match winner.
+ - Cover 2–0, 2–1, explicit, inferred, and unknown outcomes as supported by fixtures.
+ 
+-### Patch 3 — Deck configuration and sideboarding
++### Patch 3 — Match deck configuration
+ 
+-- Catalogue the actual Arena observations available between games.
+ - Introduce match-scoped deck configuration history.
+-- Detect exact or partial sideboarding according to evidence.
++- Keep the selected deck immutable for the match.
++- Allow each game to own an independent active configuration.
+ - Update deck tracker calculations to use the current game's configuration.
+-- Emit sideboarding events without overstating certainty.
++
++### Patch 4 — Sideboarding reconstruction
++
++- Treat complete between-game deck snapshots as explicit configuration evidence.
++- Compute exact main-deck additions and removals from adjacent game configurations.
++- Emit structured deck-tracker sideboarding events.
++- Preserve `UNKNOWN` rather than inferring exchanges from cards merely observed in play.
+ 
+ ## Non-goals for this arc
+ 
+diff --git a/src/main/java/app/deck/model/MatchDeckState.java b/src/main/java/app/deck/model/MatchDeckState.java
+index 42b0e71..d6129a2 100644
+--- a/src/main/java/app/deck/model/MatchDeckState.java
++++ b/src/main/java/app/deck/model/MatchDeckState.java
+@@ -1,9 +1,14 @@
+ package app.deck.model;
+ 
++import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.Optional;
++import java.util.Set;
++import java.util.TreeMap;
++import java.util.TreeSet;
+ 
+ /**
+  * Owns deck information whose lifetime spans one Arena match.
+@@ -65,10 +70,73 @@ public final class MatchDeckState {
+                 sameComposition(deck, previous) ? snapshot(refreshed) : deck);
+     }
+ 
++
++    /**
++     * Applies a complete observed configuration to one game and returns the
++     * exact main-deck delta from the preceding game's configuration.
++     */
++    public synchronized Optional<SideboardChange> observeDeckForGame(
++            int gameNumber, CachedDeck observedDeck) {
++        if (gameNumber <= 0) throw new IllegalArgumentException("gameNumber must be positive");
++        if (observedDeck == null || selectedDeck == null) return Optional.empty();
++        if (!Objects.equals(selectedDeck.deckId(), observedDeck.deckId())) return Optional.empty();
++
++        CachedDeck previous = gameNumber == 1
++                ? selectedDeck
++                : deckForGame(gameNumber - 1);
++        CachedDeck observed = snapshot(observedDeck);
++        gameDecks.put(gameNumber, observed);
++
++        SideboardChange change = difference(previous, observed, gameNumber);
++        return change.changed() ? Optional.of(change) : Optional.empty();
++    }
++
+     public synchronized Map<Integer, CachedDeck> gameDeckSnapshot() {
+         return Map.copyOf(gameDecks);
+     }
+ 
++
++
++    private SideboardChange difference(CachedDeck previous, CachedDeck observed, int gameNumber) {
++        Map<Long, Integer> before = quantities(previous.mainDeck());
++        Map<Long, Integer> after = quantities(observed.mainDeck());
++        Map<Long, DeckEntry> entries = entriesById(previous, observed);
++        List<DeckEntry> broughtIn = new ArrayList<>();
++        List<DeckEntry> removed = new ArrayList<>();
++
++        Set<Long> ids = new TreeSet<>();
++        ids.addAll(before.keySet());
++        ids.addAll(after.keySet());
++        for (Long id : ids) {
++            int delta = after.getOrDefault(id, 0) - before.getOrDefault(id, 0);
++            if (delta > 0) broughtIn.add(copyWithQuantity(entries.get(id), delta));
++            if (delta < 0) removed.add(copyWithQuantity(entries.get(id), -delta));
++        }
++        return new SideboardChange(matchId, gameNumber, broughtIn, removed,
++                SideboardChange.Confidence.RECONSTRUCTED);
++    }
++
++    private static Map<Long, Integer> quantities(List<DeckEntry> entries) {
++        Map<Long, Integer> quantities = new TreeMap<>();
++        if (entries != null) {
++            for (DeckEntry entry : entries) {
++                quantities.merge(entry.arenaId(), entry.quantity(), Integer::sum);
++            }
++        }
++        return quantities;
++    }
++
++    private static Map<Long, DeckEntry> entriesById(CachedDeck first, CachedDeck second) {
++        Map<Long, DeckEntry> entries = new TreeMap<>();
++        for (DeckEntry entry : first.mainDeck()) entries.put(entry.arenaId(), entry);
++        for (DeckEntry entry : second.mainDeck()) entries.put(entry.arenaId(), entry);
++        return entries;
++    }
++
++    private static DeckEntry copyWithQuantity(DeckEntry entry, int quantity) {
++        return new DeckEntry(entry.arenaId(), quantity, entry.card());
++    }
++
+     private static boolean sameComposition(CachedDeck left, CachedDeck right) {
+         return left != null && right != null
+                 && left.mainDeck().equals(right.mainDeck())
+diff --git a/src/main/java/app/deck/model/SideboardChange.java b/src/main/java/app/deck/model/SideboardChange.java
+new file mode 100644
+index 0000000..342047d
+--- /dev/null
++++ b/src/main/java/app/deck/model/SideboardChange.java
+@@ -0,0 +1,34 @@
++package app.deck.model;
++
++import java.util.List;
++
++/**
++ * Describes a change between two complete game-deck configurations.
++ *
++ * <p>Only complete deck snapshots may produce a {@link Confidence#RECONSTRUCTED}
++ * change. Partial observations must not be promoted to sideboarding facts.</p>
++ */
++public record SideboardChange(
++        String matchId,
++        int gameNumber,
++        List<DeckEntry> broughtIn,
++        List<DeckEntry> removed,
++        Confidence confidence
++) {
++    public SideboardChange {
++        broughtIn = broughtIn == null ? List.of() : List.copyOf(broughtIn);
++        removed = removed == null ? List.of() : List.copyOf(removed);
++        confidence = confidence == null ? Confidence.UNKNOWN : confidence;
++    }
++
++    public boolean changed() {
++        return !broughtIn.isEmpty() || !removed.isEmpty();
++    }
++
++    public enum Confidence {
++        EXPLICIT,
++        RECONSTRUCTED,
++        INFERRED,
++        UNKNOWN
++    }
++}
+diff --git a/src/main/java/app/deck/tracking/DeckTracker.java b/src/main/java/app/deck/tracking/DeckTracker.java
+index 991518e..e7daded 100644
+--- a/src/main/java/app/deck/tracking/DeckTracker.java
++++ b/src/main/java/app/deck/tracking/DeckTracker.java
+@@ -5,6 +5,7 @@ import app.deck.model.CachedDeck;
+ import app.deck.model.DeckEntry;
+ import app.deck.model.DeckGameState;
+ import app.deck.model.MatchDeckState;
++import app.deck.model.SideboardChange;
+ import app.deck.parsing.DeckLogParser;
+ import app.deck.persistence.DeckCache;
+ import app.model.card.CardInfo;
+@@ -39,6 +40,7 @@ public final class DeckTracker {
+     private int localSeat = 1;
+     private MatchDeckState matchDeckState;
+     private CachedDeck currentDeck;
++    private CachedDeck pendingGameDeck;
+     private boolean started;
+     private boolean complete;
+ 
+@@ -62,7 +64,13 @@ public final class DeckTracker {
+         String raw = message.getRawText();
+         for (CachedDeck deck : deckParser.parseDecks(raw)) {
+             deckCache.put(deck);
+-            selectedDeckId = deck.deckId();
++            if (currentMatchId != null && complete && matchDeckState != null
++                    && matchDeckState.selectedDeck() != null
++                    && Objects.equals(matchDeckState.selectedDeck().deckId(), deck.deckId())) {
++                pendingGameDeck = deck;
++            } else {
++                selectedDeckId = deck.deckId();
++            }
+             if (deck.eventName() != null && !deck.eventName().isBlank()) selectedEventName = deck.eventName();
+         }
+ 
+@@ -84,6 +92,7 @@ public final class DeckTracker {
+             complete = false;
+             started = false;
+             clearGameObjects();
++            pendingGameDeck = null;
+ 
+             String eventId = "";
+             JsonElement players = config.get("reservedPlayers");
+@@ -130,7 +139,15 @@ public final class DeckTracker {
+             int gameNo = integer(info, "gameNumber", currentGameNumber);
+             if (gameNo != currentGameNumber) {
+                 currentGameNumber = gameNo;
+-                currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
++                if (matchDeckState != null && pendingGameDeck != null) {
++                    Optional<SideboardChange> change =
++                            matchDeckState.observeDeckForGame(gameNo, pendingGameDeck);
++                    currentDeck = matchDeckState.deckForGame(gameNo);
++                    pendingGameDeck = null;
++                    change.ifPresent(listener::sideboardChanged);
++                } else {
++                    currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
++                }
+                 complete = false;
+                 started = false;
+                 clearGameObjects();
+diff --git a/src/main/java/app/deck/tracking/DeckTrackerListener.java b/src/main/java/app/deck/tracking/DeckTrackerListener.java
+index 868e83d..0afc0be 100644
+--- a/src/main/java/app/deck/tracking/DeckTrackerListener.java
++++ b/src/main/java/app/deck/tracking/DeckTrackerListener.java
+@@ -2,6 +2,7 @@ package app.deck.tracking;
+ 
+ 
+ import app.deck.model.DeckGameState;
++import app.deck.model.SideboardChange;
+ /**
+  * Represents or implements DeckTrackerListener in the optional live deck-tracking subsystem.
+  *
+@@ -14,4 +15,6 @@ public interface DeckTrackerListener {
+     void gameStarted(DeckGameState state);
+     void gameUpdated(DeckGameState state);
+     void gameCompleted(String matchId, int gameNumber);
++
++    default void sideboardChanged(SideboardChange change) {}
+ }
+diff --git a/src/test/java/app/deck/model/MatchDeckStateTest.java b/src/test/java/app/deck/model/MatchDeckStateTest.java
+index 851db76..1c1f4d8 100644
+--- a/src/test/java/app/deck/model/MatchDeckStateTest.java
++++ b/src/test/java/app/deck/model/MatchDeckStateTest.java
+@@ -58,6 +58,44 @@ class MatchDeckStateTest {
+         assertNotEquals("Enriched", state.deckForGame(2).name());
+     }
+ 
++    @Test
++    void completeGameDeckObservationProducesExactSideboardDelta() {
++        CachedDeck selected = deck("deck-1",
++                List.of(entry(100, 4), entry(200, 2)),
++                List.of(entry(300, 2)));
++        CachedDeck gameTwo = deck("deck-1",
++                List.of(entry(100, 3), entry(200, 2), entry(300, 1)),
++                List.of(entry(100, 1), entry(300, 1)));
++
++        MatchDeckState state = new MatchDeckState("match-1", selected);
++        SideboardChange change = state.observeDeckForGame(2, gameTwo).orElseThrow();
++
++        assertEquals(SideboardChange.Confidence.RECONSTRUCTED, change.confidence());
++        assertEquals(List.of(entry(300, 1)), change.broughtIn());
++        assertEquals(List.of(entry(100, 1)), change.removed());
++        assertEquals(gameTwo.mainDeck(), state.deckForGame(2).mainDeck());
++        assertEquals(selected.mainDeck(), state.deckForGame(1).mainDeck());
++    }
++
++    @Test
++    void unchangedCompleteDeckObservationDoesNotInventSideboarding() {
++        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
++        MatchDeckState state = new MatchDeckState("match-1", selected);
++
++        assertTrue(state.observeDeckForGame(2, selected).isEmpty());
++        assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
++    }
++
++    @Test
++    void observationForDifferentSelectedDeckIsIgnored() {
++        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of());
++        CachedDeck unrelated = deck("deck-2", List.of(entry(200, 4)), List.of());
++        MatchDeckState state = new MatchDeckState("match-1", selected);
++
++        assertTrue(state.observeDeckForGame(2, unrelated).isEmpty());
++        assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
++    }
++
+     private static CachedDeck deck(String id, List<DeckEntry> main, List<DeckEntry> sideboard) {
+         return new CachedDeck(id, "Selected", "Standard", "event",
+                 Instant.parse("2026-01-01T00:00:00Z"), main, sideboard, List.of(), List.of());

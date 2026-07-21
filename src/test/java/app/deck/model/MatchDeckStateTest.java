@@ -58,6 +58,44 @@ class MatchDeckStateTest {
         assertNotEquals("Enriched", state.deckForGame(2).name());
     }
 
+    @Test
+    void completeGameDeckObservationProducesExactSideboardDelta() {
+        CachedDeck selected = deck("deck-1",
+                List.of(entry(100, 4), entry(200, 2)),
+                List.of(entry(300, 2)));
+        CachedDeck gameTwo = deck("deck-1",
+                List.of(entry(100, 3), entry(200, 2), entry(300, 1)),
+                List.of(entry(100, 1), entry(300, 1)));
+
+        MatchDeckState state = new MatchDeckState("match-1", selected);
+        SideboardChange change = state.observeDeckForGame(2, gameTwo).orElseThrow();
+
+        assertEquals(SideboardChange.Confidence.RECONSTRUCTED, change.confidence());
+        assertEquals(List.of(entry(300, 1)), change.broughtIn());
+        assertEquals(List.of(entry(100, 1)), change.removed());
+        assertEquals(gameTwo.mainDeck(), state.deckForGame(2).mainDeck());
+        assertEquals(selected.mainDeck(), state.deckForGame(1).mainDeck());
+    }
+
+    @Test
+    void unchangedCompleteDeckObservationDoesNotInventSideboarding() {
+        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
+        MatchDeckState state = new MatchDeckState("match-1", selected);
+
+        assertTrue(state.observeDeckForGame(2, selected).isEmpty());
+        assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
+    }
+
+    @Test
+    void observationForDifferentSelectedDeckIsIgnored() {
+        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of());
+        CachedDeck unrelated = deck("deck-2", List.of(entry(200, 4)), List.of());
+        MatchDeckState state = new MatchDeckState("match-1", selected);
+
+        assertTrue(state.observeDeckForGame(2, unrelated).isEmpty());
+        assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
+    }
+
     private static CachedDeck deck(String id, List<DeckEntry> main, List<DeckEntry> sideboard) {
         return new CachedDeck(id, "Selected", "Standard", "event",
                 Instant.parse("2026-01-01T00:00:00Z"), main, sideboard, List.of(), List.of());

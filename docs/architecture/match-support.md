@@ -198,13 +198,19 @@ The UI and exporters should consume structured match information rather than rep
 - Present current score and final match winner.
 - Cover 2–0, 2–1, explicit, inferred, and unknown outcomes as supported by fixtures.
 
-### Patch 3 — Deck configuration and sideboarding
+### Patch 3 — Match deck configuration
 
-- Catalogue the actual Arena observations available between games.
 - Introduce match-scoped deck configuration history.
-- Detect exact or partial sideboarding according to evidence.
+- Keep the selected deck immutable for the match.
+- Allow each game to own an independent active configuration.
 - Update deck tracker calculations to use the current game's configuration.
-- Emit sideboarding events without overstating certainty.
+
+### Patch 4 — Sideboarding reconstruction
+
+- Treat complete between-game deck snapshots as explicit configuration evidence.
+- Compute exact main-deck additions and removals from adjacent game configurations.
+- Emit structured deck-tracker sideboarding events.
+- Preserve `UNKNOWN` rather than inferring exchanges from cards merely observed in play.
 
 ## Non-goals for this arc
 

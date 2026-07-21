@@ -5,6 +5,7 @@ import app.deck.model.CachedDeck;
 import app.deck.model.DeckEntry;
 import app.deck.model.DeckGameState;
 import app.deck.model.MatchDeckState;
+import app.deck.model.SideboardChange;
 import app.deck.parsing.DeckLogParser;
 import app.deck.persistence.DeckCache;
 import app.model.card.CardInfo;
@@ -39,6 +40,7 @@ public final class DeckTracker {
     private int localSeat = 1;
     private MatchDeckState matchDeckState;
     private CachedDeck currentDeck;
+    private CachedDeck pendingGameDeck;
     private boolean started;
     private boolean complete;
 
@@ -62,7 +64,13 @@ public final class DeckTracker {
         String raw = message.getRawText();
         for (CachedDeck deck : deckParser.parseDecks(raw)) {
             deckCache.put(deck);
-            selectedDeckId = deck.deckId();
+            if (currentMatchId != null && complete && matchDeckState != null
+                    && matchDeckState.selectedDeck() != null
+                    && Objects.equals(matchDeckState.selectedDeck().deckId(), deck.deckId())) {
+                pendingGameDeck = deck;
+            } else {
+                selectedDeckId = deck.deckId();
+            }
             if (deck.eventName() != null && !deck.eventName().isBlank()) selectedEventName = deck.eventName();
         }
 
@@ -84,6 +92,7 @@ public final class DeckTracker {
             complete = false;
             started = false;
             clearGameObjects();
+            pendingGameDeck = null;
 
             String eventId = "";
             JsonElement players = config.get("reservedPlayers");
@@ -130,7 +139,15 @@ public final class DeckTracker {
             int gameNo = integer(info, "gameNumber", currentGameNumber);
             if (gameNo != currentGameNumber) {
                 currentGameNumber = gameNo;
-                currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
+                if (matchDeckState != null && pendingGameDeck != null) {
+                    Optional<SideboardChange> change =
+                            matchDeckState.observeDeckForGame(gameNo, pendingGameDeck);
+                    currentDeck = matchDeckState.deckForGame(gameNo);
+                    pendingGameDeck = null;
+                    change.ifPresent(listener::sideboardChanged);
+                } else {
+                    currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
+                }
                 complete = false;
                 started = false;
                 clearGameObjects();
