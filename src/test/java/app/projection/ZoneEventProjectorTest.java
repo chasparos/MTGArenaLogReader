@@ -5,19 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ZoneEventProjectorTest {
-    private final ZoneEventProjector projector =
-            new ZoneEventProjector(new ZoneTransitionClassifier());
+    private final ZoneEventProjector projector = new ZoneEventProjector();
 
     @Test
     void formatsAResolvedPermanentWithoutReadingGameState() {
         assertEquals(
                 "Runeclaw Bear resolves and enters the battlefield tapped",
                 projector.describe(
+                        ZoneTransitionClassifier.Kind.RESOLVE_TO_BATTLEFIELD,
                         "Stack",
                         "Battlefield",
-                        "",
-                        false,
-                        false,
                         "Alice",
                         "Runeclaw Bear",
                         "activates",
@@ -29,11 +26,9 @@ class ZoneEventProjectorTest {
         assertEquals(
                 "Alice triggers Soul Warden",
                 projector.describe(
+                        ZoneTransitionClassifier.Kind.ABILITY_ON_STACK,
                         "Battlefield",
                         "Stack",
-                        "",
-                        true,
-                        false,
                         "Alice",
                         "Soul Warden",
                         "triggers",
@@ -45,11 +40,9 @@ class ZoneEventProjectorTest {
         assertEquals(
                 "Alice: Mystery Card moved Exile → Library",
                 projector.describe(
+                        ZoneTransitionClassifier.Kind.GENERIC,
                         "Exile",
                         "Library",
-                        "",
-                        false,
-                        false,
                         "Alice",
                         "Mystery Card",
                         "activates",

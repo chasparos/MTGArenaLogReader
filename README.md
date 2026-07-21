@@ -225,4 +225,11 @@ two-match `multigame.log` replay fixture and focused opening-hand tracker tests.
 
 ### Maintenance refactoring status
 
-Zone-transition rule precedence is isolated in `ZoneTransitionClassifier`, while `ZoneEventProjector` owns the existing user-facing transition wording. `GameEventProjector` remains responsible for state mutation, card resolution, and immutable event creation.
+Phase 1 maintenance decomposition is complete. Zone-transition rule precedence is
+isolated in `ZoneTransitionClassifier`, while `ZoneEventProjector` formats already
+classified transitions. `GameEventProjector` remains the orchestration boundary for
+state mutation, card resolution, collaborator coordination, and immutable event creation.
+
+The multigame replay test now also verifies deterministic projected event text across
+repeated replays, protecting the completed extraction boundary before match-lifecycle
+work begins.

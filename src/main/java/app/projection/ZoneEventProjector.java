@@ -8,24 +8,14 @@ package app.projection;
  * {@code GameEvent} instances.</p>
  */
 final class ZoneEventProjector {
-    private final ZoneTransitionClassifier classifier;
 
-    ZoneEventProjector(ZoneTransitionClassifier classifier) {
-        this.classifier = classifier;
-    }
-
-    String describe(String from,
+    String describe(ZoneTransitionClassifier.Kind kind,
+                    String from,
                     String to,
-                    String category,
-                    boolean ability,
-                    boolean land,
                     String actor,
                     String name,
                     String abilityVerb,
                     String tappedSuffix) {
-        ZoneTransitionClassifier.Kind kind =
-                classifier.classify(from, to, category, ability, land);
-
         return switch (kind) {
             case ABILITY_ON_STACK -> actor + " " + abilityVerb + " " + name;
             case ABILITY_FINISHED -> name + " finishes resolving";

@@ -40,7 +40,7 @@ public final class GameEventProjector {
     private final CounterProjector counterProjector = new CounterProjector();
     private final TokenResolver tokenResolver = new TokenResolver();
     private final ZoneTransitionClassifier zoneTransitionClassifier = new ZoneTransitionClassifier();
-    private final ZoneEventProjector zoneEventProjector = new ZoneEventProjector(zoneTransitionClassifier);
+    private final ZoneEventProjector zoneEventProjector = new ZoneEventProjector();
     private final CombatProjector combatProjector = new CombatProjector(
             state,
             objectIdentityTracker,
@@ -706,12 +706,17 @@ public final class GameEventProjector {
         String name = objectDisplayName(current, cards);
         String actor = playerName(current.getControllerSeatId());
 
-        return zoneEventProjector.describe(
+        ZoneTransitionClassifier.Kind kind = zoneTransitionClassifier.classify(
                 from,
                 to,
                 category,
                 isAbility(current),
-                isLand(current, cards),
+                isLand(current, cards));
+
+        return zoneEventProjector.describe(
+                kind,
+                from,
+                to,
                 actor,
                 name,
                 abilityVerb(current),
@@ -722,7 +727,7 @@ public final class GameEventProjector {
     private GameObjectState findObjectOwningAbilityGroup(long abilityGrpId) {
         return state.getObjects().values().stream()
                 .filter(object -> object.getUniqueAbilityGrpIds().contains(abilityGrpId))
-                .filter(this::isCurrentLogicalInstance)
+                .filter(objectIdentityTracker::isCurrent)
                 .findFirst()
                 .orElseGet(() -> state.getObjects().values().stream()
                         .filter(object -> object.getUniqueAbilityGrpIds().contains(abilityGrpId))
@@ -983,18 +988,10 @@ public final class GameEventProjector {
         return event;
     }
 
-    private boolean isCurrentLogicalInstance(GameObjectState object) {
-        return objectIdentityTracker.isCurrent(object);
-    }
-
-    private boolean isOnBattlefield(GameObjectState object) {
-        return "Battlefield".equals(zoneType(object.getSemanticZoneId()));
-    }
-
     private List<BoardPermanentSnapshot> currentBattlefieldObservation() {
         return state.getObjects().values().stream()
-                .filter(this::isCurrentLogicalInstance)
-                .filter(this::isOnBattlefield)
+                .filter(objectIdentityTracker::isCurrent)
+                .filter(object -> "Battlefield".equals(zoneType(object.getSemanticZoneId())))
                 .filter(object -> !isAbility(object))
                 .sorted(java.util.Comparator
                         .comparingInt(GameObjectState::getControllerSeatId)

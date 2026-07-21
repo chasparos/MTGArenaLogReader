@@ -1,0 +1,185 @@
+diff --git a/README.md b/README.md
+index 33a18bf..0f420be 100644
+--- a/README.md
++++ b/README.md
+@@ -225,4 +225,11 @@ two-match `multigame.log` replay fixture and focused opening-hand tracker tests.
+ 
+ ### Maintenance refactoring status
+ 
+-Zone-transition rule precedence is isolated in `ZoneTransitionClassifier`, while `ZoneEventProjector` owns the existing user-facing transition wording. `GameEventProjector` remains responsible for state mutation, card resolution, and immutable event creation.
++Phase 1 maintenance decomposition is complete. Zone-transition rule precedence is
++isolated in `ZoneTransitionClassifier`, while `ZoneEventProjector` formats already
++classified transitions. `GameEventProjector` remains the orchestration boundary for
++state mutation, card resolution, collaborator coordination, and immutable event creation.
++
++The multigame replay test now also verifies deterministic projected event text across
++repeated replays, protecting the completed extraction boundary before match-lifecycle
++work begins.
+diff --git a/src/main/java/app/projection/GameEventProjector.java b/src/main/java/app/projection/GameEventProjector.java
+index 61278b5..bac8016 100644
+--- a/src/main/java/app/projection/GameEventProjector.java
++++ b/src/main/java/app/projection/GameEventProjector.java
+@@ -40,7 +40,7 @@ public final class GameEventProjector {
+     private final CounterProjector counterProjector = new CounterProjector();
+     private final TokenResolver tokenResolver = new TokenResolver();
+     private final ZoneTransitionClassifier zoneTransitionClassifier = new ZoneTransitionClassifier();
+-    private final ZoneEventProjector zoneEventProjector = new ZoneEventProjector(zoneTransitionClassifier);
++    private final ZoneEventProjector zoneEventProjector = new ZoneEventProjector();
+     private final CombatProjector combatProjector = new CombatProjector(
+             state,
+             objectIdentityTracker,
+@@ -706,12 +706,17 @@ public final class GameEventProjector {
+         String name = objectDisplayName(current, cards);
+         String actor = playerName(current.getControllerSeatId());
+ 
+-        return zoneEventProjector.describe(
++        ZoneTransitionClassifier.Kind kind = zoneTransitionClassifier.classify(
+                 from,
+                 to,
+                 category,
+                 isAbility(current),
+-                isLand(current, cards),
++                isLand(current, cards));
++
++        return zoneEventProjector.describe(
++                kind,
++                from,
++                to,
+                 actor,
+                 name,
+                 abilityVerb(current),
+@@ -722,7 +727,7 @@ public final class GameEventProjector {
+     private GameObjectState findObjectOwningAbilityGroup(long abilityGrpId) {
+         return state.getObjects().values().stream()
+                 .filter(object -> object.getUniqueAbilityGrpIds().contains(abilityGrpId))
+-                .filter(this::isCurrentLogicalInstance)
++                .filter(objectIdentityTracker::isCurrent)
+                 .findFirst()
+                 .orElseGet(() -> state.getObjects().values().stream()
+                         .filter(object -> object.getUniqueAbilityGrpIds().contains(abilityGrpId))
+@@ -983,18 +988,10 @@ public final class GameEventProjector {
+         return event;
+     }
+ 
+-    private boolean isCurrentLogicalInstance(GameObjectState object) {
+-        return objectIdentityTracker.isCurrent(object);
+-    }
+-
+-    private boolean isOnBattlefield(GameObjectState object) {
+-        return "Battlefield".equals(zoneType(object.getSemanticZoneId()));
+-    }
+-
+     private List<BoardPermanentSnapshot> currentBattlefieldObservation() {
+         return state.getObjects().values().stream()
+-                .filter(this::isCurrentLogicalInstance)
+-                .filter(this::isOnBattlefield)
++                .filter(objectIdentityTracker::isCurrent)
++                .filter(object -> "Battlefield".equals(zoneType(object.getSemanticZoneId())))
+                 .filter(object -> !isAbility(object))
+                 .sorted(java.util.Comparator
+                         .comparingInt(GameObjectState::getControllerSeatId)
+diff --git a/src/main/java/app/projection/ZoneEventProjector.java b/src/main/java/app/projection/ZoneEventProjector.java
+index dc20c29..095e686 100644
+--- a/src/main/java/app/projection/ZoneEventProjector.java
++++ b/src/main/java/app/projection/ZoneEventProjector.java
+@@ -8,24 +8,14 @@ package app.projection;
+  * {@code GameEvent} instances.</p>
+  */
+ final class ZoneEventProjector {
+-    private final ZoneTransitionClassifier classifier;
+ 
+-    ZoneEventProjector(ZoneTransitionClassifier classifier) {
+-        this.classifier = classifier;
+-    }
+-
+-    String describe(String from,
++    String describe(ZoneTransitionClassifier.Kind kind,
++                    String from,
+                     String to,
+-                    String category,
+-                    boolean ability,
+-                    boolean land,
+                     String actor,
+                     String name,
+                     String abilityVerb,
+                     String tappedSuffix) {
+-        ZoneTransitionClassifier.Kind kind =
+-                classifier.classify(from, to, category, ability, land);
+-
+         return switch (kind) {
+             case ABILITY_ON_STACK -> actor + " " + abilityVerb + " " + name;
+             case ABILITY_FINISHED -> name + " finishes resolving";
+diff --git a/src/test/java/app/projection/ZoneEventProjectorTest.java b/src/test/java/app/projection/ZoneEventProjectorTest.java
+index 8c87470..c1a0453 100644
+--- a/src/test/java/app/projection/ZoneEventProjectorTest.java
++++ b/src/test/java/app/projection/ZoneEventProjectorTest.java
+@@ -5,19 +5,16 @@ import org.junit.jupiter.api.Test;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ 
+ class ZoneEventProjectorTest {
+-    private final ZoneEventProjector projector =
+-            new ZoneEventProjector(new ZoneTransitionClassifier());
++    private final ZoneEventProjector projector = new ZoneEventProjector();
+ 
+     @Test
+     void formatsAResolvedPermanentWithoutReadingGameState() {
+         assertEquals(
+                 "Runeclaw Bear resolves and enters the battlefield tapped",
+                 projector.describe(
++                        ZoneTransitionClassifier.Kind.RESOLVE_TO_BATTLEFIELD,
+                         "Stack",
+                         "Battlefield",
+-                        "",
+-                        false,
+-                        false,
+                         "Alice",
+                         "Runeclaw Bear",
+                         "activates",
+@@ -29,11 +26,9 @@ class ZoneEventProjectorTest {
+         assertEquals(
+                 "Alice triggers Soul Warden",
+                 projector.describe(
++                        ZoneTransitionClassifier.Kind.ABILITY_ON_STACK,
+                         "Battlefield",
+                         "Stack",
+-                        "",
+-                        true,
+-                        false,
+                         "Alice",
+                         "Soul Warden",
+                         "triggers",
+@@ -45,11 +40,9 @@ class ZoneEventProjectorTest {
+         assertEquals(
+                 "Alice: Mystery Card moved Exile → Library",
+                 projector.describe(
++                        ZoneTransitionClassifier.Kind.GENERIC,
+                         "Exile",
+                         "Library",
+-                        "",
+-                        false,
+-                        false,
+                         "Alice",
+                         "Mystery Card",
+                         "activates",
+diff --git a/src/test/java/app/testing/MultigameLogReplayTest.java b/src/test/java/app/testing/MultigameLogReplayTest.java
+index b2e992f..b0e1ece 100644
+--- a/src/test/java/app/testing/MultigameLogReplayTest.java
++++ b/src/test/java/app/testing/MultigameLogReplayTest.java
+@@ -64,9 +64,14 @@ final class MultigameLogReplayTest {
+         ArenaLogReplayHarness.ReplayResult second = harness.replay(fixture);
+ 
+         assertEquals(first.games().keySet(), second.games().keySet());
+-        first.games().forEach((key, game) ->
+-                assertEquals(game.rawRecordSnapshot().size(),
+-                        second.games().get(key).rawRecordSnapshot().size()));
++        first.games().forEach((key, game) -> {
++            GameModel replayed = second.games().get(key);
++            assertEquals(game.rawRecordSnapshot().size(), replayed.rawRecordSnapshot().size());
++            assertEquals(
++                    game.snapshot().stream().map(event -> event.getText()).toList(),
++                    replayed.snapshot().stream().map(event -> event.getText()).toList(),
++                    () -> "Projected event text changed between replays for " + key);
++        });
+     }
+ 
+     private void assertDistinctModels(ArenaLogReplayHarness.ReplayResult result, String matchId) {

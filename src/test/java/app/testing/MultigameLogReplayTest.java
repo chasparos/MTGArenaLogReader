@@ -64,9 +64,14 @@ final class MultigameLogReplayTest {
         ArenaLogReplayHarness.ReplayResult second = harness.replay(fixture);
 
         assertEquals(first.games().keySet(), second.games().keySet());
-        first.games().forEach((key, game) ->
-                assertEquals(game.rawRecordSnapshot().size(),
-                        second.games().get(key).rawRecordSnapshot().size()));
+        first.games().forEach((key, game) -> {
+            GameModel replayed = second.games().get(key);
+            assertEquals(game.rawRecordSnapshot().size(), replayed.rawRecordSnapshot().size());
+            assertEquals(
+                    game.snapshot().stream().map(event -> event.getText()).toList(),
+                    replayed.snapshot().stream().map(event -> event.getText()).toList(),
+                    () -> "Projected event text changed between replays for " + key);
+        });
     }
 
     private void assertDistinctModels(ArenaLogReplayHarness.ReplayResult result, String matchId) {
