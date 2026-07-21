@@ -203,3 +203,14 @@ network enrichment with deterministic empty bundles.
 The fixture has stable pseudonyms for player, user, and session identifiers. Keep the
 fixture immutable; add focused synthetic tests or a separate sanitized fixture for new
 edge cases.
+
+
+## Maintenance refactoring status
+
+The source tree now uses architectural packages for ingestion, routing, projection,
+enrichment, replay, export, snapshots, models, and deck tracking.
+
+The first behavioral extraction from `GameEventProjector` is
+`app.projection.OpeningHandTracker`. It owns opening-hand and mulligan correlation while
+the projector remains the orchestration boundary. Regression coverage includes the
+two-match `multigame.log` replay fixture and focused opening-hand tracker tests.

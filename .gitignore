@@ -36,3 +36,13 @@ build/
 
 ### Mac OS ###
 .DS_Store
+/project.zip
+/.mvn/
+/.idea/
+/local files/
+/local files/
+/local files - no git/
+/.idea/
+/.idea/
+/phase1-5-opening-hand.patch
+/phase1-6-attachment-tracker.patch

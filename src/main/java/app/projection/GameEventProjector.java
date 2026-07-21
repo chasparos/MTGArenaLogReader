@@ -58,6 +58,7 @@ public final class GameEventProjector {
      */
     private final Map<Long, PendingCast> pendingCasts = new LinkedHashMap<>();
     private final AbilityNameStore abilityNames;
+    private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
 
     private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
     private record AttachmentRelation(long attachedLogicalId, long hostLogicalId) {}
@@ -284,7 +285,7 @@ public final class GameEventProjector {
         projectZoneTransfers(message, annotations, cards, result);
         projectTargets(message, persistentAnnotations, cards, result);
         reorderLandPlayBeforeOwnAbilities(result, messageStartIndex);
-        captureOpeningHand();
+        openingHandTracker.observe(state, knownCards);
         boolean turnChanged = state.getTurnNumber() != null && state.getTurnNumber() != previousTurn;
         if (turnChanged && state.getLastSnapshotTurn() != state.getTurnNumber()) {
             pendingTurnSnapshot = state.getTurnNumber();
@@ -1042,31 +1043,6 @@ public final class GameEventProjector {
                 }
             }
         }
-    }
-
-    private void captureOpeningHand() {
-        if (state.isOpeningHandFinalized()) return;
-        if (state.getTurnNumber() != null && state.getTurnNumber() > 1) {
-            state.setOpeningHandFinalized(true);
-            return;
-        }
-        Map<Integer, List<Long>> visible = new LinkedHashMap<>();
-        for (GameObjectState object : state.getObjects().values()) {
-            if (!"Hand".equals(zoneType(object.getSemanticZoneId()))) continue;
-            if (object.getGrpId() <= 0 || !knownCards.containsKey(object.getGrpId())) continue;
-            visible.computeIfAbsent(object.getOwnerSeatId(), ignored -> new ArrayList<>()).add(object.getGrpId());
-        }
-        if (visible.isEmpty()) return;
-        Map.Entry<Integer, List<Long>> best = visible.entrySet().stream()
-                .max(java.util.Comparator.comparingInt(e -> e.getValue().size())).orElse(null);
-        if (best == null) return;
-        List<Long> previous = state.getOpeningHandGrpIds().get(best.getKey());
-        if (previous != null && previous.size() != best.getValue().size() && !previous.isEmpty()) {
-            state.setMulliganCount(state.getMulliganCount() + 1);
-        }
-        state.setOpeningHandSeat(best.getKey());
-        state.getOpeningHandGrpIds().put(best.getKey(), new ArrayList<>(best.getValue()));
-        if (state.getTurnNumber() != null && state.getTurnNumber() >= 1) state.setOpeningHandFinalized(true);
     }
 
     /**
