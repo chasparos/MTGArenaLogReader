@@ -221,3 +221,8 @@ two-match `multigame.log` replay fixture and focused opening-hand tracker tests.
 - `CounterProjector` owns permanent-counter identity, naming, and count mutation; annotation interpretation and player-counter events remain in `GameEventProjector`.
 - `TokenResolver` owns token related-card matching, ambiguity rejection, and deterministic fallback naming.
 - `CombatProjector` owns stable attacker/blocker declaration projection and duplicate suppression.
+
+
+### Maintenance refactoring status
+
+Zone-transition rule precedence is now isolated in `ZoneTransitionClassifier`; formatting and event emission remain in `GameEventProjector`.

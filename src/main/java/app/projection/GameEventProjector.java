@@ -39,6 +39,7 @@ public final class GameEventProjector {
     private final AttachmentTracker attachmentTracker = new AttachmentTracker();
     private final CounterProjector counterProjector = new CounterProjector();
     private final TokenResolver tokenResolver = new TokenResolver();
+    private final ZoneTransitionClassifier zoneTransitionClassifier = new ZoneTransitionClassifier();
     private final CombatProjector combatProjector = new CombatProjector(
             state,
             objectIdentityTracker,
@@ -704,26 +705,26 @@ public final class GameEventProjector {
         String name = objectDisplayName(current, cards);
         String actor = playerName(current.getControllerSeatId());
 
-        if (isAbility(current)) {
-            if ("Stack".equals(to)) return actor + " " + abilityVerb(current) + " " + name;
-            return name + " finishes resolving";
-        }
-        if ("PlayLand".equals(category) || ("Hand".equals(from) && "Battlefield".equals(to) && isLand(current, cards)))
-            return actor + " plays " + name + tappedSuffix(current);
-        if ("CastSpell".equals(category) || ("Hand".equals(from) && "Stack".equals(to)))
-            return actor + " casts " + name;
-        if ("Draw".equals(category) || ("Library".equals(from) && "Hand".equals(to)))
-            return actor + " draws " + name;
-        if ("Stack".equals(from) && "Battlefield".equals(to))
-            return name + " resolves and enters the battlefield" + tappedSuffix(current);
-        if ("Stack".equals(from) && "Graveyard".equals(to)) return name + " resolves and is put into the graveyard";
-        if ("Battlefield".equals(from) && "Graveyard".equals(to)) return name + " is put into the graveyard";
-        if ("Battlefield".equals(from) && "Exile".equals(to)) return name + " is exiled";
-        if ("Graveyard".equals(from) && "Exile".equals(to)) return name + " is exiled from the graveyard";
-        if ("Graveyard".equals(from) && "Battlefield".equals(to))
-            return name + " returns from the graveyard to the battlefield" + tappedSuffix(current);
-        if ("Graveyard".equals(from) && "Hand".equals(to)) return actor + " returns " + name + " from the graveyard to hand";
-        return actor + ": " + name + " moved " + from + " → " + to;
+        ZoneTransitionClassifier.Kind kind = zoneTransitionClassifier.classify(
+                from, to, category, isAbility(current), isLand(current, cards));
+
+        return switch (kind) {
+            case ABILITY_ON_STACK -> actor + " " + abilityVerb(current) + " " + name;
+            case ABILITY_FINISHED -> name + " finishes resolving";
+            case PLAY_LAND -> actor + " plays " + name + tappedSuffix(current);
+            case CAST_SPELL -> actor + " casts " + name;
+            case DRAW -> actor + " draws " + name;
+            case RESOLVE_TO_BATTLEFIELD ->
+                    name + " resolves and enters the battlefield" + tappedSuffix(current);
+            case RESOLVE_TO_GRAVEYARD -> name + " resolves and is put into the graveyard";
+            case BATTLEFIELD_TO_GRAVEYARD -> name + " is put into the graveyard";
+            case BATTLEFIELD_TO_EXILE -> name + " is exiled";
+            case GRAVEYARD_TO_EXILE -> name + " is exiled from the graveyard";
+            case GRAVEYARD_TO_BATTLEFIELD ->
+                    name + " returns from the graveyard to the battlefield" + tappedSuffix(current);
+            case GRAVEYARD_TO_HAND -> actor + " returns " + name + " from the graveyard to hand";
+            case GENERIC -> actor + ": " + name + " moved " + from + " → " + to;
+        };
     }
 
 
