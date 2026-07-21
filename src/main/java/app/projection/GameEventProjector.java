@@ -7,7 +7,6 @@ import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
-import app.model.card.CardRelatedPart;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -39,6 +38,7 @@ public final class GameEventProjector {
     private final Map<Long, String> historicalAbilityOwnerNames = new LinkedHashMap<>();
     private final AttachmentTracker attachmentTracker = new AttachmentTracker();
     private final CounterProjector counterProjector = new CounterProjector();
+    private final TokenResolver tokenResolver = new TokenResolver();
     /** Delay turn snapshots until a post-untap state update for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
@@ -536,7 +536,9 @@ public final class GameEventProjector {
             current.getBlockedAttackerIds().clear();
             current.getBlockedAttackerIds().addAll(longArray(objectAt(json, "blockInfo"), "attackerIds"));
         }
-        if (isToken(current) && current.getCard() == null) current.setCard(bestGuessToken(current));
+        if (isToken(current) && current.getCard() == null) {
+            current.setCard(tokenResolver.resolve(current, knownCards, knownRelatedCards));
+        }
 
         int incomingZone = json.has("zoneId") ? intAt(json, "zoneId", current.getZoneId()) : current.getZoneId();
         current.setZoneId(incomingZone);
@@ -959,7 +961,7 @@ public final class GameEventProjector {
         if (object.getCard() != null && object.getCard().getName() != null && !object.getCard().getName().isBlank()) {
             return object.getCard().getName();
         }
-        if (isToken(object)) return descriptiveTokenName(object);
+        if (isToken(object)) return tokenResolver.descriptiveName(object);
         String resolved = cardName(object.getGrpId(), cards);
         if (!resolved.startsWith("ArenaCard#")) return resolved;
         return observedCardDescription(object);
@@ -1191,59 +1193,6 @@ public final class GameEventProjector {
 
     private boolean isToken(GameObjectState object) {
         return object.getObjectType() != null && object.getObjectType().contains("Token");
-    }
-
-    private CardInfo bestGuessToken(GameObjectState token) {
-        CardInfo source = knownCards.get(token.getObjectSourceGrpId());
-        if (source == null || source.getAllParts() == null) return null;
-        CardInfo best = null;
-        int bestScore = Integer.MIN_VALUE;
-        int second = Integer.MIN_VALUE;
-        for (CardRelatedPart part : source.getAllParts()) {
-            if (part == null || !"token".equalsIgnoreCase(part.getComponent())) continue;
-            CardInfo candidate = knownRelatedCards.get(part.getId());
-            int score = candidate == null ? scoreRelatedName(token, part) : scoreToken(token, candidate);
-            if (score > bestScore) { second = bestScore; bestScore = score; best = candidate != null ? candidate : syntheticRelated(part); }
-            else if (score > second) second = score;
-        }
-        if (best != null && bestScore >= 20 && bestScore - second >= 5) return best;
-        return null;
-    }
-
-    private int scoreRelatedName(GameObjectState token, CardRelatedPart part) {
-        String haystack = ((part.getName() == null ? "" : part.getName()) + " " +
-                (part.getTypeLine() == null ? "" : part.getTypeLine())).toLowerCase();
-        int score = 5;
-        for (String subtype : token.getSubtypes()) if (haystack.contains(subtype.toLowerCase())) score += 12;
-        if (token.getPower() != null && token.getToughness() != null && haystack.contains(token.getPower() + "/" + token.getToughness())) score += 20;
-        return score;
-    }
-
-    private int scoreToken(GameObjectState token, CardInfo candidate) {
-        int score = 10;
-        String type = candidate.effectiveTypeLine() == null ? "" : candidate.effectiveTypeLine().toLowerCase();
-        for (String subtype : token.getSubtypes()) if (type.contains(subtype.toLowerCase())) score += 15;
-        if (token.getPower() != null && String.valueOf(token.getPower()).equals(candidate.getPower())) score += 12;
-        if (token.getToughness() != null && String.valueOf(token.getToughness()).equals(candidate.getToughness())) score += 12;
-        if (candidate.getColors() != null && !candidate.getColors().isEmpty() && token.getColors().containsAll(candidate.getColors())) score += 8;
-        return score;
-    }
-
-    private CardInfo syntheticRelated(CardRelatedPart part) {
-        CardInfo card = new CardInfo();
-        card.setId(part.getId());
-        card.setName(part.getName());
-        card.setTypeLine(part.getTypeLine());
-        return card;
-    }
-
-    private String descriptiveTokenName(GameObjectState token) {
-        StringBuilder text = new StringBuilder();
-        if (token.getPower() != null && token.getToughness() != null) text.append(token.getPower()).append('/').append(token.getToughness()).append(' ');
-        if (!token.getColors().isEmpty()) text.append(String.join("/", token.getColors()).toLowerCase()).append(' ');
-        if (!token.getSubtypes().isEmpty()) text.append(String.join(" ", token.getSubtypes())).append(' ');
-        text.append("token");
-        return text.toString();
     }
 
     private Integer nullableInt(JsonObject object, String key) {
