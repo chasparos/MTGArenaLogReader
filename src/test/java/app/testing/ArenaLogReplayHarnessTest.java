@@ -32,12 +32,52 @@ final class ArenaLogReplayHarnessTest {
         assertEquals(2, newMatch.rawRecordSnapshot().size());
     }
 
+
+    @Test
+    void seedsPlayerIdentityIntoLaterGamesWithoutAnotherRoomRecord() {
+        ArenaLogReplayHarness.ReplayResult result = new ArenaLogReplayHarness().replayLines(List.of(
+                roomWithPlayers("match-a", "Alice", "Bob"),
+                game(2),
+                dieRoll(1, 17)
+        ));
+
+        assertEquals(
+                List.of("Alice rolled 17"),
+                result.requireGame("match-a", 2).snapshot().stream()
+                        .map(event -> event.getText())
+                        .toList());
+    }
+
     private String room(String matchId) {
         return """
                 {"matchGameRoomStateChangedEvent":{"gameRoomInfo":{"gameRoomConfig":{
                   "matchId":"%s"
                 }}}}
                 """.formatted(matchId);
+    }
+
+
+    private String roomWithPlayers(String matchId, String first, String second) {
+        return """
+                {"matchGameRoomStateChangedEvent":{"gameRoomInfo":{"gameRoomConfig":{
+                  "matchId":"%s",
+                  "reservedPlayers":[
+                    {"systemSeatId":1,"playerName":"%s"},
+                    {"systemSeatId":2,"playerName":"%s"}
+                  ]
+                }}}}
+                """.formatted(matchId, first, second);
+    }
+
+    private String dieRoll(int seat, int value) {
+        return """
+                {"greToClientEvent":{"greToClientMessages":[{
+                  "type":"GREMessageType_DieRollResultsResp",
+                  "dieRollResultsResp":{"playerDieRolls":[
+                    {"systemSeatId":%d,"rollValue":%d}
+                  ]}
+                }]}}
+                """.formatted(seat, value);
     }
 
     private String game(int gameNumber) {

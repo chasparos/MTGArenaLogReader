@@ -2,6 +2,8 @@ package app.replay;
 
 import app.model.game.GameKey;
 import app.model.session.GameModel;
+import app.model.session.GameSession;
+import app.model.session.MatchSession;
 import app.model.log.LogMessageInterface;
 import app.projection.AbilityNameStore;
 import app.routing.GameMessageRouter;
@@ -22,6 +24,7 @@ import java.util.Map;
 public final class GameSessionsPanel extends JPanel {
     private final JTabbedPane gameTabs = new JTabbedPane();
     private final Map<GameKey, GameView> views = new LinkedHashMap<>();
+    private final Map<String, MatchSession> matches = new LinkedHashMap<>();
     private final GameMessageRouter router = new GameMessageRouter();
     private final GameTextExporter exporter = new GameTextExporter();
     private final AbilityNameStore abilityNames = new AbilityNameStore();
@@ -65,16 +68,17 @@ public final class GameSessionsPanel extends JPanel {
     public void clear() {
         views.values().forEach(GameView::clear);
         views.clear();
+        matches.clear();
         gameTabs.removeAll();
         status.setText("No games loaded");
     }
 
     private GameView createGameView(GameKey key) {
-        GameModel model = new GameModel();
-        model.setMatchId(key.getMatchId());
-        model.setGameNumber(key.getGameNumber());
+        MatchSession match = matches.computeIfAbsent(
+                key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
+        GameSession game = match.game(key.getGameNumber());
 
-        GameView view = new GameView(model, abilityNames);
+        GameView view = new GameView(game.model(), abilityNames, game.projector());
         JScrollPane scrollPane = new JScrollPane(view);
         scrollPane.getVerticalScrollBar().setUnitIncrement(20);
         gameTabs.addTab(key.displayName(), scrollPane);

@@ -2,6 +2,9 @@ package app.testing;
 
 import app.model.game.GameKey;
 import app.model.session.GameModel;
+import app.model.session.GameSession;
+import app.model.session.MatchSession;
+import app.projection.AbilityNameStore;
 import app.model.InformationBundle;
 import app.model.log.LogMessageInterface;
 import app.model.log.RawLogEntry;
@@ -34,7 +37,9 @@ public final class ArenaLogReplayHarness {
     private final LogMessageParser parser =
             new LogMessageParser(new GsonBuilder().disableHtmlEscaping().create());
     private GameMessageRouter router = new GameMessageRouter();
-    private final Map<GameKey, Session> sessions = new LinkedHashMap<>();
+    private final Map<GameKey, GameSession> sessions = new LinkedHashMap<>();
+    private final Map<String, MatchSession> matches = new LinkedHashMap<>();
+    private final AbilityNameStore abilityNames = new AbilityNameStore();
     private long sequence;
 
     public ReplayResult replay(Path logPath) throws IOException {
@@ -60,6 +65,7 @@ public final class ArenaLogReplayHarness {
         framer = new LogRecordFramer();
         router = new GameMessageRouter();
         sessions.clear();
+        matches.clear();
         sequence = 0;
     }
 
@@ -69,7 +75,7 @@ public final class ArenaLogReplayHarness {
         message.getModelFuture().complete(new InformationBundle());
 
         router.route(message).ifPresent(key -> {
-            Session session = sessions.computeIfAbsent(key, ignored -> createSession(key));
+            GameSession session = sessions.computeIfAbsent(key, ignored -> createSession(key));
             session.model().addRawRecord(message.getRawText());
             session.model().addEvents(
                     session.projector().project(message, message.getModelFuture().join()));
@@ -80,11 +86,10 @@ public final class ArenaLogReplayHarness {
         });
     }
 
-    private Session createSession(GameKey key) {
-        GameModel model = new GameModel();
-        model.setMatchId(key.getMatchId());
-        model.setGameNumber(key.getGameNumber());
-        return new Session(model, new GameEventProjector());
+    private GameSession createSession(GameKey key) {
+        MatchSession match = matches.computeIfAbsent(
+                key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
+        return match.game(key.getGameNumber());
     }
 
     private ReplayResult snapshot() {
@@ -92,8 +97,6 @@ public final class ArenaLogReplayHarness {
         sessions.forEach((key, session) -> games.put(key, session.model()));
         return new ReplayResult(Collections.unmodifiableMap(games));
     }
-
-    private record Session(GameModel model, GameEventProjector projector) {}
 
     public record ReplayResult(Map<GameKey, GameModel> games) {
         public GameModel requireGame(String matchId, int gameNumber) {

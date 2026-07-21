@@ -5,6 +5,7 @@ import app.model.card.CardInfo;
 import app.model.event.GameEvent;
 import app.model.game.*;
 import app.model.InformationBundle;
+import app.model.match.MatchState;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
 import com.google.gson.JsonArray;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
  */
 public final class GameEventProjector {
     private final GameState state = new GameState();
+    private final MatchState matchState;
     private final ObjectIdentityTracker objectIdentityTracker = new ObjectIdentityTracker(state);
     private final Map<Long, CardInfo> knownCards = new LinkedHashMap<>();
     /** Arena-observed metadata retained even when external card enrichment misses. */
@@ -65,8 +67,21 @@ public final class GameEventProjector {
 
     private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
 
-    public GameEventProjector() { this(new AbilityNameStore()); }
-    public GameEventProjector(AbilityNameStore abilityNames) { this.abilityNames = abilityNames; }
+    public GameEventProjector() { this(new AbilityNameStore(), null); }
+
+    public GameEventProjector(AbilityNameStore abilityNames) {
+        this(abilityNames, null);
+    }
+
+    public GameEventProjector(AbilityNameStore abilityNames, MatchState matchState) {
+        this.abilityNames = abilityNames;
+        this.matchState = matchState;
+        if (matchState != null) {
+            state.getPlayers().putAll(matchState.playerSnapshot());
+            knownCards.putAll(matchState.knownCardSnapshot());
+            observedCardsByGrpId.putAll(matchState.observedCardSnapshot());
+        }
+    }
 
     public String openingHandPlayer() {
         return state.getOpeningHandSeat() < 0 ? null : playerName(state.getOpeningHandSeat());
@@ -102,12 +117,20 @@ public final class GameEventProjector {
                 projectGreEvent(message, root.getAsJsonObject("greToClientEvent"), cards, result);
             }
             emittedEvents.addAll(result);
+            updateMatchState();
             return result;
         } catch (RuntimeException ignored) {
             return List.of();
         }
     }
 
+
+    private void updateMatchState() {
+        if (matchState == null) return;
+        matchState.observePlayers(state.getPlayers());
+        matchState.observeKnownCards(knownCards);
+        matchState.observeArenaCards(observedCardsByGrpId);
+    }
 
     /**
      * Watches the player's outgoing GRE responses.  ActionType_Cast means

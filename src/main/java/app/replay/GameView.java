@@ -63,9 +63,13 @@ public final class GameView extends JPanel implements Scrollable {
     public GameView(GameModel model) { this(model, new AbilityNameStore()); }
 
     public GameView(GameModel model, AbilityNameStore abilityNames) {
+        this(model, abilityNames, new GameEventProjector(abilityNames));
+    }
+
+    public GameView(GameModel model, AbilityNameStore abilityNames, GameEventProjector projector) {
         this.model = model;
         this.abilityNames = abilityNames;
-        this.projector = new GameEventProjector(abilityNames);
+        this.projector = projector;
         setOpaque(true);
         setBackground(colorOr("Panel.background", new Color(0xF3F3F3)));
         setForeground(colorOr("Label.foreground", Color.DARK_GRAY));
