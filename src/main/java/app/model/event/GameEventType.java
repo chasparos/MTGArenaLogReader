@@ -5,6 +5,8 @@ package app.model.event;
  */
 public enum GameEventType {
     GAMEPLAY,
+    PLAYER_LIFE_CHANGE,
+    PLANESWALKER_DAMAGE,
     MATCH_STARTED,
     GAME_STARTED,
     GAME_RESULT,

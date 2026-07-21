@@ -74,6 +74,13 @@ public final class DeckTracker {
             if (deck.eventName() != null && !deck.eventName().isBlank()) selectedEventName = deck.eventName();
         }
 
+        if (currentMatchId != null && complete && matchDeckState != null) {
+            for (CachedDeck submitted :
+                    deckParser.parseSubmittedGameDecks(raw, matchDeckState.selectedDeck())) {
+                pendingGameDeck = submitted;
+            }
+        }
+
         JsonObject root = root(raw);
         if (root == null) return;
         readRoom(root);

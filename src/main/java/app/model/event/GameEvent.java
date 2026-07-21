@@ -7,6 +7,8 @@ import app.model.game.CombatAttackAssignment;
 import app.model.game.CombatBlockAssignment;
 import app.model.game.GameResult;
 import app.model.game.PlayerTurnSnapshot;
+import app.model.game.PlayerLifeChange;
+import app.model.game.PermanentDamage;
 import app.model.match.MatchResult;
 import app.model.match.MatchScore;
 import app.snapshot.BoardStateMonitor;
@@ -40,6 +42,8 @@ public class GameEvent {
     private final List<PlayerTurnSnapshot> turnSnapshot = new ArrayList<>();
     private final List<CombatAttackAssignment> attackers = new ArrayList<>();
     private final List<CombatBlockAssignment> blockers = new ArrayList<>();
+    private PlayerLifeChange playerLifeChange;
+    private PermanentDamage permanentDamage;
     /** Canonical battlefield observation consumed by BoardStateMonitor. */
     private final List<BoardPermanentSnapshot> battlefieldObservation = new ArrayList<>();
     private GameResult gameResult;

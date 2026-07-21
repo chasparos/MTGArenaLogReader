@@ -35,6 +35,88 @@ final public class DeckLogParser {
         return out;
     }
 
+
+    /**
+     * Parses the local player's complete deck submission made between games.
+     *
+     * <p>Arena logs this separately from course deck snapshots as
+     * {@code ClientMessageType_SubmitDeckResp}. The submitted card arrays are
+     * complete game-deck observations and may therefore seed the next game's
+     * configuration.</p>
+     */
+    public List<CachedDeck> parseSubmittedGameDecks(String raw, CachedDeck template) {
+        if (template == null) return List.of();
+
+        JsonElement root = parseRoot(raw);
+        if (root == null) return List.of();
+
+        List<CachedDeck> out = new ArrayList<>();
+        walkSubmittedDecks(root, template, out);
+        return List.copyOf(out);
+    }
+
+    private void walkSubmittedDecks(JsonElement element, CachedDeck template, List<CachedDeck> out) {
+        if (element == null || element.isJsonNull()) return;
+        if (element.isJsonObject()) {
+            JsonObject object = element.getAsJsonObject();
+            if ("ClientMessageType_SubmitDeckResp".equals(string(object, "type"))) {
+                JsonObject deck = object(object(object, "submitDeckResp"), "deck");
+                if (deck.size() > 0) {
+                    out.add(new CachedDeck(
+                            template.deckId(),
+                            template.name(),
+                            template.format(),
+                            template.eventName(),
+                            Instant.now(),
+                            submittedEntries(deck, "deckCards"),
+                            submittedEntries(deck, "sideboardCards"),
+                            template.commandZone(),
+                            template.companions()));
+                }
+            }
+            for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+                walkSubmittedDecks(entry.getValue(), template, out);
+            }
+        } else if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) {
+                walkSubmittedDecks(child, template, out);
+            }
+        }
+    }
+
+    private List<DeckEntry> submittedEntries(JsonObject deck, String key) {
+        JsonElement value = deck.get(key);
+        if (value == null || !value.isJsonArray()) return List.of();
+
+        Map<Long, Integer> quantities = new LinkedHashMap<>();
+        for (JsonElement element : value.getAsJsonArray()) {
+            if (!element.isJsonPrimitive()) continue;
+            try {
+                long arenaId = element.getAsLong();
+                if (arenaId > 0) quantities.merge(arenaId, 1, Integer::sum);
+            } catch (RuntimeException ignored) {
+                // Ignore malformed card identifiers without discarding the submission.
+            }
+        }
+
+        List<DeckEntry> entries = new ArrayList<>();
+        for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
+            CardInfo card = cardCache.find(entry.getKey())
+                    .flatMap(CardCache.CachedCard::card)
+                    .orElse(null);
+            entries.add(new DeckEntry(entry.getKey(), entry.getValue(), card));
+        }
+        return List.copyOf(entries);
+    }
+
+    private JsonObject object(JsonObject parent, String key) {
+        if (parent == null) return new JsonObject();
+        JsonElement value = parent.get(key);
+        return value != null && value.isJsonObject()
+                ? value.getAsJsonObject()
+                : new JsonObject();
+    }
+
     private void walk(JsonElement element, String eventName, List<CachedDeck> out) {
         if (element == null || element.isJsonNull()) return;
         if (element.isJsonObject()) {

@@ -52,6 +52,13 @@ public final class GameEventProjector {
             this::objectDisplayName,
             this::targetDisplayName,
             this::event);
+    private final DamageProjector damageProjector = new DamageProjector(
+            state,
+            objectIdentityTracker,
+            this::playerName,
+            this::objectDisplayName,
+            this::event,
+            this::markAnnotation);
     /** Delay turn snapshots until a post-untap state update for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
@@ -290,6 +297,7 @@ public final class GameEventProjector {
         int previousTurn = state.getTurnNumber() == null ? -1 : state.getTurnNumber();
         int messageStartIndex = result.size();
         updateTurnContext(objectAt(incoming, "turnInfo"));
+        Map<Integer, Integer> previousLifeTotals = new LinkedHashMap<>(state.getLifeTotals());
         updatePlayers(message, arrayAt(incoming, "players"), result);
         updateZones(arrayAt(incoming, "zones"));
 
@@ -311,6 +319,7 @@ public final class GameEventProjector {
 
         projectCounterChanges(message, annotations, result);
         reconcilePersistentCounters(persistentAnnotations);
+        damageProjector.project(message, previousLifeTotals, annotations, cards, result);
         combatProjector.projectDeclarations(message, cards, result);
         projectZoneTransfers(message, annotations, cards, result);
         projectTargets(message, persistentAnnotations, cards, result);
