@@ -3,19 +3,11 @@ package app.projection;
 import app.model.event.AbilityReference;
 import app.model.card.CardInfo;
 import app.model.event.GameEvent;
-import app.model.game.GameObjectState;
-import app.model.game.GameState;
+import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
-import app.model.game.PlayerTurnSnapshot;
 import app.model.card.CardRelatedPart;
-import app.model.game.CounterState;
-import app.model.game.BoardPermanentSnapshot;
-import app.model.game.GameResult;
-import app.model.game.CombatAttackAssignment;
-import app.model.game.CombatBlockAssignment;
-import app.model.game.ZoneInfo;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -46,6 +38,7 @@ public final class GameEventProjector {
     /** Arena ability group id -> owning card name. */
     private final Map<Long, String> historicalAbilityOwnerNames = new LinkedHashMap<>();
     private final AttachmentTracker attachmentTracker = new AttachmentTracker();
+    private final CounterProjector counterProjector = new CounterProjector();
     /** Delay turn snapshots until a post-untap state update for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
@@ -503,7 +496,7 @@ public final class GameEventProjector {
                         longAt(counterJson, "id", -1));
                 counter.setArenaType(typeId);
                 if (type.isBlank()) {
-                    type = typeId < 0 ? "Unknown" : counterTypeName(typeId);
+                    type = typeId < 0 ? "Unknown" : counterProjector.counterTypeName(typeId);
                 }
                 counter.setType(clean(type));
                 counter.setCount(intAt(counterJson, "count",
@@ -1044,7 +1037,7 @@ public final class GameEventProjector {
                 }
 
                 GameObjectState object = findObjectIncludingAliases(affectedId);
-                if (object != null) applyPermanentCounter(object, counterType, delta);
+                if (object != null) counterProjector.applyDelta(object, counterType, delta);
             }
         }
     }
@@ -1071,7 +1064,7 @@ public final class GameEventProjector {
                 }
 
                 GameObjectState object = findObjectIncludingAliases(affectedId);
-                if (object != null) setPermanentCounter(object, counterType, count);
+                if (object != null) counterProjector.setCount(object, counterType, count);
             }
         }
     }
@@ -1097,55 +1090,6 @@ public final class GameEventProjector {
                     + (changed == -1 ? "" : "s");
         result.add(event(source, playerName(seatId) + " " + verb
                 + " (" + current + " total)"));
-    }
-
-    private void applyPermanentCounter(GameObjectState object,
-                                       int counterType,
-                                       int delta) {
-        CounterState counter = counterState(object, counterType);
-        int current = Math.max(0, counter.getCount() + delta);
-        if (current == 0) {
-            object.getCounters().remove(counter);
-        } else {
-            counter.setCount(current);
-        }
-    }
-
-    private void setPermanentCounter(GameObjectState object,
-                                     int counterType,
-                                     int count) {
-        CounterState counter = counterState(object, counterType);
-        if (count <= 0) {
-            object.getCounters().remove(counter);
-        } else {
-            counter.setCount(count);
-        }
-    }
-
-    private CounterState counterState(GameObjectState object, int counterType) {
-        String key = counterTypeName(counterType);
-        for (CounterState counter : object.getCounters()) {
-            if (counter.getArenaType() == counterType
-                    || key.equals(counter.getType())) {
-                counter.setArenaType(counterType);
-                counter.setType(key);
-                return counter;
-            }
-        }
-        CounterState counter = new CounterState();
-        counter.setArenaType(counterType);
-        counter.setType(key);
-        object.getCounters().add(counter);
-        return counter;
-    }
-
-    private String counterTypeName(int counterType) {
-        return switch (counterType) {
-            case 1 -> "+1/+1";
-            case 2 -> "-1/-1";
-            case 3 -> "Poison";
-            default -> "Counter#" + counterType;
-        };
     }
 
     private GameObjectState findObjectIncludingAliases(long instanceId) {
