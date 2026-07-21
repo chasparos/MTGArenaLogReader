@@ -4,6 +4,7 @@ package app.deck.tracking;
 import app.deck.model.CachedDeck;
 import app.deck.model.DeckEntry;
 import app.deck.model.DeckGameState;
+import app.deck.model.MatchDeckState;
 import app.deck.parsing.DeckLogParser;
 import app.deck.persistence.DeckCache;
 import app.model.card.CardInfo;
@@ -36,6 +37,7 @@ public final class DeckTracker {
     private String currentMatchId;
     private int currentGameNumber = 1;
     private int localSeat = 1;
+    private MatchDeckState matchDeckState;
     private CachedDeck currentDeck;
     private boolean started;
     private boolean complete;
@@ -98,9 +100,11 @@ public final class DeckTracker {
             }
             final String finalEventId = eventId;
 
-            currentDeck = deckCache.find(selectedDeckId)
+            CachedDeck selectedDeck = deckCache.find(selectedDeckId)
                     .or(() -> deckCache.mostRecentForEvent(!finalEventId.isBlank() ? finalEventId : selectedEventName))
                     .orElse(null);
+            matchDeckState = new MatchDeckState(matchId, selectedDeck);
+            currentDeck = matchDeckState.deckForGame(currentGameNumber);
             enrichCurrentDeckAsync();
         }
     }
@@ -126,6 +130,7 @@ public final class DeckTracker {
             int gameNo = integer(info, "gameNumber", currentGameNumber);
             if (gameNo != currentGameNumber) {
                 currentGameNumber = gameNo;
+                currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
                 complete = false;
                 started = false;
                 clearGameObjects();
@@ -245,8 +250,9 @@ public final class DeckTracker {
             CachedDeck replacement = new CachedDeck(deck.deckId(), deck.name(), deck.format(), deck.eventName(),
                     java.time.Instant.now(), List.copyOf(enriched), deck.sideboard(), deck.commandZone(), deck.companions());
             deckCache.put(replacement);
-            if (currentDeck != null && replacement.deckId().equals(currentDeck.deckId())) {
-                currentDeck = replacement;
+            if (matchDeckState != null) {
+                matchDeckState.refreshSelectedDeck(replacement);
+                currentDeck = matchDeckState.deckForGame(currentGameNumber);
                 if (started && !complete) listener.gameUpdated(snapshot());
             }
         });
