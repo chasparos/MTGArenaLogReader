@@ -217,3 +217,4 @@ two-match `multigame.log` replay fixture and focused opening-hand tracker tests.
 
 
 - `AttachmentTracker` owns persistent attachment annotation bookkeeping and exposes stable logical-object relationships to battlefield snapshots.
+- `ObjectIdentityTracker` owns Arena instance-alias correlation, current-instance selection, and identity-aware object lookup.

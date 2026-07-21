@@ -4,8 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -18,7 +16,7 @@ class AttachmentTrackerTest {
         tracker.reconcile(
                 annotations(42, 1001, 2001),
                 new JsonArray(),
-                Map.of(1001L, 10L, 2001L, 20L));
+                id -> id == 1001L ? 10L : id == 2001L ? 20L : id);
 
         assertEquals(20L, tracker.attachedHostFor(10L));
     }
@@ -26,11 +24,11 @@ class AttachmentTrackerTest {
     @Test
     void removesRelationsWhenArenaDeletesTheAnnotation() {
         AttachmentTracker tracker = new AttachmentTracker();
-        tracker.reconcile(annotations(42, 1001, 2001), new JsonArray(), Map.of());
+        tracker.reconcile(annotations(42, 1001, 2001), new JsonArray(), id -> id);
 
         JsonArray deleted = new JsonArray();
         deleted.add(42);
-        tracker.reconcile(new JsonArray(), deleted, Map.of());
+        tracker.reconcile(new JsonArray(), deleted, id -> id);
 
         assertNull(tracker.attachedHostFor(1001L));
     }
@@ -38,7 +36,7 @@ class AttachmentTrackerTest {
     @Test
     void resetClearsRelationsBetweenMatches() {
         AttachmentTracker tracker = new AttachmentTracker();
-        tracker.reconcile(annotations(42, 1001, 2001), new JsonArray(), Map.of());
+        tracker.reconcile(annotations(42, 1001, 2001), new JsonArray(), id -> id);
 
         tracker.reset();
 

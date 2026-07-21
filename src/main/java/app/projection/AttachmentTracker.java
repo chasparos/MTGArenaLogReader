@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.LongUnaryOperator;
 
 /**
  * Tracks Arena attachment annotations as logical-object relationships.
@@ -27,9 +28,9 @@ final class AttachmentTracker {
 
     void reconcile(JsonArray persistentAnnotations,
                    JsonArray deletedAnnotationIds,
-                   Map<Long, Long> logicalIds) {
+                   LongUnaryOperator logicalIdResolver) {
         removeDeleted(deletedAnnotationIds);
-        observe(persistentAnnotations, logicalIds);
+        observe(persistentAnnotations, logicalIdResolver);
     }
 
     Long attachedHostFor(long attachedLogicalId) {
@@ -49,7 +50,7 @@ final class AttachmentTracker {
         }
     }
 
-    private void observe(JsonArray annotations, Map<Long, Long> logicalIds) {
+    private void observe(JsonArray annotations, LongUnaryOperator logicalIdResolver) {
         for (JsonElement element : annotations) {
             if (!element.isJsonObject()) continue;
 
@@ -62,8 +63,8 @@ final class AttachmentTracker {
             if (annotationId < 0 || attachedInstanceId < 0 || affectedIds.isEmpty()) continue;
 
             long hostInstanceId = affectedIds.get(0).getAsLong();
-            long attachedLogicalId = logicalIds.getOrDefault(attachedInstanceId, attachedInstanceId);
-            long hostLogicalId = logicalIds.getOrDefault(hostInstanceId, hostInstanceId);
+            long attachedLogicalId = logicalIdResolver.applyAsLong(attachedInstanceId);
+            long hostLogicalId = logicalIdResolver.applyAsLong(hostInstanceId);
             relationsByAnnotationId.put(
                     annotationId,
                     new AttachmentRelation(attachedLogicalId, hostLogicalId));

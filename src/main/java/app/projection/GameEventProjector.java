@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
  */
 public final class GameEventProjector {
     private final GameState state = new GameState();
+    private final ObjectIdentityTracker objectIdentityTracker = new ObjectIdentityTracker(state);
     private final Map<Long, CardInfo> knownCards = new LinkedHashMap<>();
     /** Arena-observed metadata retained even when external card enrichment misses. */
     private final Map<Long, GameObjectState> observedCardsByGrpId = new LinkedHashMap<>();
@@ -200,10 +201,9 @@ public final class GameEventProjector {
         PendingCast direct = pendingCasts.remove(instanceId);
         if (direct != null) return direct;
 
-        long logicalId = state.getLogicalIds().getOrDefault(instanceId, instanceId);
+        long logicalId = objectIdentityTracker.logicalIdOf(instanceId);
         for (Map.Entry<Long, PendingCast> entry : new ArrayList<>(pendingCasts.entrySet())) {
-            long pendingLogicalId = state.getLogicalIds()
-                    .getOrDefault(entry.getKey(), entry.getKey());
+            long pendingLogicalId = objectIdentityTracker.logicalIdOf(entry.getKey());
             PendingCast candidate = entry.getValue();
             boolean sameLogicalObject = pendingLogicalId == logicalId;
             boolean sameKnownCard = object != null
@@ -266,12 +266,12 @@ public final class GameEventProjector {
 
         JsonArray annotations = arrayAt(incoming, "annotations");
         JsonArray persistentAnnotations = arrayAt(incoming, "persistentAnnotations");
-        learnObjectIdChanges(annotations);
+        objectIdentityTracker.observeIdChanges(annotations);
         learnAbilityKinds(annotations);
         attachmentTracker.reconcile(
                 persistentAnnotations,
                 arrayAt(incoming, "diffDeletedPersistentAnnotationIds"),
-                state.getLogicalIds());
+                objectIdentityTracker::logicalIdOf);
 
         Set<Long> transferredIds = zoneTransferAffectedIds(annotations);
         for (JsonElement element : arrayAt(incoming, "gameObjects")) {
@@ -427,28 +427,6 @@ public final class GameEventProjector {
         }
     }
 
-    private void learnObjectIdChanges(JsonArray annotations) {
-        for (JsonElement element : annotations) {
-            if (!element.isJsonObject()) continue;
-            JsonObject annotation = element.getAsJsonObject();
-            if (!hasType(annotation, "AnnotationType_ObjectIdChanged")) continue;
-            long oldId = detailLong(annotation, "orig_id", -1);
-            long newId = detailLong(annotation, "new_id", -1);
-            if (oldId < 0 || newId < 0) continue;
-            long logicalId = state.getLogicalIds().getOrDefault(oldId, oldId);
-            state.getLogicalIds().put(oldId, logicalId);
-            state.getLogicalIds().put(newId, logicalId);
-            state.getCurrentInstanceByLogicalId().put(logicalId, newId);
-            GameObjectState previous = state.getObjects().get(oldId);
-            if (previous != null && !state.getObjects().containsKey(newId)) {
-                GameObjectState copy = previous.copy();
-                copy.setInstanceId(newId);
-                copy.setLogicalObjectId(logicalId);
-                state.getObjects().put(newId, copy);
-            }
-        }
-    }
-
     private void learnAbilityKinds(JsonArray annotations) {
         for (JsonElement element : annotations) {
             if (!element.isJsonObject()) continue;
@@ -483,12 +461,7 @@ public final class GameEventProjector {
         if (instanceId < 0) return;
 
         GameObjectState previous = state.getObjects().get(instanceId);
-        GameObjectState current = previous == null ? new GameObjectState() : previous.copy();
-        current.setInstanceId(instanceId);
-        current.setLogicalObjectId(state.getLogicalIds().getOrDefault(instanceId, instanceId));
-        state.getLogicalIds().putIfAbsent(instanceId, current.getLogicalObjectId());
-        state.getCurrentInstanceByLogicalId().merge(
-                current.getLogicalObjectId(), instanceId, Math::max);
+        GameObjectState current = objectIdentityTracker.copyForObservation(instanceId);
 
         if (json.has("grpId")) current.setGrpId(longAt(json, "grpId", current.getGrpId()));
         if (current.getGrpId() > 0 && cards.containsKey(current.getGrpId())) current.setCard(cards.get(current.getGrpId()));
@@ -659,7 +632,7 @@ public final class GameEventProjector {
                     + blockers.stream()
                     .map(b -> b.getLogicalObjectId() + ">"
                             + b.getBlockedAttackerIds().stream()
-                            .map(id -> state.getLogicalIds().getOrDefault(id, id))
+                            .map(objectIdentityTracker::logicalIdOf)
                             .sorted()
                             .map(String::valueOf)
                             .collect(Collectors.joining(",")))
@@ -672,9 +645,7 @@ public final class GameEventProjector {
     }
 
     private boolean isCurrentLogicalInstance(GameObjectState object) {
-        long current = state.getCurrentInstanceByLogicalId()
-                .getOrDefault(object.getLogicalObjectId(), object.getInstanceId());
-        return current == object.getInstanceId();
+        return objectIdentityTracker.isCurrent(object);
     }
 
     private boolean isOnBattlefield(GameObjectState object) {
@@ -745,7 +716,7 @@ public final class GameEventProjector {
             List<String> attackerNames = new ArrayList<>();
             for (long attackerInstanceId : blocker.getBlockedAttackerIds()) {
                 GameObjectState attacker = state.getObjects().get(attackerInstanceId);
-                long logicalId = state.getLogicalIds().getOrDefault(attackerInstanceId, attackerInstanceId);
+                long logicalId = objectIdentityTracker.logicalIdOf(attackerInstanceId);
                 logicalIds.add(logicalId);
                 attackerNames.add(attacker == null
                         ? targetDisplayName(attackerInstanceId, cards)
@@ -1178,20 +1149,7 @@ public final class GameEventProjector {
     }
 
     private GameObjectState findObjectIncludingAliases(long instanceId) {
-        GameObjectState direct = state.getObjects().get(instanceId);
-        if (direct != null) return direct;
-
-        long logicalId = state.getLogicalIds().getOrDefault(instanceId, instanceId);
-        Long currentId = state.getCurrentInstanceByLogicalId().get(logicalId);
-        if (currentId != null) {
-            GameObjectState current = state.getObjects().get(currentId);
-            if (current != null) return current;
-        }
-
-        for (GameObjectState candidate : state.getObjects().values()) {
-            if (candidate.getLogicalObjectId() == logicalId) return candidate;
-        }
-        return null;
+        return objectIdentityTracker.findIncludingAliases(instanceId);
     }
 
     private void updatePlayers(LogMessageInterface source, JsonArray players,
