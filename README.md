@@ -220,3 +220,4 @@ two-match `multigame.log` replay fixture and focused opening-hand tracker tests.
 - `ObjectIdentityTracker` owns Arena instance-alias correlation, current-instance selection, and identity-aware object lookup.
 - `CounterProjector` owns permanent-counter identity, naming, and count mutation; annotation interpretation and player-counter events remain in `GameEventProjector`.
 - `TokenResolver` owns token related-card matching, ambiguity rejection, and deterministic fallback naming.
+- `CombatProjector` owns stable attacker/blocker declaration projection and duplicate suppression.

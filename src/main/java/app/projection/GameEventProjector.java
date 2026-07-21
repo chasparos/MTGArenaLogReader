@@ -39,6 +39,14 @@ public final class GameEventProjector {
     private final AttachmentTracker attachmentTracker = new AttachmentTracker();
     private final CounterProjector counterProjector = new CounterProjector();
     private final TokenResolver tokenResolver = new TokenResolver();
+    private final CombatProjector combatProjector = new CombatProjector(
+            state,
+            objectIdentityTracker,
+            this::zoneType,
+            this::playerName,
+            this::objectDisplayName,
+            this::targetDisplayName,
+            this::event);
     /** Delay turn snapshots until a post-untap state update for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
@@ -275,7 +283,7 @@ public final class GameEventProjector {
 
         projectCounterChanges(message, annotations, result);
         reconcilePersistentCounters(persistentAnnotations);
-        projectCombatDeclarations(message, cards, result);
+        combatProjector.projectDeclarations(message, cards, result);
         projectZoneTransfers(message, annotations, cards, result);
         projectTargets(message, persistentAnnotations, cards, result);
         reorderLandPlayBeforeOwnAbilities(result, messageStartIndex);
@@ -575,166 +583,6 @@ public final class GameEventProjector {
     }
 
 
-    /**
-     * Projects declarations from the canonical battlefield at stable combat
-     * boundaries. Arena keeps historical object aliases after ObjectIdChanged;
-     * only the current instance for each logical object is eligible.
-     */
-    private void projectCombatDeclarations(LogMessageInterface source,
-                                           Map<Long, CardInfo> cards,
-                                           List<GameEvent> result) {
-        String step = state.getStep() == null ? "" : state.getStep();
-        // Attackers are final once Arena enters DeclareBlock.  Blockers are
-        // final when their state becomes BlockState_Blocking during that step.
-        // Waiting until CombatDamage loses blockers that die in the first damage
-        // update, which is exactly what happened in the supplied turn 16.
-        boolean attackersStable = step.contains("DeclareBlock");
-        boolean blockersStable = step.contains("DeclareBlock")
-                || step.contains("CombatDamage")
-                || step.contains("EndCombat");
-
-        List<GameObjectState> battlefield = state.getObjects().values().stream()
-                .filter(this::isCurrentLogicalInstance)
-                .filter(this::isOnBattlefield)
-                .toList();
-
-        List<GameObjectState> attackers = battlefield.stream()
-                .filter(this::isAttacking)
-                .filter(a -> state.getActivePlayerSeat() == null
-                        || a.getControllerSeatId() == state.getActivePlayerSeat())
-                .sorted(java.util.Comparator.comparingLong(GameObjectState::getLogicalObjectId))
-                .toList();
-
-        if (attackersStable && !attackers.isEmpty()) {
-            String signature = String.valueOf(state.getTurnNumber()) + ":"
-                    + attackers.stream()
-                    .map(a -> a.getLogicalObjectId() + ">" + a.getAttackTargetId())
-                    .collect(Collectors.joining("|"));
-            if (!signature.equals(state.getEmittedAttackSignature())) {
-                result.add(attackersDeclaredEvent(source, attackers, cards));
-                state.setEmittedAttackSignature(signature);
-                state.setEmittedBlockSignature("");
-            }
-        }
-
-        List<GameObjectState> blockers = battlefield.stream()
-                .filter(this::isBlocking)
-                .sorted(java.util.Comparator.comparingLong(GameObjectState::getLogicalObjectId))
-                .toList();
-
-        if (blockersStable && !blockers.isEmpty()) {
-            String signature = String.valueOf(state.getTurnNumber()) + ":"
-                    + blockers.stream()
-                    .map(b -> b.getLogicalObjectId() + ">"
-                            + b.getBlockedAttackerIds().stream()
-                            .map(objectIdentityTracker::logicalIdOf)
-                            .sorted()
-                            .map(String::valueOf)
-                            .collect(Collectors.joining(",")))
-                    .collect(Collectors.joining("|"));
-            if (!signature.equals(state.getEmittedBlockSignature())) {
-                result.add(blockersDeclaredEvent(source, blockers, cards));
-                state.setEmittedBlockSignature(signature);
-            }
-        }
-    }
-
-    private boolean isCurrentLogicalInstance(GameObjectState object) {
-        return objectIdentityTracker.isCurrent(object);
-    }
-
-    private boolean isOnBattlefield(GameObjectState object) {
-        return "Battlefield".equals(zoneType(object.getSemanticZoneId()));
-    }
-
-    private boolean isAttacking(GameObjectState object) {
-        return object.getAttackState() != null
-                && (object.getAttackState().endsWith("_Attacking")
-                || object.getAttackState().endsWith("_Declared"))
-                && object.getAttackTargetId() != null;
-    }
-
-    private boolean isBlocking(GameObjectState object) {
-        return object.getBlockState() != null
-                && object.getBlockState().endsWith("_Blocking")
-                && !object.getBlockedAttackerIds().isEmpty();
-    }
-
-    private GameEvent attackersDeclaredEvent(LogMessageInterface source,
-                                             List<GameObjectState> attackers,
-                                             Map<Long, CardInfo> cards) {
-        int attackingSeat = attackers.get(0).getControllerSeatId();
-        Map<Long, List<GameObjectState>> byTarget = new LinkedHashMap<>();
-        for (GameObjectState attacker : attackers) {
-            byTarget.computeIfAbsent(attacker.getAttackTargetId(), ignored -> new ArrayList<>())
-                    .add(attacker);
-        }
-
-        String groups = byTarget.entrySet().stream().map(entry -> {
-            String target = targetDisplayName(entry.getKey(), cards);
-            String names = entry.getValue().stream()
-                    .map(a -> combatDisplayName(a, cards))
-                    .collect(Collectors.joining(", "));
-            return target + " with " + names;
-        }).collect(Collectors.joining("; "));
-
-        GameEvent event = event(source, playerName(attackingSeat) + " attacks " + groups);
-        event.setPhase("Phase_Combat");
-        event.setStep("Step_DeclareAttack");
-        for (GameObjectState attacker : attackers) {
-            long targetId = attacker.getAttackTargetId();
-            event.getAttackers().add(new CombatAttackAssignment(
-                    attacker.getLogicalObjectId(),
-                    attacker.getInstanceId(),
-                    combatDisplayName(attacker, cards),
-                    attacker.getControllerSeatId(),
-                    targetId,
-                    targetDisplayName(targetId, cards)));
-            if (attacker.getCard() != null && !event.getCards().contains(attacker.getCard())) {
-                event.getCards().add(attacker.getCard());
-            }
-        }
-        return event;
-    }
-
-    private GameEvent blockersDeclaredEvent(LogMessageInterface source,
-                                            List<GameObjectState> blockers,
-                                            Map<Long, CardInfo> cards) {
-        int defendingSeat = blockers.get(0).getControllerSeatId();
-        List<String> clauses = new ArrayList<>();
-        GameEvent event = event(source, "");
-        event.setPhase("Phase_Combat");
-        event.setStep("Step_DeclareBlock");
-
-        for (GameObjectState blocker : blockers) {
-            List<Long> logicalIds = new ArrayList<>();
-            List<String> attackerNames = new ArrayList<>();
-            for (long attackerInstanceId : blocker.getBlockedAttackerIds()) {
-                GameObjectState attacker = state.getObjects().get(attackerInstanceId);
-                long logicalId = objectIdentityTracker.logicalIdOf(attackerInstanceId);
-                logicalIds.add(logicalId);
-                attackerNames.add(attacker == null
-                        ? targetDisplayName(attackerInstanceId, cards)
-                        : objectDisplayName(attacker, cards));
-            }
-            String blockerName = objectDisplayName(blocker, cards);
-            clauses.add(blockerName + " blocks " + String.join(", ", attackerNames));
-            event.getBlockers().add(new CombatBlockAssignment(
-                    blocker.getLogicalObjectId(),
-                    blocker.getInstanceId(),
-                    blockerName,
-                    blocker.getControllerSeatId(),
-                    logicalIds,
-                    attackerNames));
-            if (blocker.getCard() != null && !event.getCards().contains(blocker.getCard())) {
-                event.getCards().add(blocker.getCard());
-            }
-        }
-
-        event.setText(playerName(defendingSeat) + " blocks: " + String.join("; ", clauses));
-        return event;
-    }
-
     private void projectZoneTransfers(LogMessageInterface source, JsonArray annotations,
                                       Map<Long, CardInfo> cards, List<GameEvent> result) {
         for (JsonElement element : annotations) {
@@ -967,13 +815,6 @@ public final class GameEventProjector {
         return observedCardDescription(object);
     }
 
-    private String combatDisplayName(GameObjectState object, Map<Long, CardInfo> cards) {
-        String name = objectDisplayName(object, cards);
-        if (object.getPower() != null && object.getToughness() != null) {
-            return name + " (" + object.getPower() + "/" + object.getToughness() + ")";
-        }
-        return name;
-    }
 
     private String observedCardDescription(GameObjectState object) {
         if (object == null) return "Unknown card";
@@ -1148,6 +989,14 @@ public final class GameEventProjector {
             event.getTurnSnapshot().add(snapshot);
         }
         return event;
+    }
+
+    private boolean isCurrentLogicalInstance(GameObjectState object) {
+        return objectIdentityTracker.isCurrent(object);
+    }
+
+    private boolean isOnBattlefield(GameObjectState object) {
+        return "Battlefield".equals(zoneType(object.getSemanticZoneId()));
     }
 
     private List<BoardPermanentSnapshot> currentBattlefieldObservation() {
