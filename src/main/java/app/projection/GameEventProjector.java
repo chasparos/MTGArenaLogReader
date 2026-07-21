@@ -40,6 +40,7 @@ public final class GameEventProjector {
     private final CounterProjector counterProjector = new CounterProjector();
     private final TokenResolver tokenResolver = new TokenResolver();
     private final ZoneTransitionClassifier zoneTransitionClassifier = new ZoneTransitionClassifier();
+    private final ZoneEventProjector zoneEventProjector = new ZoneEventProjector(zoneTransitionClassifier);
     private final CombatProjector combatProjector = new CombatProjector(
             state,
             objectIdentityTracker,
@@ -705,26 +706,16 @@ public final class GameEventProjector {
         String name = objectDisplayName(current, cards);
         String actor = playerName(current.getControllerSeatId());
 
-        ZoneTransitionClassifier.Kind kind = zoneTransitionClassifier.classify(
-                from, to, category, isAbility(current), isLand(current, cards));
-
-        return switch (kind) {
-            case ABILITY_ON_STACK -> actor + " " + abilityVerb(current) + " " + name;
-            case ABILITY_FINISHED -> name + " finishes resolving";
-            case PLAY_LAND -> actor + " plays " + name + tappedSuffix(current);
-            case CAST_SPELL -> actor + " casts " + name;
-            case DRAW -> actor + " draws " + name;
-            case RESOLVE_TO_BATTLEFIELD ->
-                    name + " resolves and enters the battlefield" + tappedSuffix(current);
-            case RESOLVE_TO_GRAVEYARD -> name + " resolves and is put into the graveyard";
-            case BATTLEFIELD_TO_GRAVEYARD -> name + " is put into the graveyard";
-            case BATTLEFIELD_TO_EXILE -> name + " is exiled";
-            case GRAVEYARD_TO_EXILE -> name + " is exiled from the graveyard";
-            case GRAVEYARD_TO_BATTLEFIELD ->
-                    name + " returns from the graveyard to the battlefield" + tappedSuffix(current);
-            case GRAVEYARD_TO_HAND -> actor + " returns " + name + " from the graveyard to hand";
-            case GENERIC -> actor + ": " + name + " moved " + from + " → " + to;
-        };
+        return zoneEventProjector.describe(
+                from,
+                to,
+                category,
+                isAbility(current),
+                isLand(current, cards),
+                actor,
+                name,
+                abilityVerb(current),
+                tappedSuffix(current));
     }
 
 
