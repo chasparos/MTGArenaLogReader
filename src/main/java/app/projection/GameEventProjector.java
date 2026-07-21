@@ -44,8 +44,7 @@ public final class GameEventProjector {
     private final Map<Long, String> historicalObjectNames = new LinkedHashMap<>();
     /** Arena ability group id -> owning card name. */
     private final Map<Long, String> historicalAbilityOwnerNames = new LinkedHashMap<>();
-    /** Persistent annotation id -> attachment relation (attached object -> host object). */
-    private final Map<Long, AttachmentRelation> attachmentsByAnnotationId = new LinkedHashMap<>();
+    private final AttachmentTracker attachmentTracker = new AttachmentTracker();
     /** Delay turn snapshots until a post-untap state update for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
@@ -61,7 +60,6 @@ public final class GameEventProjector {
     private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
 
     private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
-    private record AttachmentRelation(long attachedLogicalId, long hostLogicalId) {}
 
     public GameEventProjector() { this(new AbilityNameStore()); }
     public GameEventProjector(AbilityNameStore abilityNames) { this.abilityNames = abilityNames; }
@@ -230,7 +228,7 @@ public final class GameEventProjector {
             emittedEvents.clear();
             historicalAbilityOwnerNames.clear();
             pendingCasts.clear();
-            attachmentsByAnnotationId.clear();
+            attachmentTracker.reset();
             pendingTurnSnapshot = null;
             pendingTurnSnapshotNeedsNextMessage = false;
             for (JsonElement element : arrayAt(config, "reservedPlayers")) {
@@ -270,7 +268,10 @@ public final class GameEventProjector {
         JsonArray persistentAnnotations = arrayAt(incoming, "persistentAnnotations");
         learnObjectIdChanges(annotations);
         learnAbilityKinds(annotations);
-        reconcileAttachments(persistentAnnotations, arrayAt(incoming, "diffDeletedPersistentAnnotationIds"));
+        attachmentTracker.reconcile(
+                persistentAnnotations,
+                arrayAt(incoming, "diffDeletedPersistentAnnotationIds"),
+                state.getLogicalIds());
 
         Set<Long> transferredIds = zoneTransferAffectedIds(annotations);
         for (JsonElement element : arrayAt(incoming, "gameObjects")) {
@@ -1263,57 +1264,13 @@ public final class GameEventProjector {
                     permanent.setTapped(object.getTapped());
                     permanent.setPower(object.getPower());
                     permanent.setToughness(object.getToughness());
-                    permanent.setAttachedToLogicalObjectId(attachedHostFor(object.getLogicalObjectId()));
+                    permanent.setAttachedToLogicalObjectId(
+                            attachmentTracker.attachedHostFor(object.getLogicalObjectId()));
                     object.getCounters().forEach(counter ->
                             permanent.getCounters().add(counter.copy()));
                     return permanent;
                 })
                 .toList();
-    }
-
-    private void reconcileAttachments(JsonArray persistentAnnotations, JsonArray deletedIds) {
-        for (JsonElement deleted : deletedIds) {
-            if (deleted.isJsonPrimitive()) attachmentsByAnnotationId.remove(deleted.getAsLong());
-        }
-        for (JsonElement element : persistentAnnotations) {
-            if (!element.isJsonObject()) continue;
-            JsonObject annotation = element.getAsJsonObject();
-            if (!hasAnnotationType(annotation, "AnnotationType_Attachment")) continue;
-            long annotationId = longAt(annotation, "id", -1);
-            long attachedId = longAt(annotation, "affectorId", -1);
-            JsonArray affected = arrayAt(annotation, "affectedIds");
-            if (annotationId < 0 || attachedId < 0 || affected.size() == 0) continue;
-            long hostId = affected.get(0).getAsLong();
-            long attachedLogical = state.getLogicalIds().getOrDefault(attachedId, attachedId);
-            long hostLogical = state.getLogicalIds().getOrDefault(hostId, hostId);
-            attachmentsByAnnotationId.put(annotationId,
-                    new AttachmentRelation(attachedLogical, hostLogical));
-        }
-    }
-
-    private static boolean hasAnnotationType(JsonObject annotation, String expectedType) {
-        if (annotation == null || expectedType == null) return false;
-        JsonElement typeElement = annotation.get("type");
-        if (typeElement == null || typeElement.isJsonNull()) return false;
-        if (typeElement.isJsonArray()) {
-            for (JsonElement element : typeElement.getAsJsonArray()) {
-                if (element.isJsonPrimitive() && expectedType.equals(element.getAsString())) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        return typeElement.isJsonPrimitive()
-                && expectedType.equals(typeElement.getAsString());
-    }
-
-    private Long attachedHostFor(long attachedLogicalId) {
-        for (AttachmentRelation relation : attachmentsByAnnotationId.values()) {
-            if (relation.attachedLogicalId() == attachedLogicalId) {
-                return relation.hostLogicalId();
-            }
-        }
-        return null;
     }
 
     private boolean isPostUntapBoundary() {
