@@ -11,6 +11,9 @@ import app.replay.GameView;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.io.IOException;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -39,6 +42,7 @@ public final class CoachingFrame extends JFrame {
     private final JTextArea draft = new JTextArea(4, 40);
     private final JLabel status = new JLabel("No coaching match selected");
     private CoachingConversation selected;
+    private ManualContext manualContext = ManualContext.match();
 
     public CoachingFrame(CoachingService service) {
         super("Match Coaching");
@@ -91,12 +95,25 @@ public final class CoachingFrame extends JFrame {
         saveDraft.setToolTipText("Save locally without contacting OpenAI or spending tokens");
         saveDraft.addActionListener(event -> saveDraft());
 
+        JButton copyPrompt = new JButton("Translate to AI-speak into clipboard");
+        copyPrompt.setToolTipText("Build a scoped coaching prompt and copy it; no API request is made");
+        copyPrompt.addActionListener(event -> copyManualPrompt());
+
+        JButton importReply = new JButton("Translate clipboard from AI-speak");
+        importReply.setToolTipText("Persist the clipboard text as the assistant's exact reply");
+        importReply.addActionListener(event -> importManualReply());
+
         JLabel hint = new JLabel(
-                "Drafts are local only. No API request is made in this version.");
+                "Manual copy/paste coaching only. These actions never call an API.");
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        actions.add(saveDraft);
+        actions.add(copyPrompt);
+        actions.add(importReply);
 
         JPanel composerFooter = new JPanel(new BorderLayout(8, 0));
         composerFooter.add(hint, BorderLayout.CENTER);
-        composerFooter.add(saveDraft, BorderLayout.EAST);
+        composerFooter.add(actions, BorderLayout.EAST);
 
         JPanel composer = new JPanel(new BorderLayout(0, 6));
         composer.setBorder(new EmptyBorder(8, 0, 0, 0));
@@ -107,6 +124,59 @@ public final class CoachingFrame extends JFrame {
         panel.add(new JScrollPane(transcript), BorderLayout.CENTER);
         panel.add(composer, BorderLayout.SOUTH);
         return panel;
+    }
+
+    private void copyManualPrompt() {
+        if (selected == null) {
+            status.setText("Select a coaching match first");
+            return;
+        }
+        String question = draft.getText().trim();
+        if (question.isEmpty()) {
+            status.setText("Enter or choose a coaching question first");
+            return;
+        }
+
+        try {
+            String prompt = service.manualPrompt(
+                    selected,
+                    manualContext.scope(),
+                    manualContext.gameNumber(),
+                    manualContext.turns(),
+                    question);
+            String contextLabel = manualContext.label();
+            Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new StringSelection(prompt), null);
+            service.saveUserDraft(selected.id(), question);
+            draft.setText("");
+            selectConversation(selected.id());
+            status.setText("AI-speak copied for " + contextLabel
+                    + " — paste it into ChatGPT");
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            status.setText("Could not build coaching context: " + error.getMessage());
+        }
+    }
+
+    private void importManualReply() {
+        if (selected == null) {
+            status.setText("Select a coaching match first");
+            return;
+        }
+        try {
+            Object value = Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .getData(DataFlavor.stringFlavor);
+            String reply = value == null ? "" : value.toString().trim();
+            if (reply.isEmpty()) {
+                status.setText("Clipboard does not contain a coaching reply");
+                return;
+            }
+            service.saveMessage(selected.id(), CoachingMessage.Role.ASSISTANT, reply);
+            selectConversation(selected.id());
+            status.setText("Assistant reply imported and saved exactly as received");
+        } catch (UnsupportedOperationException | IOException
+                 | java.awt.datatransfer.UnsupportedFlavorException error) {
+            status.setText("Could not read text from clipboard: " + error.getMessage());
+        }
     }
 
     private void saveDraft() {
@@ -137,6 +207,7 @@ public final class CoachingFrame extends JFrame {
         }
 
         selected = service.conversation(summary.id());
+        manualContext = ManualContext.match();
         reconstruction.setText(selected.reconstruction());
         reconstruction.setCaretPosition(0);
         showGames(selected.games());
@@ -191,9 +262,9 @@ public final class CoachingFrame extends JFrame {
             case TURN -> "Game " + gameNumber + ", turn " + onlyTurn(request.turns());
             case SELECTED_TURNS -> "Game " + gameNumber + ", turns " + formatTurns(request.turns());
         };
+        manualContext = new ManualContext(request.scope(), gameNumber, request.turns());
         String question = request.question() == null ? "" : request.question();
-        draft.setText("[Context: " + context + "]" + System.lineSeparator()
-                + question);
+        draft.setText(question);
         draft.setCaretPosition(draft.getDocument().getLength());
         details.setSelectedIndex(0);
         draft.requestFocusInWindow();
@@ -271,6 +342,28 @@ public final class CoachingFrame extends JFrame {
     private String shortMatchId(String matchId) {
         if (matchId == null || matchId.isBlank()) return "unknown";
         return matchId.length() <= 8 ? matchId : matchId.substring(0, 8);
+    }
+
+    private record ManualContext(
+            GameView.CoachingScope scope,
+            Integer gameNumber,
+            java.util.Set<Integer> turns) {
+        private ManualContext {
+            turns = turns == null ? java.util.Set.of() : java.util.Set.copyOf(turns);
+        }
+
+        static ManualContext match() {
+            return new ManualContext(GameView.CoachingScope.MATCH, null, java.util.Set.of());
+        }
+
+        String label() {
+            return switch (scope) {
+                case MATCH -> "the match";
+                case GAME -> "game " + gameNumber;
+                case TURN -> "game " + gameNumber + ", turn " + turns.iterator().next();
+                case SELECTED_TURNS -> "game " + gameNumber + ", selected turns";
+            };
+        }
     }
 
     private static final class ConversationRenderer

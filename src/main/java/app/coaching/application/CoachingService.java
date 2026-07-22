@@ -25,6 +25,7 @@ public final class CoachingService {
     private final MatchAiExporter exporter;
     private final GameTextExporter gameTextExporter;
     private final CoachingGameSnapshotCodec gameSnapshotCodec;
+    private final ManualCoachingPromptBuilder promptBuilder;
 
     public CoachingService(CoachingRepository repository, MatchAiExporter exporter) {
         this(repository, exporter, new GameTextExporter(), new CoachingGameSnapshotCodec());
@@ -46,6 +47,7 @@ public final class CoachingService {
         this.exporter = Objects.requireNonNull(exporter, "exporter");
         this.gameTextExporter = Objects.requireNonNull(gameTextExporter, "gameTextExporter");
         this.gameSnapshotCodec = Objects.requireNonNull(gameSnapshotCodec, "gameSnapshotCodec");
+        this.promptBuilder = new ManualCoachingPromptBuilder();
     }
 
     public CoachingConversation saveForCoaching(MatchSession match) {
@@ -67,6 +69,22 @@ public final class CoachingService {
     public app.model.session.GameModel richGame(CoachingGame game) {
         Objects.requireNonNull(game, "game");
         return gameSnapshotCodec.decode(game.richSnapshot());
+    }
+
+
+    public String manualPrompt(
+            CoachingConversation conversation,
+            app.replay.GameView.CoachingScope scope,
+            Integer gameNumber,
+            java.util.Set<Integer> turns,
+            String question) {
+        Objects.requireNonNull(conversation, "conversation");
+        return promptBuilder.build(
+                conversation.reconstruction(),
+                scope,
+                gameNumber,
+                turns,
+                question);
     }
 
     public CoachingMessage saveUserDraft(long conversationId, String content) {
