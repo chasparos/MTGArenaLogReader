@@ -4,6 +4,8 @@ import app.model.event.AbilityReference;
 import app.model.card.CardInfo;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
+import app.model.event.DecisionObservation;
+import app.model.event.ObjectReference;
 import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.match.MatchState;
@@ -70,11 +72,22 @@ public final class GameEventProjector {
      * become a semantic cancellation instead of a misleading zone movement.
      */
     private final Map<Long, PendingCast> pendingCasts = new LinkedHashMap<>();
+    private final Map<Long, PendingTargetDecision> pendingTargetDecisions = new LinkedHashMap<>();
     private final AbilityNameStore abilityNames;
     private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
     private boolean openingHandEventEmitted;
 
     private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
+
+    private record PendingTargetDecision(
+            ObjectReference source,
+            List<ObjectReference> legalTargets,
+            int minimumSelections,
+            int maximumSelections) {
+        private PendingTargetDecision {
+            legalTargets = List.copyOf(legalTargets);
+        }
+    }
 
     public GameEventProjector() { this(new AbilityNameStore(), null); }
 
@@ -151,6 +164,11 @@ public final class GameEventProjector {
                                       Map<Long, CardInfo> cards,
                                       List<GameEvent> result) {
         String type = stringAt(payload, "type");
+
+        if ("ClientMessageType_SelectTargetsResp".equals(type)) {
+            projectTargetDecisionResponse(source, payload, result);
+            return;
+        }
 
         if ("ClientMessageType_PerformActionResp".equals(type)) {
             for (JsonElement element : arrayAt(objectAt(payload, "performActionResp"), "actions")) {
@@ -264,6 +282,7 @@ public final class GameEventProjector {
             emittedEvents.clear();
             historicalAbilityOwnerNames.clear();
             pendingCasts.clear();
+            pendingTargetDecisions.clear();
             attachmentTracker.reset();
             pendingTurnSnapshot = null;
             pendingTurnSnapshotNeedsNextMessage = false;
@@ -290,8 +309,169 @@ public final class GameEventProjector {
                 projectGameState(message, objectAt(greMessage, "gameStateMessage"), cards, result);
             } else if ("GREMessageType_DieRollResultsResp".equals(type)) {
                 projectDieRoll(message, objectAt(greMessage, "dieRollResultsResp"), result);
+            } else if ("GREMessageType_SelectTargetsReq".equals(type)) {
+                observeTargetDecisionRequest(greMessage, cards);
             }
         }
+    }
+
+    private void observeTargetDecisionRequest(JsonObject greMessage,
+                                              Map<Long, CardInfo> cards) {
+        long messageId = longAt(greMessage, "msgId", -1);
+        JsonObject request = objectAt(greMessage, "selectTargetsReq");
+        if (messageId < 0 || request.size() == 0) return;
+
+        ObjectReference source = objectReference(longAt(request, "sourceId", -1), cards);
+        List<ObjectReference> legalTargets = new ArrayList<>();
+        int minimumSelections = 0;
+        int maximumSelections = 0;
+
+        for (JsonElement targetGroupElement : arrayAt(request, "targets")) {
+            if (!targetGroupElement.isJsonObject()) continue;
+            JsonObject targetGroup = targetGroupElement.getAsJsonObject();
+            minimumSelections += Math.max(0, intAt(targetGroup, "minTargets", 0));
+            maximumSelections += Math.max(0, intAt(targetGroup, "maxTargets", 0));
+
+            for (JsonElement targetElement : arrayAt(targetGroup, "targets")) {
+                if (!targetElement.isJsonObject()) continue;
+                JsonObject target = targetElement.getAsJsonObject();
+                String legalAction = stringAt(target, "legalAction");
+                if (!legalAction.isBlank() && !legalAction.contains("Select")) continue;
+                long targetId = longAt(target, "targetInstanceId",
+                        longAt(target, "targetPlayerId", -1));
+                ObjectReference reference = objectReference(targetId, cards);
+                if (reference != null && !containsReference(legalTargets, reference)) {
+                    legalTargets.add(reference);
+                }
+            }
+        }
+
+        if (!legalTargets.isEmpty()) {
+            pendingTargetDecisions.put(messageId, new PendingTargetDecision(
+                    source, legalTargets, minimumSelections, maximumSelections));
+        }
+    }
+
+    private void projectTargetDecisionResponse(LogMessageInterface source,
+                                               JsonObject payload,
+                                               List<GameEvent> result) {
+        long responseTo = longAt(payload, "respId", -1);
+        PendingTargetDecision pending = pendingTargetDecisions.remove(responseTo);
+        if (pending == null) return;
+
+        List<ObjectReference> selected = new ArrayList<>();
+        JsonObject response = objectAt(payload, "selectTargetsResp");
+        collectSelectedTargets(objectAt(response, "target"), selected);
+        for (JsonElement targetElement : arrayAt(response, "targets")) {
+            if (targetElement.isJsonObject()) {
+                collectSelectedTargets(targetElement.getAsJsonObject(), selected);
+            }
+        }
+
+        List<ObjectReference> alternatives = pending.legalTargets().stream()
+                .filter(candidate -> !containsReference(selected, candidate))
+                .toList();
+        String chosen = selected.isEmpty()
+                ? "no target"
+                : selected.stream().map(this::referenceDisplayName)
+                        .collect(Collectors.joining(", "));
+        String sourceName = pending.source() == null
+                ? "Unknown spell or ability"
+                : referenceDisplayName(pending.source());
+
+        GameEvent event = event(source, sourceName + " chooses " + chosen);
+        event.setType(GameEventType.DECISION);
+        event.setDecision(new DecisionObservation(
+                DecisionObservation.Kind.TARGET,
+                pending.source(),
+                selected,
+                alternatives,
+                pending.minimumSelections(),
+                pending.maximumSelections(),
+                DecisionObservation.Confidence.EXPLICIT));
+        if (pending.source() != null) event.getObjects().add(pending.source());
+        selected.forEach(reference -> addReference(event, reference));
+        alternatives.forEach(reference -> addReference(event, reference));
+        result.add(event);
+    }
+
+    private void collectSelectedTargets(JsonObject target,
+                                        List<ObjectReference> selected) {
+        if (target.size() == 0) return;
+        for (JsonElement selectedElement : arrayAt(target, "targets")) {
+            if (!selectedElement.isJsonObject()) continue;
+            JsonObject selectedTarget = selectedElement.getAsJsonObject();
+            long targetId = longAt(selectedTarget, "targetInstanceId",
+                    longAt(selectedTarget, "targetPlayerId", -1));
+            ObjectReference reference = objectReference(targetId, knownCards);
+            if (reference != null && !containsReference(selected, reference)) {
+                selected.add(reference);
+            }
+        }
+    }
+
+    private ObjectReference objectReference(long arenaId,
+                                            Map<Long, CardInfo> cards) {
+        if (arenaId < 0) return null;
+        if (state.getPlayers().containsKey((int) arenaId)) {
+            return new ObjectReference(
+                    -1, arenaId, -1, playerName((int) arenaId),
+                    (int) arenaId, playerName((int) arenaId));
+        }
+
+        GameObjectState object = findObjectIncludingAliases(arenaId);
+        if (object == null) return new ObjectReference(
+                -1, arenaId, -1, "object " + arenaId, null, null);
+        long logicalId = object.getLogicalObjectId() > 0
+                ? object.getLogicalObjectId()
+                : objectIdentityTracker.logicalIdOf(arenaId);
+        return new ObjectReference(
+                logicalId,
+                arenaId,
+                object.getGrpId(),
+                objectDisplayName(object, cards),
+                null,
+                null);
+    }
+
+    private String referenceDisplayName(ObjectReference reference) {
+        return reference.isPlayer()
+                ? reference.playerName()
+                : reference.name();
+    }
+
+    private boolean containsReference(List<ObjectReference> references,
+                                      ObjectReference candidate) {
+        return references.stream().anyMatch(existing -> sameReference(existing, candidate));
+    }
+
+    private boolean sameReference(ObjectReference left, ObjectReference right) {
+        if (left.isPlayer() || right.isPlayer()) {
+            return left.playerSeat() != null
+                    && left.playerSeat().equals(right.playerSeat());
+        }
+        if (left.logicalObjectId() > 0 && right.logicalObjectId() > 0) {
+            return left.logicalObjectId() == right.logicalObjectId();
+        }
+        return left.arenaInstanceId() == right.arenaInstanceId();
+    }
+
+    private void addReference(GameEvent event, ObjectReference reference) {
+        if (!containsReference(event.getObjects(), reference)) {
+            event.getObjects().add(reference);
+        }
+    }
+
+    private GameEvent objectEvent(LogMessageInterface source,
+                                  String text,
+                                  GameObjectState... objects) {
+        GameEvent event = event(source, text);
+        for (GameObjectState object : objects) {
+            if (object == null) continue;
+            ObjectReference reference = objectReference(object.getInstanceId(), knownCards);
+            if (reference != null) addReference(event, reference);
+        }
+        return event;
     }
 
     private void projectGameState(LogMessageInterface message, JsonObject incoming,
@@ -619,7 +799,7 @@ public final class GameEventProjector {
         if (previous == null) emitNewVisibleObject(source, current, cards, result);
         else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
                 && current.getSemanticZoneId() != previousSemanticZone) {
-            result.add(event(source, describeTransition(previous, current, cards, "")));
+            result.add(objectEvent(source, describeTransition(previous, current, cards, ""), current));
         }
     }
 
@@ -661,7 +841,7 @@ public final class GameEventProjector {
                     }
                 }
 
-                result.add(event(source, describeTransition(before, object, cards, category)));
+                result.add(objectEvent(source, describeTransition(before, object, cards, category), object));
             }
         }
     }
@@ -707,10 +887,20 @@ public final class GameEventProjector {
                         : objectDisplayName(abilityOwner, cards);
             }
 
-            String targets = entry.getValue().stream().distinct()
+            List<Long> targetIds = entry.getValue().stream().distinct().toList();
+            String targets = targetIds.stream()
                     .map(id -> targetDisplayName(id, cards))
                     .collect(Collectors.joining(", "));
-            if (!targets.isBlank()) result.add(event(source, sourceName + " targets " + targets));
+            if (!targets.isBlank()) {
+                GameEvent targetEvent = event(source, sourceName + " targets " + targets);
+                ObjectReference sourceReference = objectReference(sourceId, cards);
+                if (sourceReference != null) addReference(targetEvent, sourceReference);
+                for (long targetId : targetIds) {
+                    ObjectReference targetReference = objectReference(targetId, cards);
+                    if (targetReference != null) addReference(targetEvent, targetReference);
+                }
+                result.add(targetEvent);
+            }
         }
     }
 
@@ -726,14 +916,14 @@ public final class GameEventProjector {
                 String verb = abilityVerb(current);
                 result.add(abilityEvent(source, actor + " " + verb + " " + name, current));
             } else {
-                result.add(event(source, actor + " casts " + name));
+                result.add(objectEvent(source, actor + " casts " + name, current));
             }
         } else if (!isAbility(current)) {
             if (isLand(current, cards)) {
-                result.add(event(source, actor + " plays " + name + tappedSuffix(current)));
+                result.add(objectEvent(source, actor + " plays " + name + tappedSuffix(current), current));
             } else {
-                result.add(event(source, name + " entered the battlefield"
-                        + tappedSuffix(current) + " under " + actor + "'s control"));
+                result.add(objectEvent(source, name + " entered the battlefield"
+                        + tappedSuffix(current) + " under " + actor + "'s control", current));
             }
         }
     }

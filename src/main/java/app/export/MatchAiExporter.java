@@ -1,7 +1,11 @@
 package app.export;
 
 import app.model.card.CardInfo;
+import app.model.event.AbilityReference;
+import app.model.event.DecisionObservation;
 import app.model.event.GameEvent;
+import app.model.event.GameEventType;
+import app.model.event.ObjectReference;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.game.CounterState;
 import app.model.game.GameResult;
@@ -36,13 +40,13 @@ public final class MatchAiExporter {
         games.sort(Comparator.comparingInt(GameModel::getGameNumber));
 
         StringBuilder out = new StringBuilder(8192);
-        out.append("MTGA_MATCH_V2\n");
+        out.append("MTGA_MATCH_V3\n");
         out.append("schema=G game;H opening;T turn;P phase;S# state;"
-                + "E# event;A# ability;L# life;D# pw-damage;"
-                + "GR# result;MS# score;MR# match-result;? unknown\n");
-        out.append("ids=E/A/L/D/GR/MS/MR are stable within this export;"
-                + " battlefield objects use name#logicalObjectId;"
-                + " card identities use name@arenaId when known\n");
+                + "E# event;A# ability;C# decision;L# life;D# pw-damage;"
+                + "GR# result;MS# score;MR# match-result;obj Name#logical@grp;? unknown\n");
+        out.append("ids=S/E/A/C/L/D/GR/MS/MR are stable within this export;"
+                + " object references preserve logical identity when observed;"
+                + " decisions list only Arena-observed legal alternatives\n");
         out.append("match=").append(value(match.matchState().getMatchId(), "?")).append('\n');
         appendPlayers(out, match.matchState().playerSnapshot());
 
@@ -102,6 +106,10 @@ public final class MatchAiExporter {
                 appendTurnSnapshot(out, eventId, event.getTurnSnapshot());
                 continue;
             }
+            if (event.getDecision() != null) {
+                appendDecision(out, eventId, event.getDecision());
+                continue;
+            }
 
             if (event.getGameResult() != null) {
                 appendGameResult(out, eventId, event.getGameResult());
@@ -148,6 +156,7 @@ public final class MatchAiExporter {
             } else if (hasText(event.getText())) {
                 out.append("E#").append(eventId)
                         .append(" text=").append(compact(event.getText()));
+                appendObjectReferences(out, event.getObjects());
                 appendCardIdentities(out, event.getCards());
                 out.append('\n');
             }
@@ -241,8 +250,24 @@ public final class MatchAiExporter {
         out.append('\n');
     }
 
+    private void appendDecision(StringBuilder out,
+                                int eventId,
+                                DecisionObservation decision) {
+        out.append("C#").append(eventId)
+                .append(" kind=").append(decision.kind())
+                .append(" confidence=").append(decision.confidence());
+        if (decision.source() != null) {
+            out.append(" source=").append(reference(decision.source()));
+        }
+        out.append(" chosen=").append(referenceList(decision.selected()))
+                .append(" alternatives=").append(referenceList(decision.alternatives()))
+                .append(" min=").append(decision.minimumSelections())
+                .append(" max=").append(decision.maximumSelections())
+                .append('\n');
+    }
+
     private void appendAbility(StringBuilder out, int eventId, GameEvent event) {
-        app.model.event.AbilityReference ability = event.getAbility();
+        AbilityReference ability = event.getAbility();
         out.append("A#").append(eventId)
                 .append(" kind=").append(compact(value(ability.getKind(), "unknown")))
                 .append(" source=").append(compact(value(ability.getSourceName(), "?")));
@@ -252,11 +277,40 @@ public final class MatchAiExporter {
         if (ability.getAbilityGrpId() > 0) {
             out.append(" abilityGrp=").append(ability.getAbilityGrpId());
         }
+        appendObjectReferences(out, event.getObjects());
         if (hasText(event.getText())) {
             out.append(" text=").append(compact(event.getText()));
         }
         appendCardIdentities(out, event.getCards());
         out.append('\n');
+    }
+
+    private void appendObjectReferences(StringBuilder out,
+                                        List<ObjectReference> references) {
+        if (references == null || references.isEmpty()) return;
+        out.append(" objects=").append(referenceList(references));
+    }
+
+    private String referenceList(List<ObjectReference> references) {
+        if (references == null || references.isEmpty()) return "-";
+        StringJoiner result = new StringJoiner("|");
+        references.forEach(reference -> result.add(reference(reference)));
+        return result.toString();
+    }
+
+    private String reference(ObjectReference reference) {
+        if (reference == null) return "?";
+        if (reference.isPlayer()) {
+            return compact(value(reference.playerName(), "seat" + reference.playerSeat()))
+                    + "$" + reference.playerSeat();
+        }
+        StringBuilder out = new StringBuilder(compact(value(reference.name(), "?")));
+        if (reference.logicalObjectId() > 0) out.append('#').append(reference.logicalObjectId());
+        if (reference.arenaGrpId() > 0) out.append('@').append(reference.arenaGrpId());
+        else if (reference.arenaInstanceId() > 0 && reference.logicalObjectId() <= 0) {
+            out.append('!').append(reference.arenaInstanceId());
+        }
+        return out.toString();
     }
 
     private void appendCardIdentities(StringBuilder out, List<CardInfo> cards) {

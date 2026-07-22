@@ -2,7 +2,10 @@ package app.export;
 
 import app.model.card.CardInfo;
 import app.model.event.AbilityReference;
+import app.model.event.DecisionObservation;
 import app.model.event.GameEvent;
+import app.model.event.GameEventType;
+import app.model.event.ObjectReference;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.game.GameResult;
 import app.model.game.PlayerTurnSnapshot;
@@ -62,7 +65,7 @@ class MatchAiExporterTest {
 
         String report = new MatchAiExporter().export(match);
 
-        assertTrue(report.startsWith("MTGA_MATCH_V2\n"));
+        assertTrue(report.startsWith("MTGA_MATCH_V3\n"));
         assertTrue(report.contains("players=1:Me|2:Opponent"));
         assertTrue(report.indexOf("\nG1") < report.indexOf("\nG2"));
         assertTrue(report.contains("S#1 Me life=18 poison=0 hand=5 board=Bear#10[2/2,tap]"));
@@ -126,6 +129,39 @@ class MatchAiExporterTest {
         assertTrue(report.contains(
                 "A#1 kind=triggered source=The Serpent Society@12345 abilityGrp=67890"));
         assertTrue(report.contains("cards=The Serpent Society@12345"));
+    }
+
+
+    @Test
+    void exportsExplicitTargetDecisionWithChosenAndAlternativeObjects() {
+        MatchSession match = new MatchSession("match-decision", new AbilityNameStore());
+        GameModel game = match.game(1).model();
+
+        ObjectReference source = new ObjectReference(
+                40, 140, 9001, "Bushwhack", null, null);
+        ObjectReference chosen = new ObjectReference(
+                41, 141, 9002, "Engine Rat", null, null);
+        ObjectReference alternative = new ObjectReference(
+                42, 142, 9003, "Tinybones", null, null);
+
+        GameEvent decisionEvent = new GameEvent();
+        decisionEvent.setType(GameEventType.DECISION);
+        decisionEvent.setDecision(new DecisionObservation(
+                DecisionObservation.Kind.TARGET,
+                source,
+                List.of(chosen),
+                List.of(alternative),
+                1,
+                1,
+                DecisionObservation.Confidence.EXPLICIT));
+        game.addEvents(List.of(decisionEvent));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains(
+                "C#1 kind=TARGET confidence=EXPLICIT source=Bushwhack#40@9001"
+                        + " chosen=Engine Rat#41@9002"
+                        + " alternatives=Tinybones#42@9003 min=1 max=1"));
     }
 
     private CardInfo card(String name) {

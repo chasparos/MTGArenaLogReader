@@ -38,6 +38,9 @@ public class GameEvent {
     private String step;
     private String text;
     private final List<CardInfo> cards = new ArrayList<>();
+    /** Stable logical references retained for machine-oriented export. */
+    private final List<ObjectReference> objects = new ArrayList<>();
+    private DecisionObservation decision;
     private AbilityReference ability;
     private final List<PlayerTurnSnapshot> turnSnapshot = new ArrayList<>();
     private final List<CombatAttackAssignment> attackers = new ArrayList<>();
