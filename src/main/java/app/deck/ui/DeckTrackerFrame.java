@@ -154,13 +154,42 @@ public final class DeckTrackerFrame extends JFrame {
                 : deck.name();
         title.setText(deckName + " — Game " + state.gameNumber());
         totals.setText("Library " + state.libraryCount()
+                + "   Hand " + state.handCount()
                 + "   Graveyard " + state.graveyardCount()
                 + (state.exileCount() > 0 ? "   Exile " + state.exileCount() : ""));
 
         tabs.addTab("Main deck (" + deck.mainDeckSize() + ")",
                 deckPanel(deck.mainDeck(), state, true));
+        tabs.addTab("Hand (" + state.handCount() + ")", handPanel(state));
         tabs.addTab("Sideboard (" + quantity(deck.sideboard()) + ")",
                 deckPanel(deck.sideboard(), state, false));
+    }
+
+    private JComponent handPanel(DeckGameState state) {
+        if (state.handCards().isEmpty()) {
+            return messagePanel("No visible cards are currently in the local player's hand.");
+        }
+        return deckPanel(handEntries(state), state, false);
+    }
+
+    private List<DeckEntry> handEntries(DeckGameState state) {
+        List<DeckEntry> result = new ArrayList<>();
+        for (var entry : state.handCards().entrySet()) {
+            result.add(new DeckEntry(entry.getKey(), entry.getValue(),
+                    cardForArenaId(state.deck(), entry.getKey())));
+        }
+        return result;
+    }
+
+    private CardInfo cardForArenaId(CachedDeck deck, long arenaId) {
+        return java.util.stream.Stream.concat(
+                        deck.mainDeck().stream(),
+                        deck.sideboard().stream())
+                .filter(entry -> entry.arenaId() == arenaId)
+                .map(DeckEntry::card)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     private JComponent deckPanel(List<DeckEntry> entries, DeckGameState state, boolean showTracking) {

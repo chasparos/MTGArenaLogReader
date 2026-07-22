@@ -49,7 +49,7 @@ final class OpeningHandTracker {
         List<Long> previous = state.getOpeningHandGrpIds().get(bestCandidate.getKey());
         if (previous != null
                 && !previous.isEmpty()
-                && previous.size() != bestCandidate.getValue().size()) {
+                && !sameCards(previous, bestCandidate.getValue())) {
             state.setMulliganCount(state.getMulliganCount() + 1);
         }
 
@@ -78,6 +78,14 @@ final class OpeningHandTracker {
                     .add(object.getGrpId());
         }
         return visible;
+    }
+
+    private boolean sameCards(List<Long> left, List<Long> right) {
+        List<Long> sortedLeft = new ArrayList<>(left);
+        List<Long> sortedRight = new ArrayList<>(right);
+        sortedLeft.sort(Long::compareTo);
+        sortedRight.sort(Long::compareTo);
+        return sortedLeft.equals(sortedRight);
     }
 
     private boolean isHandZone(GameState state, int zoneId) {

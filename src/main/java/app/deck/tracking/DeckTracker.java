@@ -308,6 +308,7 @@ public final class DeckTracker {
 
     private DeckGameState snapshot() {
         int library = 0, graveyard = 0, exile = 0;
+        Map<Long,Integer> hand = new HashMap<>();
         Map<Long,Integer> outside = new HashMap<>();
 
         for (Map.Entry<Integer,Integer> e : objectZones.entrySet()) {
@@ -319,7 +320,10 @@ public final class DeckTracker {
                 if (type.contains("Graveyard")) graveyard++;
                 if (type.contains("Exile")) exile++;
                 Long card = objectCards.get(e.getKey());
-                if (card != null && card > 0) outside.merge(card, 1, Integer::sum);
+                if (card != null && card > 0) {
+                    outside.merge(card, 1, Integer::sum);
+                    if (type.contains("Hand")) hand.merge(card, 1, Integer::sum);
+                }
             }
         }
 
@@ -329,7 +333,7 @@ public final class DeckTracker {
         }
 
         return new DeckGameState(currentMatchId, currentGameNumber, currentTurnNumber, currentDeck,
-                library, graveyard, exile, outside, complete);
+                library, graveyard, exile, hand, outside, complete);
     }
 
     private void enrichCurrentDeckAsync() {

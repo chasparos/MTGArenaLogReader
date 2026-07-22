@@ -20,12 +20,20 @@ public record DeckGameState(
         int libraryCount,
         int graveyardCount,
         int exileCount,
+        Map<Long,Integer> handCards,
         Map<Long,Integer> knownOutsideLibrary,
         boolean complete
 ) {
     public DeckGameState {
+        handCards = handCards == null
+                ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(handCards));
         knownOutsideLibrary = knownOutsideLibrary == null
                 ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(knownOutsideLibrary));
+    }
+
+
+    public int handCount() {
+        return handCards.values().stream().mapToInt(Integer::intValue).sum();
     }
 
     public int remainingCopies(long arenaId, int originalQuantity) {

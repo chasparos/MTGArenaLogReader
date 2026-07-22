@@ -72,6 +72,7 @@ public final class GameEventProjector {
     private final Map<Long, PendingCast> pendingCasts = new LinkedHashMap<>();
     private final AbilityNameStore abilityNames;
     private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
+    private boolean openingHandEventEmitted;
 
     private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
 
@@ -257,6 +258,7 @@ public final class GameEventProjector {
         String incomingMatchId = stringAt(config, "matchId");
         if (!incomingMatchId.isBlank() && !incomingMatchId.equals(state.getMatchId())) {
             state.reset(incomingMatchId);
+            openingHandEventEmitted = false;
             historicalObjectNames.clear();
             observedCardsByGrpId.clear();
             emittedEvents.clear();
@@ -325,6 +327,7 @@ public final class GameEventProjector {
         projectTargets(message, persistentAnnotations, cards, result);
         reorderLandPlayBeforeOwnAbilities(result, messageStartIndex);
         openingHandTracker.observe(state, knownCards);
+        projectOpeningHand(message, result);
         boolean turnChanged = state.getTurnNumber() != null && state.getTurnNumber() != previousTurn;
         if (turnChanged && state.getLastSnapshotTurn() != state.getTurnNumber()) {
             pendingTurnSnapshot = state.getTurnNumber();
@@ -1072,6 +1075,32 @@ public final class GameEventProjector {
     private Integer nullableInt(JsonObject object, String key) {
         JsonElement value = object.get(key);
         return value != null && value.isJsonPrimitive() ? value.getAsInt() : null;
+    }
+
+    private void projectOpeningHand(LogMessageInterface source, List<GameEvent> result) {
+        if (openingHandEventEmitted || !state.isOpeningHandFinalized()) {
+            return;
+        }
+        List<CardInfo> cards = openingHand();
+        if (cards.isEmpty()) {
+            return;
+        }
+
+        String player = openingHandPlayer();
+        int mulligans = state.getMulliganCount();
+        String cardNames = cards.stream()
+                .map(CardInfo::getName)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.joining(", "));
+        String mulliganText = mulligans == 0
+                ? "keeps the opening hand"
+                : "keeps after " + mulligans + " mulligan" + (mulligans == 1 ? "" : "s");
+        GameEvent opening = event(source, player + " " + mulliganText + ": " + cardNames);
+        opening.setType(GameEventType.OPENING_HAND);
+        opening.getCards().clear();
+        opening.getCards().addAll(cards);
+        result.add(opening);
+        openingHandEventEmitted = true;
     }
 
     private void updateTurnContext(JsonObject turnInfo) {

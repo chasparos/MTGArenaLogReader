@@ -52,6 +52,23 @@ final class OpeningHandTrackerTest {
     }
 
     @Test
+    void recordsSameSizedReplacementHandAsMulligan() {
+        GameState state = stateWithHandZone();
+        Map<Long, CardInfo> cards = knownCards(101, 102, 103, 104);
+        addHandCard(state, 1, 101, 1001);
+        addHandCard(state, 1, 102, 1002);
+        tracker.observe(state, cards);
+
+        state.getObjects().clear();
+        addHandCard(state, 1, 103, 1003);
+        addHandCard(state, 1, 104, 1004);
+        tracker.observe(state, cards);
+
+        assertEquals(1, state.getMulliganCount());
+        assertEquals(List.of(103L, 104L), state.getOpeningHandGrpIds().get(1));
+    }
+
+    @Test
     void finalizesAtStartOfFirstTurn() {
         GameState state = stateWithHandZone();
         state.setTurnNumber(1);
