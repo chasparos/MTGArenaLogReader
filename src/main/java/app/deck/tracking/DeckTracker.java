@@ -13,6 +13,8 @@ import app.model.log.LogMessageInterface;
 import app.enrichment.CardCache;
 import app.enrichment.ScryfallClient;
 import com.google.gson.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -26,6 +28,7 @@ import java.util.concurrent.ExecutorService;
  * <p><strong>Architectural role:</strong> This type belongs to the live deck-tracking subsystem, which consumes observations independently of replay reconstruction.</p>
  */
 public final class DeckTracker {
+    private static final Logger LOG = LoggerFactory.getLogger(DeckTracker.class);
     private final DeckCache deckCache;
     private final DeckLogParser deckParser;
     private final DeckTrackerListener listener;
@@ -43,6 +46,7 @@ public final class DeckTracker {
     private CachedDeck pendingGameDeck;
     private boolean started;
     private boolean complete;
+    private final List<String> matchLog = new ArrayList<>();
 
     private final Map<Integer,String> zoneTypes = new HashMap<>();
     private final Map<Integer,Integer> zoneOwners = new HashMap<>();
@@ -60,6 +64,16 @@ public final class DeckTracker {
         this.listener = listener;
     }
 
+    public synchronized String matchLogText() {
+        return matchLog.isEmpty()
+                ? "No deck-level match messages have been observed."
+                : String.join(System.lineSeparator(), matchLog);
+    }
+
+    public synchronized DeckGameState currentState() {
+        return currentMatchId == null || currentDeck == null ? null : snapshot();
+    }
+
     public void accept(LogMessageInterface message) {
         String raw = message.getRawText();
         for (CachedDeck deck : deckParser.parseDecks(raw)) {
@@ -68,6 +82,8 @@ public final class DeckTracker {
                     && matchDeckState.selectedDeck() != null
                     && Objects.equals(matchDeckState.selectedDeck().deckId(), deck.deckId())) {
                 pendingGameDeck = deck;
+                LOG.info("Observed complete deck snapshot between games: match={}, deck={}, main={}, sideboard={}",
+                        currentMatchId, deck.deckId(), deck.mainDeckSize(), deck.sideboard().size());
             } else {
                 selectedDeckId = deck.deckId();
             }
@@ -78,6 +94,11 @@ public final class DeckTracker {
             for (CachedDeck submitted :
                     deckParser.parseSubmittedGameDecks(raw, matchDeckState.selectedDeck())) {
                 pendingGameDeck = submitted;
+                LOG.info("Observed submitted game deck: match={}, nextGame={}, main={}, sideboard={}",
+                        currentMatchId, currentGameNumber + 1, submitted.mainDeckSize(), submitted.sideboard().size());
+                recordMatchMessage("Submitted deck for Game " + (currentGameNumber + 1)
+                        + ": " + submitted.mainDeckSize() + " main, "
+                        + submitted.sideboard().stream().mapToInt(DeckEntry::quantity).sum() + " sideboard");
             }
         }
 
@@ -95,6 +116,8 @@ public final class DeckTracker {
 
         if (!matchId.equals(currentMatchId)) {
             currentMatchId = matchId;
+            matchLog.clear();
+            recordMatchMessage("Match " + matchId + " started");
             currentGameNumber = 1;
             complete = false;
             started = false;
@@ -120,6 +143,8 @@ public final class DeckTracker {
                     .or(() -> deckCache.mostRecentForEvent(!finalEventId.isBlank() ? finalEventId : selectedEventName))
                     .orElse(null);
             matchDeckState = new MatchDeckState(matchId, selectedDeck);
+            LOG.info("Started deck tracking for match {} with selected deck {}", matchId,
+                    selectedDeck == null ? "<unknown>" : selectedDeck.deckId());
             currentDeck = matchDeckState.deckForGame(currentGameNumber);
             enrichCurrentDeckAsync();
         }
@@ -151,8 +176,20 @@ public final class DeckTracker {
                             matchDeckState.observeDeckForGame(gameNo, pendingGameDeck);
                     currentDeck = matchDeckState.deckForGame(gameNo);
                     pendingGameDeck = null;
-                    change.ifPresent(listener::sideboardChanged);
+                    change.ifPresent(sideboardChange -> {
+                        LOG.info("Reconstructed sideboard change for match {} game {}: {} in, {} out ({})",
+                                sideboardChange.matchId(), sideboardChange.gameNumber(),
+                                sideboardChange.broughtIn().stream().mapToInt(DeckEntry::quantity).sum(),
+                                sideboardChange.removed().stream().mapToInt(DeckEntry::quantity).sum(),
+                                sideboardChange.confidence());
+                        recordMatchMessage("Sideboard change for Game " + sideboardChange.gameNumber()
+                                + ": " + formatEntries(sideboardChange.broughtIn()) + " in; "
+                                + formatEntries(sideboardChange.removed()) + " out ["
+                                + sideboardChange.confidence() + "]");
+                        listener.sideboardChanged(sideboardChange);
+                    });
                 } else {
+                    LOG.info("Activating game {} deck without a submitted configuration: match={}", gameNo, currentMatchId);
                     currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
                 }
                 complete = false;
@@ -280,6 +317,18 @@ public final class DeckTracker {
                 if (started && !complete) listener.gameUpdated(snapshot());
             }
         });
+    }
+
+    private synchronized void recordMatchMessage(String message) {
+        matchLog.add(message);
+    }
+
+    private String formatEntries(List<DeckEntry> entries) {
+        if (entries == null || entries.isEmpty()) return "none";
+        return entries.stream()
+                .map(entry -> entry.quantity() + "x " + entry.displayName())
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("none");
     }
 
     private void clearGameObjects() {

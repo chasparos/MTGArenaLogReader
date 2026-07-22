@@ -4,6 +4,8 @@ import app.model.game.GameKey;
 import app.model.session.GameModel;
 import app.model.session.GameSession;
 import app.model.session.MatchSession;
+import app.model.event.GameEvent;
+import app.model.event.GameEventType;
 import app.model.log.LogMessageInterface;
 import app.projection.AbilityNameStore;
 import app.routing.GameMessageRouter;
@@ -15,6 +17,11 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Comparator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Owns one independent GameView per Arena game. Records are routed in their
@@ -22,6 +29,7 @@ import java.util.Map;
  * <p><strong>Architectural role:</strong> This type belongs to the Swing presentation boundary and consumes structured models and events without owning game reconstruction.</p>
  */
 public final class GameSessionsPanel extends JPanel {
+    private static final Logger LOG = LoggerFactory.getLogger(GameSessionsPanel.class);
     private final JTabbedPane gameTabs = new JTabbedPane();
     private final Map<GameKey, GameView> views = new LinkedHashMap<>();
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
@@ -73,10 +81,36 @@ public final class GameSessionsPanel extends JPanel {
         status.setText("No games loaded");
     }
 
+    public String matchLogText() {
+        List<GameEvent> events = new ArrayList<>();
+        views.values().forEach(view -> view.getModel().snapshot().stream()
+                .filter(event -> isMatchEvent(event.getType()))
+                .forEach(events::add));
+        events.sort(Comparator.comparingLong(GameEvent::getSequence));
+        if (events.isEmpty()) return "No match-level events have been projected.";
+        StringBuilder out = new StringBuilder();
+        for (GameEvent event : events) {
+            out.append('#').append(event.getSequence()).append("  ")
+                    .append(event.getType()).append("  ")
+                    .append(event.getText() == null ? "" : event.getText())
+                    .append(System.lineSeparator());
+        }
+        return out.toString();
+    }
+
+    private boolean isMatchEvent(GameEventType type) {
+        return type == GameEventType.MATCH_STARTED
+                || type == GameEventType.GAME_STARTED
+                || type == GameEventType.GAME_RESULT
+                || type == GameEventType.MATCH_SCORE
+                || type == GameEventType.MATCH_RESULT;
+    }
+
     private GameView createGameView(GameKey key) {
         MatchSession match = matches.computeIfAbsent(
                 key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
         GameSession game = match.game(key.getGameNumber());
+        LOG.info("Created replay session for match {} game {}", key.getMatchId(), key.getGameNumber());
 
         GameView view = new GameView(game, abilityNames);
         JScrollPane scrollPane = new JScrollPane(view);

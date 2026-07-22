@@ -1,6 +1,7 @@
 package app.replay;
 
 import app.deck.tracking.DeckTracker;
+import app.deck.ui.GameDeckFrame;
 import app.model.InformationBundle;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
@@ -33,6 +34,7 @@ public final class MainFrame extends JFrame {
     private final JLabel status = new JLabel("Running");
     private final Consumer<Void> closeAction;
     private final DeckTracker deckTracker;
+    private final GameDeckFrame gameDeckFrame = new GameDeckFrame();
 
     public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker, Consumer<Void> closeAction) {
         super("MTG Arena Parallel Log");
@@ -51,13 +53,23 @@ public final class MainFrame extends JFrame {
         textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
         textArea.setLineWrap(false);
 
+        JButton showGameDeck = new JButton("Show game deck");
+        showGameDeck.addActionListener(event -> gameDeckFrame.showState(deckTracker.currentState()));
+
+        JButton showMatchLog = new JButton("Show match log");
+        showMatchLog.addActionListener(event -> showMatchLog());
+
         JButton clearRaw = new JButton("Clear raw log");
         clearRaw.addActionListener(event -> textArea.setText(""));
 
         JPanel footer = new JPanel(new BorderLayout());
         footer.setBorder(new EmptyBorder(5, 8, 8, 8));
         footer.add(status, BorderLayout.WEST);
-        footer.add(clearRaw, BorderLayout.EAST);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        actions.add(showGameDeck);
+        actions.add(showMatchLog);
+        actions.add(clearRaw);
+        footer.add(actions, BorderLayout.EAST);
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("Games", gamesPanel);
@@ -88,6 +100,22 @@ public final class MainFrame extends JFrame {
                     SwingUtilities.invokeLater(() -> appendEnrichment(message, model, error)));
         }
         status.setText("Queued UI messages: " + uiQueue.size());
+    }
+
+    private void showMatchLog() {
+        String text = gamesPanel.matchLogText()
+                + System.lineSeparator()
+                + System.lineSeparator()
+                + "Deck tracking"
+                + System.lineSeparator()
+                + deckTracker.matchLogText();
+        JTextArea area = new JTextArea(text);
+        area.setEditable(false);
+        area.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+        area.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(760, 520));
+        JOptionPane.showMessageDialog(this, scroll, "Match Log", JOptionPane.PLAIN_MESSAGE);
     }
 
     private void appendBase(LogMessageInterface message) {

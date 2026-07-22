@@ -17,6 +17,7 @@
         <h2.version>2.3.232</h2.version>
         <jsvg.version>2.1.0</jsvg.version>
         <junit.version>5.13.4</junit.version>
+        <slf4j.version>2.0.17</slf4j.version>
         <maven.surefire.version>3.5.3</maven.surefire.version>
     </properties>
     <dependencies>
@@ -45,6 +46,16 @@
             <groupId>com.github.weisj</groupId>
             <artifactId>jsvg</artifactId>
             <version>${jsvg.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
