@@ -65,13 +65,13 @@ class MatchAiExporterTest {
 
         String report = new MatchAiExporter().export(match);
 
-        assertTrue(report.startsWith("MTGA_MATCH_V3\n"));
-        assertTrue(report.contains("players=1:Me|2:Opponent"));
+        assertTrue(report.startsWith("MTGA_MATCH_V4\n"));
+        assertTrue(report.contains("PLAYERS p1=Me|p2=Opponent"));
         assertTrue(report.indexOf("\nG1") < report.indexOf("\nG2"));
-        assertTrue(report.contains("S#1 Me life=18 poison=0 hand=5 board=Bear#10[2/2,tap]"));
-        assertTrue(report.contains("H player=Me mull=1 cards=Island|Counterspell"));
+        assertTrue(report.contains("S#1 p1 life=18 poison=0 hand=5 board=c1#10[2/2,tap]"));
+        assertTrue(report.contains("H player=p1 mull=1 cards=c2|c3"));
         assertTrue(report.contains("P Main1"));
-        assertTrue(report.contains("E#2 text=Opponent plays Mountain"));
+        assertTrue(report.contains("E#2 text=p2 plays Mountain"));
         assertFalse(report.contains("large raw record"));
     }
 
@@ -98,7 +98,7 @@ class MatchAiExporterTest {
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "GR#1 winner=Me reason=DAMAGE confidence=CORRELATED card=Lightning Bolt"));
+                "GR#1 winner=p1 reason=DAMAGE confidence=CORRELATED card=c1"));
         assertTrue(report.contains("MS#2 1-0"));
         assertFalse(report.contains("Me wins by damage"));
     }
@@ -127,8 +127,8 @@ class MatchAiExporterTest {
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "A#1 kind=triggered source=The Serpent Society@12345 abilityGrp=67890"));
-        assertTrue(report.contains("cards=The Serpent Society@12345"));
+                "A#1 kind=triggered source=c1@12345 abilityGrp=67890"));
+        assertTrue(report.contains("cards=c1@12345"));
     }
 
 
@@ -159,9 +159,9 @@ class MatchAiExporterTest {
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "C#1 kind=TARGET confidence=EXPLICIT source=Bushwhack#40@9001"
-                        + " chosen=Engine Rat#41@9002"
-                        + " alternatives=Tinybones#42@9003 min=1 max=1"));
+                "C#1 kind=TARGET confidence=EXPLICIT source=c1#40@9001"
+                        + " chosen=c2#41@9002"
+                        + " alternatives=c3#42@9003 min=1 max=1"));
     }
 
     private CardInfo card(String name) {

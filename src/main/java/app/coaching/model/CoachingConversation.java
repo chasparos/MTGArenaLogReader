@@ -13,9 +13,11 @@ public record CoachingConversation(
         String reconstruction,
         Instant createdAt,
         Instant updatedAt,
+        List<CoachingGame> games,
         List<CoachingMessage> messages) {
 
     public CoachingConversation {
+        games = games == null ? List.of() : List.copyOf(games);
         messages = messages == null ? List.of() : List.copyOf(messages);
     }
 }

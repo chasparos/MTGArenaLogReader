@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringJoiner;
+import java.util.LinkedHashMap;
 
 /**
  * Produces a compact, deterministic match report for language-model review.
@@ -54,7 +55,105 @@ public final class MatchAiExporter {
         for (GameModel game : games) {
             appendGame(out, game, nextEventId);
         }
+        return compactReport(match, out.toString());
+    }
+
+    private String compactReport(MatchSession match, String verbose) {
+        String[] lines = verbose.split("\\R", -1);
+        StringBuilder body = new StringBuilder(verbose.length());
+        for (int i = 3; i < lines.length; i++) {
+            if (lines[i].startsWith("players=")) continue;
+            body.append(lines[i]).append('\n');
+        }
+
+        LinkedHashMap<String, String> replacements = new LinkedHashMap<>();
+        match.matchState().playerSnapshot().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> replacements.put(entry.getValue(), "p" + entry.getKey()));
+
+        LinkedHashMap<String, Long> cards = cardDictionary(match);
+        int alias = 1;
+        for (String name : cards.keySet()) replacements.putIfAbsent(name, "c" + alias++);
+
+        List<Map.Entry<String, String>> ordered = replacements.entrySet().stream()
+                .sorted((left, right) -> Integer.compare(right.getKey().length(), left.getKey().length()))
+                .toList();
+        String compactBody = body.toString();
+        for (Map.Entry<String, String> replacement : ordered) {
+            compactBody = compactBody.replace(replacement.getKey(), replacement.getValue());
+        }
+        compactBody = compactZones(compactBody);
+
+        StringBuilder out = new StringBuilder(compactBody.length() + 1024);
+        out.append("MTGA_MATCH_V4\n");
+        out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision L=life D=permanent-damage GR=result MS=score MR=match-result\n");
+        out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
+        out.append("match=").append(value(match.matchState().getMatchId(), "?")).append('\n');
+        if (!match.matchState().playerSnapshot().isEmpty()) {
+            StringJoiner players = new StringJoiner("|");
+            match.matchState().playerSnapshot().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> players.add("p" + entry.getKey() + "=" + compact(entry.getValue())));
+            out.append("PLAYERS ").append(players).append('\n');
+        }
+        if (!cards.isEmpty()) {
+            int number = 1;
+            for (Map.Entry<String, Long> card : cards.entrySet()) {
+                out.append("CARD c").append(number++).append('=').append(compact(card.getKey()));
+                if (card.getValue() != null && card.getValue() > 0) out.append('@').append(card.getValue());
+                out.append('\n');
+            }
+        }
+        out.append(compactBody);
         return out.toString();
+    }
+
+    private LinkedHashMap<String, Long> cardDictionary(MatchSession match) {
+        LinkedHashMap<String, Long> cards = new LinkedHashMap<>();
+        List<GameModel> games = new ArrayList<>(match.gameSnapshot());
+        games.sort(Comparator.comparingInt(GameModel::getGameNumber));
+        for (GameModel game : games) {
+            for (CardInfo card : game.openingHandSnapshot()) addCard(cards, card == null ? null : card.getName(), card == null ? null : card.getArenaId());
+            for (GameEvent event : game.snapshot()) {
+                for (CardInfo card : event.getCards()) addCard(cards, card == null ? null : card.getName(), card == null ? null : card.getArenaId());
+                for (ObjectReference reference : event.getObjects()) {
+                    addReferenceCard(cards, reference);
+                }
+                if (event.getDecision() != null) {
+                    addReferenceCard(cards, event.getDecision().source());
+                    event.getDecision().selected().forEach(reference -> addReferenceCard(cards, reference));
+                    event.getDecision().alternatives().forEach(reference -> addReferenceCard(cards, reference));
+                }
+                for (PlayerTurnSnapshot player : event.getTurnSnapshot()) {
+                    for (BoardPermanentSnapshot permanent : player.getBattlefield()) addCard(cards, permanent.getName(), null);
+                }
+                if (event.getGameResult() != null) addCard(cards, event.getGameResult().getFinishingCard(), null);
+            }
+        }
+        return cards;
+    }
+
+    private void addReferenceCard(LinkedHashMap<String, Long> cards, ObjectReference reference) {
+        if (reference != null && !reference.isPlayer() && reference.arenaGrpId() > 0) {
+            addCard(cards, reference.name(), reference.arenaGrpId());
+        }
+    }
+
+    private void addCard(LinkedHashMap<String, Long> cards, String name, Long arenaId) {
+        if (!hasText(name) || name.startsWith("Unknown ")) return;
+        cards.merge(name, arenaId == null ? 0L : arenaId, (known, observed) -> known > 0 ? known : observed);
+    }
+
+    private String compactZones(String text) {
+        return text.replace(" moved Library → Graveyard", " MOVE L>G")
+                .replace(" moved Library → Hand", " MOVE L>H")
+                .replace(" moved Hand → Stack", " MOVE H>S")
+                .replace(" moved Stack → Hand", " MOVE S>H")
+                .replace(" moved Stack → Graveyard", " MOVE S>G")
+                .replace(" moved Battlefield → Graveyard", " MOVE B>G")
+                .replace(" moved Graveyard → Hand", " MOVE G>H")
+                .replace(" moved Graveyard → Exile", " MOVE G>X")
+                .replace(" moved Battlefield → Exile", " MOVE B>X");
     }
 
     private void appendPlayers(StringBuilder out, Map<Integer, String> players) {

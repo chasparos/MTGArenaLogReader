@@ -4,6 +4,7 @@ import app.coaching.application.CoachingService;
 import app.coaching.model.CoachingConversation;
 import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingMessage;
+import app.coaching.model.CoachingGame;
 import app.model.session.MatchSession;
 
 import javax.swing.*;
@@ -32,6 +33,7 @@ public final class CoachingFrame extends JFrame {
             new JList<>(conversations);
     private final JTextArea transcript = textArea();
     private final JTextArea reconstruction = textArea();
+    private final JTabbedPane games = new JTabbedPane();
     private final JTextArea draft = new JTextArea(4, 40);
     private final JLabel status = new JLabel("No coaching match selected");
     private CoachingConversation selected;
@@ -66,7 +68,8 @@ public final class CoachingFrame extends JFrame {
 
         JTabbedPane details = new JTabbedPane();
         details.addTab("Conversation", conversationPanel());
-        details.addTab("Match reconstruction", new JScrollPane(reconstruction));
+        details.addTab("Games", games);
+        details.addTab("AI reconstruction", new JScrollPane(reconstruction));
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, browser, details);
         split.setResizeWeight(0.24);
@@ -128,17 +131,36 @@ public final class CoachingFrame extends JFrame {
             selected = null;
             transcript.setText("");
             reconstruction.setText("");
+            games.removeAll();
             return;
         }
 
         selected = service.conversation(summary.id());
         reconstruction.setText(selected.reconstruction());
         reconstruction.setCaretPosition(0);
+        showGames(selected.games());
         transcript.setText(formatTranscript(selected.messages()));
         transcript.setCaretPosition(transcript.getDocument().getLength());
         status.setText("Match " + shortMatchId(selected.matchId())
                 + " — " + selected.messages().size()
                 + (selected.messages().size() == 1 ? " message" : " messages"));
+    }
+
+
+    private void showGames(List<CoachingGame> persistedGames) {
+        games.removeAll();
+        if (persistedGames.isEmpty()) {
+            JTextArea empty = textArea();
+            empty.setText("No human-readable game reconstruction was persisted.");
+            games.addTab("No games", new JScrollPane(empty));
+            return;
+        }
+        for (CoachingGame game : persistedGames) {
+            JTextArea area = textArea();
+            area.setText(game.reconstruction());
+            area.setCaretPosition(0);
+            games.addTab("Game " + game.gameNumber(), new JScrollPane(area));
+        }
     }
 
     private String formatTranscript(List<CoachingMessage> messages) {

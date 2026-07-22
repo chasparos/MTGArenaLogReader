@@ -2,6 +2,7 @@ package app.coaching.persistence;
 
 import app.coaching.model.CoachingConversation;
 import app.coaching.model.CoachingConversationSummary;
+import app.coaching.model.CoachingGame;
 import app.coaching.model.CoachingMessage;
 
 import java.nio.file.Files;
@@ -37,7 +38,8 @@ public final class CoachingRepository implements AutoCloseable {
     public synchronized CoachingConversation saveReconstruction(
             String matchId,
             String reconstructionSchema,
-            String reconstruction) {
+            String reconstruction,
+            List<CoachingGame> games) {
         requireText(matchId, "matchId");
         requireText(reconstructionSchema, "reconstructionSchema");
         requireText(reconstruction, "reconstruction");
@@ -77,6 +79,7 @@ public final class CoachingRepository implements AutoCloseable {
                     }
                 }
             }
+            replaceGames(id, games);
             return find(id).orElseThrow();
         } catch (SQLException error) {
             throw new IllegalStateException("Could not persist match reconstruction " + matchId, error);
@@ -124,7 +127,7 @@ public final class CoachingRepository implements AutoCloseable {
             statement.setLong(1, id);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) return Optional.empty();
-                return Optional.of(readConversation(result, messages(id)));
+                return Optional.of(readConversation(result, games(id), messages(id)));
             }
         } catch (SQLException error) {
             throw new IllegalStateException("Could not read coaching conversation " + id, error);
@@ -156,6 +159,47 @@ public final class CoachingRepository implements AutoCloseable {
             return List.copyOf(conversations);
         } catch (SQLException error) {
             throw new IllegalStateException("Could not list coaching conversations", error);
+        }
+    }
+
+    private void replaceGames(long conversationId, List<CoachingGame> games) throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM coaching_game WHERE conversation_id = ?")) {
+            delete.setLong(1, conversationId);
+            delete.executeUpdate();
+        }
+        if (games == null || games.isEmpty()) return;
+        try (PreparedStatement insert = connection.prepareStatement("""
+                INSERT INTO coaching_game (conversation_id, game_number, reconstruction)
+                VALUES (?, ?, ?)
+                """)) {
+            for (CoachingGame game : games) {
+                insert.setLong(1, conversationId);
+                insert.setInt(2, game.gameNumber());
+                insert.setString(3, game.reconstruction());
+                insert.addBatch();
+            }
+            insert.executeBatch();
+        }
+    }
+
+    private List<CoachingGame> games(long conversationId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT game_number, reconstruction
+                  FROM coaching_game
+                 WHERE conversation_id = ?
+                 ORDER BY game_number
+                """)) {
+            statement.setLong(1, conversationId);
+            try (ResultSet result = statement.executeQuery()) {
+                List<CoachingGame> games = new ArrayList<>();
+                while (result.next()) {
+                    games.add(new CoachingGame(
+                            result.getInt("game_number"),
+                            result.getString("reconstruction")));
+                }
+                return List.copyOf(games);
+            }
         }
     }
 
@@ -200,7 +244,7 @@ public final class CoachingRepository implements AutoCloseable {
         }
     }
 
-    private CoachingConversation readConversation(ResultSet result, List<CoachingMessage> messages)
+    private CoachingConversation readConversation(ResultSet result, List<CoachingGame> games, List<CoachingMessage> messages)
             throws SQLException {
         return new CoachingConversation(
                 result.getLong("id"),
@@ -209,6 +253,7 @@ public final class CoachingRepository implements AutoCloseable {
                 result.getString("reconstruction"),
                 result.getTimestamp("created_at").toInstant(),
                 result.getTimestamp("updated_at").toInstant(),
+                games,
                 messages);
     }
 
@@ -231,6 +276,18 @@ public final class CoachingRepository implements AutoCloseable {
                         reconstruction CLOB NOT NULL,
                         created_at TIMESTAMP WITH TIME ZONE NOT NULL,
                         updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS coaching_game (
+                        conversation_id BIGINT NOT NULL,
+                        game_number INT NOT NULL,
+                        reconstruction CLOB NOT NULL,
+                        PRIMARY KEY (conversation_id, game_number),
+                        CONSTRAINT fk_coaching_game_conversation
+                            FOREIGN KEY (conversation_id)
+                            REFERENCES coaching_conversation(id)
+                            ON DELETE CASCADE
                     )
                     """);
             statement.executeUpdate("""

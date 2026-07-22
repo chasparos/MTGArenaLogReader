@@ -2,6 +2,7 @@ package app.coaching.persistence;
 
 import app.coaching.model.CoachingConversation;
 import app.coaching.model.CoachingMessage;
+import app.coaching.model.CoachingGame;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,7 +24,8 @@ final class CoachingRepositoryTest {
             CoachingConversation conversation = repository.saveReconstruction(
                     "match-1",
                     "MTGA_MATCH_V3",
-                    "first reconstruction");
+                    "first reconstruction",
+                    java.util.List.of(new CoachingGame(1, "human game one")));
             conversationId = conversation.id();
 
             repository.appendMessage(
@@ -41,6 +43,8 @@ final class CoachingRepositoryTest {
 
             assertEquals("match-1", restored.matchId());
             assertEquals("first reconstruction", restored.reconstruction());
+            assertEquals(1, restored.games().size());
+            assertEquals("human game one", restored.games().getFirst().reconstruction());
             assertEquals(2, restored.messages().size());
             assertEquals(CoachingMessage.Role.USER, restored.messages().get(0).role());
             assertEquals(CoachingMessage.Role.ASSISTANT, restored.messages().get(1).role());
@@ -56,7 +60,8 @@ final class CoachingRepositoryTest {
             CoachingConversation original = repository.saveReconstruction(
                     "match-2",
                     "MTGA_MATCH_V3",
-                    "partial");
+                    "partial",
+                    java.util.List.of(new CoachingGame(1, "partial human")));
             repository.appendMessage(
                     original.id(),
                     CoachingMessage.Role.USER,
@@ -65,7 +70,8 @@ final class CoachingRepositoryTest {
             CoachingConversation refreshed = repository.saveReconstruction(
                     "match-2",
                     "MTGA_MATCH_V3",
-                    "complete");
+                    "complete",
+                    java.util.List.of(new CoachingGame(1, "complete human")));
 
             assertEquals(original.id(), refreshed.id());
             assertEquals("complete", refreshed.reconstruction());
