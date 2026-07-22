@@ -5,6 +5,8 @@ import app.deck.model.DeckEntry;
 import app.deck.model.DeckGameState;
 import app.model.card.CardInfo;
 import app.enrichment.CardImageCache;
+import app.replay.ManaCostPainter;
+import app.replay.SvgAssetRenderer;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
@@ -37,6 +39,7 @@ public final class DeckTrackerFrame extends JFrame {
             ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
     private final CardImageCache imageCache;
+    private final ManaCostPainter manaCostPainter = new ManaCostPainter(new SvgAssetRenderer(), 13);
 
     private List<DeckGameState> timeline = List.of();
     private int timelineIndex = -1;
@@ -54,6 +57,7 @@ public final class DeckTrackerFrame extends JFrame {
         setLocationByPlatform(true);
 
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
+        totals.setFont(totals.getFont().deriveFont(Font.BOLD, totals.getFont().getSize2D() + 1f));
         JPanel header = new JPanel(new BorderLayout(12, 0));
         header.setBorder(new EmptyBorder(10, 12, 6, 12));
         header.add(title, BorderLayout.WEST);
@@ -178,9 +182,11 @@ public final class DeckTrackerFrame extends JFrame {
         totals.setText("<html>Library " + state.libraryCount()
                 + " &nbsp; Graveyard " + state.graveyardCount()
                 + (state.exileCount() > 0 ? " &nbsp; Exile " + state.exileCount() : "")
-                + "<br>Next draw: land " + String.format(Locale.ROOT, "%.1f%%", landChance)
-                + " &nbsp; creature " + String.format(Locale.ROOT, "%.1f%%", creatureChance)
-                + "</html>");
+                + "<br>Next draw: land <b><span style='font-size:larger'>"
+                + String.format(Locale.ROOT, "%.1f%%", landChance)
+                + "</span></b> &nbsp; creature <b><span style='font-size:larger'>"
+                + String.format(Locale.ROOT, "%.1f%%", creatureChance)
+                + "</span></b></html>");
         renderHandStrip(state);
 
         tabs.addTab("Main deck (" + deck.mainDeckSize() + ")",
@@ -220,8 +226,22 @@ public final class DeckTrackerFrame extends JFrame {
         JPanel listPanel = new JPanel();
         listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
 
-        for (DeckEntry entry : sorted(entries, state, showTracking)) {
+        List<DeckEntry> ordered = sorted(entries, state, showTracking);
+        Boolean previousLand = null;
+        Boolean previousDepleted = null;
+        for (DeckEntry entry : ordered) {
+            boolean land = isType(entry.card(), "Land");
+            boolean depleted = showTracking
+                    && state.remainingCopies(entry.arenaId(), entry.quantity()) == 0;
+            if (previousLand != null && previousLand && !land) {
+                listPanel.add(sectionSpacer("Spells"));
+            }
+            if (previousDepleted != null && !previousDepleted && depleted) {
+                listPanel.add(sectionSpacer("No copies remaining"));
+            }
             listPanel.add(showTracking ? trackedCardRow(entry, state) : sideboardCardRow(entry));
+            previousLand = land;
+            previousDepleted = depleted;
         }
         listPanel.add(Box.createVerticalGlue());
 
@@ -240,10 +260,17 @@ public final class DeckTrackerFrame extends JFrame {
         name.setFont(name.getFont().deriveFont(Font.BOLD));
         row.add(name, BorderLayout.CENTER);
 
-        JLabel chance = new JLabel(remaining + " left  •  "
-                + String.format(Locale.ROOT, "%.1f%%", percent));
+        JPanel metrics = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        metrics.setOpaque(false);
+        if (card != null && card.getManaCost() != null && !card.getManaCost().isBlank()) {
+            metrics.add(new JLabel(new ManaCostIcon(card.getManaCost(), identityColor(card))));
+        }
+        JLabel chance = new JLabel("<html><b>" + remaining + " left&nbsp;&nbsp;•&nbsp;&nbsp;"
+                + String.format(Locale.ROOT, "%.1f%%", percent) + "</b></html>");
+        chance.setFont(chance.getFont().deriveFont(Font.BOLD, chance.getFont().getSize2D() + 1f));
         chance.setHorizontalAlignment(SwingConstants.RIGHT);
-        row.add(chance, BorderLayout.EAST);
+        metrics.add(chance);
+        row.add(metrics, BorderLayout.EAST);
 
         String type = card == null ? "" : card.effectiveTypeLine();
         row.setToolTipText((type == null || type.isBlank() ? "" : type + " — ")
@@ -263,19 +290,58 @@ public final class DeckTrackerFrame extends JFrame {
         JLabel name = new JLabel(entry.quantity() + "x " + entry.displayName());
         name.setFont(name.getFont().deriveFont(Font.BOLD));
         row.add(name, BorderLayout.CENTER);
+        if (card != null && card.getManaCost() != null && !card.getManaCost().isBlank()) {
+            row.add(new JLabel(new ManaCostIcon(card.getManaCost(), identityColor(card))), BorderLayout.EAST);
+        }
         if (card != null) row.setToolTipText(card.effectiveTypeLine());
         return row;
     }
 
     private JPanel baseRow(CardInfo card) {
         JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
         row.setBorder(new CompoundBorder(
                 new MatteBorder(0, 0, 1, 0, new Color(0, 0, 0, 45)),
-                new EmptyBorder(5, 8, 5, 8)));
+                new EmptyBorder(7, 9, 7, 9)));
         row.setBackground(identityColor(card));
         row.setOpaque(true);
         return row;
+    }
+
+    private JComponent sectionSpacer(String label) {
+        JLabel spacer = new JLabel(label);
+        spacer.setFont(spacer.getFont().deriveFont(Font.BOLD, spacer.getFont().getSize2D() - 1f));
+        spacer.setForeground(new Color(90, 90, 90));
+        spacer.setBorder(new EmptyBorder(8, 9, 4, 9));
+        spacer.setAlignmentX(Component.LEFT_ALIGNMENT);
+        spacer.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        return spacer;
+    }
+
+    private boolean isType(CardInfo card, String token) {
+        String type = card == null ? null : card.effectiveTypeLine();
+        return type != null && type.contains(token);
+    }
+
+    private String cardToolTip(DeckEntry entry) {
+        CardInfo card = entry.card();
+        if (card == null) return entry.displayName();
+        StringBuilder out = new StringBuilder("<html><b>")
+                .append(escapeHtml(entry.displayName())).append("</b>");
+        if (card.getManaCost() != null && !card.getManaCost().isBlank()) {
+            out.append(" &nbsp; ").append(escapeHtml(card.getManaCost()));
+        }
+        String type = card.effectiveTypeLine();
+        if (type != null && !type.isBlank()) {
+            out.append("<br><i>").append(escapeHtml(type)).append("</i>");
+        }
+        String rules = card.effectiveOracleText();
+        if (rules != null && !rules.isBlank()) {
+            out.append("<br><div style='width:280px'>")
+                    .append(escapeHtml(rules).replace("\n", "<br>"))
+                    .append("</div>");
+        }
+        return out.append("</html>").toString();
     }
 
     private JComponent messagePanel(String text) {
@@ -363,7 +429,7 @@ public final class DeckTrackerFrame extends JFrame {
         label.setVerticalTextPosition(SwingConstants.BOTTOM);
         label.setHorizontalTextPosition(SwingConstants.CENTER);
         label.setPreferredSize(new Dimension(62, 88));
-        label.setToolTipText(entry.displayName());
+        label.setToolTipText(cardToolTip(entry));
         label.setBorder(BorderFactory.createLineBorder(new Color(0, 0, 0, 65)));
         label.setOpaque(true);
         label.setBackground(identityColor(entry.card()));
@@ -422,6 +488,32 @@ public final class DeckTrackerFrame extends JFrame {
             if (states.get(i).turnNumber() == turnNumber) return i;
         }
         return -1;
+    }
+
+    private final class ManaCostIcon implements Icon {
+        private final String manaCost;
+        private final Color cardColor;
+        private final int width;
+
+        private ManaCostIcon(String manaCost, Color cardColor) {
+            this.manaCost = manaCost;
+            this.cardColor = cardColor;
+            this.width = manaCostPainter.width(manaCost) + 2;
+        }
+
+        @Override public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            Graphics2D copy = (Graphics2D) graphics.create();
+            try {
+                copy.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                manaCostPainter.paint(copy, manaCost, x + 1, y + 1, cardColor);
+            } finally {
+                copy.dispose();
+            }
+        }
+
+        @Override public int getIconWidth() { return width; }
+        @Override public int getIconHeight() { return 16; }
     }
 
     private Color identityColor(CardInfo card) {

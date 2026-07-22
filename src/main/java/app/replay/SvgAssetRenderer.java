@@ -16,10 +16,10 @@ import java.util.Optional;
  * has not yet been synced into resources.
  * <p><strong>Architectural role:</strong> This type belongs to the Swing presentation boundary and consumes structured models and events without owning game reconstruction.</p>
  */
-final class SvgAssetRenderer {
+public final class SvgAssetRenderer {
     private final Map<String, Optional<SVGDocument>> documents = new HashMap<>();
 
-    boolean paint(Graphics2D graphics, String resourcePath, int x, int y, int width, int height) {
+    public boolean paint(Graphics2D graphics, String resourcePath, int x, int y, int width, int height) {
         Optional<SVGDocument> document = documents.computeIfAbsent(resourcePath, this::load);
         if (document.isEmpty()) return false;
 

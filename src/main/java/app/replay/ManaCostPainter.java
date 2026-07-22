@@ -13,22 +13,22 @@ import java.util.regex.Pattern;
  * <p>This remains a presentation helper: mana parsing here is limited to
  * display tokens and does not interpret game rules.</p>
  */
-final class ManaCostPainter {
+public final class ManaCostPainter {
     private static final Pattern TOKEN = Pattern.compile("\\{([^}]+)}");
     private final SvgAssetRenderer svgAssets;
     private final int symbolSize;
 
-    ManaCostPainter(SvgAssetRenderer svgAssets, int symbolSize) {
+    public ManaCostPainter(SvgAssetRenderer svgAssets, int symbolSize) {
         this.svgAssets = svgAssets;
         this.symbolSize = symbolSize;
     }
 
-    int width(String manaCost) {
+    public int width(String manaCost) {
         int count = tokens(manaCost).size();
         return count == 0 ? 0 : count * symbolSize + Math.max(0, count - 1);
     }
 
-    void paint(Graphics2D graphics, String manaCost, int x, int y, Color cardColor) {
+    public void paint(Graphics2D graphics, String manaCost, int x, int y, Color cardColor) {
         int currentX = x;
         for (String token : tokens(manaCost)) {
             paintSymbol(graphics, token, currentX, y, cardColor);
@@ -37,15 +37,18 @@ final class ManaCostPainter {
     }
 
     private void paintSymbol(Graphics2D graphics, String token, int x, int y, Color cardColor) {
-        Color surround = blend(cardColor, Color.WHITE, .55f);
+        int surroundPadding = 1;
+        Color surround = blend(cardColor, Color.WHITE, .34f);
         graphics.setColor(surround);
-        graphics.fillOval(x, y, symbolSize, symbolSize);
-        graphics.setColor(blend(surround, Color.BLACK, .30f));
-        graphics.drawOval(x, y, symbolSize, symbolSize);
+        graphics.fillOval(x - surroundPadding, y - surroundPadding,
+                symbolSize + surroundPadding * 2, symbolSize + surroundPadding * 2);
+        graphics.setColor(blend(surround, Color.BLACK, .38f));
+        graphics.drawOval(x - surroundPadding, y - surroundPadding,
+                symbolSize + surroundPadding * 2, symbolSize + surroundPadding * 2);
 
         String resource = normalize(token).replace("/", "_");
         if (svgAssets.paint(graphics, "/mana-svg/" + resource + ".svg",
-                x, y, symbolSize, symbolSize)) {
+                x, y + 1, symbolSize, symbolSize)) {
             return;
         }
 

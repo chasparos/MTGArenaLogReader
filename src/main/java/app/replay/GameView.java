@@ -41,6 +41,8 @@ public final class GameView extends JPanel implements Scrollable {
     private static final int CHIP_ARC = 14;
     private static final int SYMBOL_SIZE = 11;
     private static final int CARD_MANA_GAP = 14;
+    private static final int CARD_TYPE_ICON_SIZE = 11;
+    private static final int CARD_TYPE_GAP = 6;
     private static final Pattern MANA = Pattern.compile("\\{([^}]+)}");
     private static final Pattern POWER_TOUGHNESS = Pattern.compile(
             "\\(?(-?\\d+|\\*)/(-?\\d+|\\*)\\)?");
@@ -402,7 +404,8 @@ public final class GameView extends JPanel implements Scrollable {
         Font chipFont = getFont().deriveFont(Font.BOLD, Math.max(9f, getFont().getSize2D() - 1f));
         FontMetrics chipMetrics = g.getFontMetrics(chipFont);
         int mana = manaCostPainter.width(card.getManaCost());
-        return chipMetrics.stringWidth(card.getName()) + CHIP_X_PADDING * 2
+        int typeIcon = cardTypeResource(card) == null ? 0 : CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
+        return typeIcon + chipMetrics.stringWidth(card.getName()) + CHIP_X_PADDING * 2
                 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
@@ -449,13 +452,21 @@ public final class GameView extends JPanel implements Scrollable {
         g.setFont(chipFont);
         FontMetrics chipMetrics = g.getFontMetrics();
         int textX = x + CHIP_X_PADDING;
+        String typeResource = cardTypeResource(card);
+        if (typeResource != null) {
+            int iconY = chipY + (chipHeight - CARD_TYPE_ICON_SIZE) / 2 + 1;
+            if (svgAssets.paint(g, "/svg/" + typeResource + ".svg",
+                    textX, iconY, CARD_TYPE_ICON_SIZE, CARD_TYPE_ICON_SIZE)) {
+                textX += CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
+            }
+        }
         int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
         g.drawString(card.getName(), textX, textBaseline);
 
         int manaWidth = manaCostPainter.width(card.getManaCost());
         if (manaWidth > 0) {
             int manaX = x + width - CHIP_X_PADDING - manaWidth;
-            int manaY = chipY + (chipHeight - SYMBOL_SIZE) / 2;
+            int manaY = chipY + (chipHeight - SYMBOL_SIZE) / 2 + 1;
             manaCostPainter.paint(g, card.getManaCost(), manaX, manaY, base);
         }
         g.setFont(oldFont);
@@ -467,13 +478,13 @@ public final class GameView extends JPanel implements Scrollable {
         FontMetrics fm = g.getFontMetrics(getFont());
         String value = pt.power() + "/" + pt.toughness();
         Font old = g.getFont();
-        Font compact = old.deriveFont(Font.BOLD, Math.max(9f, old.getSize2D() - 2f));
+        Font compact = old.deriveFont(Font.BOLD, Math.max(8f, old.getSize2D() - 3f));
         FontMetrics compactMetrics = g.getFontMetrics(compact);
-        int overlap = 4;
+        int overlap = 8;
         x -= overlap;
-        int width = compactMetrics.stringWidth(value) + 12;
-        int height = compactMetrics.getHeight() + 2;
-        int y = topY + (lineHeight - height) / 2;
+        int width = compactMetrics.stringWidth(value) + 9;
+        int height = Math.max(13, compactMetrics.getHeight());
+        int y = topY + lineHeight - height + 3;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 new Color(0x9D785A), .24f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, CHIP_ARC, CHIP_ARC);
@@ -483,7 +494,7 @@ public final class GameView extends JPanel implements Scrollable {
         g.draw(chip);
         g.setColor(contrast(base));
         g.setFont(compact);
-        g.drawString(value, x + 6,
+        g.drawString(value, x + 4,
                 y + (height - compactMetrics.getHeight()) / 2 + compactMetrics.getAscent());
         g.setFont(old);
     }
@@ -553,6 +564,20 @@ public final class GameView extends JPanel implements Scrollable {
 
     private String normalizeSymbol(String symbol) {
         return symbol.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String cardTypeResource(CardInfo card) {
+        if (card == null) return null;
+        String type = card.effectiveTypeLine();
+        if (type == null || type.isBlank()) return null;
+        if (type.contains("Land")) return "land";
+        if (type.contains("Creature")) return "creature";
+        if (type.contains("Planeswalker")) return "planeswalker";
+        if (type.contains("Artifact")) return "artifact";
+        if (type.contains("Enchantment")) return "enchantment";
+        if (type.contains("Instant")) return "instant";
+        if (type.contains("Sorcery")) return "sorcery";
+        return null;
     }
 
     private Color cardColor(CardInfo card) {
