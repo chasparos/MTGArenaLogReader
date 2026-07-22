@@ -111,9 +111,9 @@ public final class CoachingFrame extends JFrame {
         actions.add(copyPrompt);
         actions.add(importReply);
 
-        JPanel composerFooter = new JPanel(new BorderLayout(8, 0));
-        composerFooter.add(hint, BorderLayout.CENTER);
-        composerFooter.add(actions, BorderLayout.EAST);
+        JPanel composerFooter = new JPanel(new BorderLayout(0, 4));
+        composerFooter.add(hint, BorderLayout.NORTH);
+        composerFooter.add(actions, BorderLayout.SOUTH);
 
         JPanel composer = new JPanel(new BorderLayout(0, 6));
         composer.setBorder(new EmptyBorder(8, 0, 0, 0));
