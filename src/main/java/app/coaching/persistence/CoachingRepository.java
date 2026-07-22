@@ -170,13 +170,14 @@ public final class CoachingRepository implements AutoCloseable {
         }
         if (games == null || games.isEmpty()) return;
         try (PreparedStatement insert = connection.prepareStatement("""
-                INSERT INTO coaching_game (conversation_id, game_number, reconstruction)
-                VALUES (?, ?, ?)
+                INSERT INTO coaching_game (conversation_id, game_number, reconstruction, rich_snapshot)
+                VALUES (?, ?, ?, ?)
                 """)) {
             for (CoachingGame game : games) {
                 insert.setLong(1, conversationId);
                 insert.setInt(2, game.gameNumber());
                 insert.setString(3, game.reconstruction());
+                insert.setString(4, game.richSnapshot());
                 insert.addBatch();
             }
             insert.executeBatch();
@@ -185,7 +186,7 @@ public final class CoachingRepository implements AutoCloseable {
 
     private List<CoachingGame> games(long conversationId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT game_number, reconstruction
+                SELECT game_number, reconstruction, rich_snapshot
                   FROM coaching_game
                  WHERE conversation_id = ?
                  ORDER BY game_number
@@ -196,7 +197,8 @@ public final class CoachingRepository implements AutoCloseable {
                 while (result.next()) {
                     games.add(new CoachingGame(
                             result.getInt("game_number"),
-                            result.getString("reconstruction")));
+                            result.getString("reconstruction"),
+                            result.getString("rich_snapshot")));
                 }
                 return List.copyOf(games);
             }
@@ -283,12 +285,17 @@ public final class CoachingRepository implements AutoCloseable {
                         conversation_id BIGINT NOT NULL,
                         game_number INT NOT NULL,
                         reconstruction CLOB NOT NULL,
+                        rich_snapshot CLOB,
                         PRIMARY KEY (conversation_id, game_number),
                         CONSTRAINT fk_coaching_game_conversation
                             FOREIGN KEY (conversation_id)
                             REFERENCES coaching_conversation(id)
                             ON DELETE CASCADE
                     )
+                    """);
+            statement.executeUpdate("""
+                    ALTER TABLE coaching_game
+                    ADD COLUMN IF NOT EXISTS rich_snapshot CLOB
                     """);
             statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS coaching_message (

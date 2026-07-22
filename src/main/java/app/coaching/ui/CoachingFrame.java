@@ -6,6 +6,7 @@ import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingMessage;
 import app.coaching.model.CoachingGame;
 import app.model.session.MatchSession;
+import app.replay.GameView;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -156,11 +157,30 @@ public final class CoachingFrame extends JFrame {
             return;
         }
         for (CoachingGame game : persistedGames) {
-            JTextArea area = textArea();
-            area.setText(game.reconstruction());
-            area.setCaretPosition(0);
-            games.addTab("Game " + game.gameNumber(), new JScrollPane(area));
+            games.addTab("Game " + game.gameNumber(), gameComponent(game));
         }
+    }
+
+    private JComponent gameComponent(CoachingGame game) {
+        if (game.richSnapshot() == null || game.richSnapshot().isBlank()) {
+            return textGameFallback(game, "Rich replay unavailable for this previously saved match.");
+        }
+        try {
+            GameView view = new GameView(service.richGame(game));
+            JScrollPane scroll = new JScrollPane(view);
+            scroll.getVerticalScrollBar().setUnitIncrement(20);
+            return scroll;
+        } catch (RuntimeException error) {
+            return textGameFallback(game, "Rich replay could not be loaded; showing the saved text reconstruction.");
+        }
+    }
+
+    private JComponent textGameFallback(CoachingGame game, String reason) {
+        JTextArea area = textArea();
+        area.setText(reason + System.lineSeparator() + System.lineSeparator()
+                + game.reconstruction());
+        area.setCaretPosition(0);
+        return new JScrollPane(area);
     }
 
     private String formatTranscript(List<CoachingMessage> messages) {

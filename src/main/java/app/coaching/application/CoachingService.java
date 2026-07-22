@@ -5,6 +5,7 @@ import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingMessage;
 import app.coaching.model.CoachingGame;
 import app.coaching.persistence.CoachingRepository;
+import app.coaching.persistence.CoachingGameSnapshotCodec;
 import app.export.MatchAiExporter;
 import app.export.GameTextExporter;
 import app.model.session.MatchSession;
@@ -23,18 +24,28 @@ public final class CoachingService {
     private final CoachingRepository repository;
     private final MatchAiExporter exporter;
     private final GameTextExporter gameTextExporter;
+    private final CoachingGameSnapshotCodec gameSnapshotCodec;
 
     public CoachingService(CoachingRepository repository, MatchAiExporter exporter) {
-        this(repository, exporter, new GameTextExporter());
+        this(repository, exporter, new GameTextExporter(), new CoachingGameSnapshotCodec());
     }
 
     public CoachingService(
             CoachingRepository repository,
             MatchAiExporter exporter,
             GameTextExporter gameTextExporter) {
+        this(repository, exporter, gameTextExporter, new CoachingGameSnapshotCodec());
+    }
+
+    public CoachingService(
+            CoachingRepository repository,
+            MatchAiExporter exporter,
+            GameTextExporter gameTextExporter,
+            CoachingGameSnapshotCodec gameSnapshotCodec) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.exporter = Objects.requireNonNull(exporter, "exporter");
         this.gameTextExporter = Objects.requireNonNull(gameTextExporter, "gameTextExporter");
+        this.gameSnapshotCodec = Objects.requireNonNull(gameSnapshotCodec, "gameSnapshotCodec");
     }
 
     public CoachingConversation saveForCoaching(MatchSession match) {
@@ -43,13 +54,19 @@ public final class CoachingService {
                 .sorted(java.util.Comparator.comparingInt(game -> game.getGameNumber()))
                 .map(game -> new CoachingGame(
                         game.getGameNumber(),
-                        gameTextExporter.export(game)))
+                        gameTextExporter.export(game),
+                        gameSnapshotCodec.encode(game)))
                 .toList();
         return repository.saveReconstruction(
                 match.matchState().getMatchId(),
                 RECONSTRUCTION_SCHEMA,
                 exporter.export(match),
                 games);
+    }
+
+    public app.model.session.GameModel richGame(CoachingGame game) {
+        Objects.requireNonNull(game, "game");
+        return gameSnapshotCodec.decode(game.richSnapshot());
     }
 
     public CoachingMessage saveUserDraft(long conversationId, String content) {

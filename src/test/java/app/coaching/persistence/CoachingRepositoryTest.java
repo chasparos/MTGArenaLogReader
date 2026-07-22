@@ -25,7 +25,7 @@ final class CoachingRepositoryTest {
                     "match-1",
                     "MTGA_MATCH_V3",
                     "first reconstruction",
-                    java.util.List.of(new CoachingGame(1, "human game one")));
+                    java.util.List.of(new CoachingGame(1, "human game one", null)));
             conversationId = conversation.id();
 
             repository.appendMessage(
@@ -61,7 +61,7 @@ final class CoachingRepositoryTest {
                     "match-2",
                     "MTGA_MATCH_V3",
                     "partial",
-                    java.util.List.of(new CoachingGame(1, "partial human")));
+                    java.util.List.of(new CoachingGame(1, "partial human", null)));
             repository.appendMessage(
                     original.id(),
                     CoachingMessage.Role.USER,
@@ -71,7 +71,7 @@ final class CoachingRepositoryTest {
                     "match-2",
                     "MTGA_MATCH_V3",
                     "complete",
-                    java.util.List.of(new CoachingGame(1, "complete human")));
+                    java.util.List.of(new CoachingGame(1, "complete human", null)));
 
             assertEquals(original.id(), refreshed.id());
             assertEquals("complete", refreshed.reconstruction());
