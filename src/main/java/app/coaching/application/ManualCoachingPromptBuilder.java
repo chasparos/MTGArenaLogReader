@@ -2,6 +2,9 @@ package app.coaching.application;
 
 import app.replay.GameView;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -18,8 +21,23 @@ import java.util.regex.Pattern;
  * references used by the response renderer.</p>
  */
 public final class ManualCoachingPromptBuilder {
+    static final String DEFAULT_TEMPLATE_RESOURCE = "/coach/protocols/coach_request.txt";
+
+    private static final String QUESTION_PROPERTY = "${question}";
+    private static final String CONTEXT_PROPERTY = "${context}";
+    private static final Pattern PROPERTY = Pattern.compile("\\$\\{(question|context)}");
     private static final Pattern GAME = Pattern.compile("^G(\\d+)(?:\\s.*)?$");
     private static final Pattern TURN = Pattern.compile("^T(\\d+)(?:\\s.*)?$");
+
+    private final String template;
+
+    public ManualCoachingPromptBuilder() {
+        this(loadTemplate(DEFAULT_TEMPLATE_RESOURCE));
+    }
+
+    ManualCoachingPromptBuilder(String template) {
+        this.template = validateTemplate(template);
+    }
 
     public String build(
             String reconstruction,
@@ -42,23 +60,46 @@ public final class ManualCoachingPromptBuilder {
                     requireTurns(turns));
         };
 
-        return """
-                MTGA_COACH_REQUEST_V1
-                INSTRUCTIONS
-                - Analyze only information present in CONTEXT; distinguish observations from inference.
-                - Refer to turns as T<number>, events as E#<number>, cards as c<number>, and objects as c<number>#<logical-id>.
-                - Do not replace those references with invented identifiers.
-                - Put references inline in the prose so the application can render them as chips.
-                - Begin with a direct answer, then explain the most important alternatives.
-                - Keep the response focused; do not retell the complete game.
-                - Unknown or hidden information must remain unknown.
+        return applyTemplate(question.strip(), context).strip();
+    }
 
-                QUESTION
-                %s
 
-                CONTEXT
-                %s
-                """.formatted(question.strip(), context);
+
+    private String applyTemplate(String question, String context) {
+        Matcher properties = PROPERTY.matcher(template);
+        StringBuffer rendered = new StringBuffer();
+        while (properties.find()) {
+            String value = switch (properties.group(1)) {
+                case "question" -> question;
+                case "context" -> context;
+                default -> throw new IllegalStateException("Unsupported coaching property");
+            };
+            properties.appendReplacement(rendered, Matcher.quoteReplacement(value));
+        }
+        properties.appendTail(rendered);
+        return rendered.toString();
+    }
+
+    private static String loadTemplate(String resourcePath) {
+        try (InputStream input = ManualCoachingPromptBuilder.class.getResourceAsStream(resourcePath)) {
+            if (input == null) {
+                throw new IllegalStateException("Coaching protocol resource is missing: " + resourcePath);
+            }
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException error) {
+            throw new IllegalStateException("Could not read coaching protocol resource: " + resourcePath, error);
+        }
+    }
+
+    private static String validateTemplate(String template) {
+        Objects.requireNonNull(template, "template");
+        if (!template.contains(QUESTION_PROPERTY)) {
+            throw new IllegalArgumentException("Coaching protocol is missing " + QUESTION_PROPERTY);
+        }
+        if (!template.contains(CONTEXT_PROPERTY)) {
+            throw new IllegalArgumentException("Coaching protocol is missing " + CONTEXT_PROPERTY);
+        }
+        return template;
     }
 
     private String sliceGame(String reconstruction, int wantedGame) {

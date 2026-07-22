@@ -52,6 +52,15 @@ final class ManualCoachingPromptBuilderTest {
         assertTrue(prompt.contains("S#3"));
         assertFalse(prompt.contains("T1 active=p1"));
         assertFalse(prompt.contains("E#2"));
-        assertTrue(prompt.contains("Refer to turns as T<number>"));
+        assertTrue(prompt.contains("The supplied reconstruction is authoritative."));
+        assertTrue(prompt.contains("Was this turn correct?"));
+        assertFalse(prompt.contains("${question}"));
+        assertFalse(prompt.contains("${context}"));
+    }
+    @Test
+    void rejectsTemplateWithoutRequiredProperties() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> new ManualCoachingPromptBuilder("QUESTION ${question}"));
     }
 }

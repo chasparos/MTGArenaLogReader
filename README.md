@@ -233,3 +233,18 @@ state mutation, card resolution, collaborator coordination, and immutable event 
 The multigame replay test now also verifies deterministic projected event text across
 repeated replays, protecting the completed extraction boundary before match-lifecycle
 work begins.
+
+
+## Manual coaching workbench
+
+The coaching window supports an explicit, API-free copy/paste workflow. Context can be selected at match, game, turn, or selected-turn scope, translated into the versioned `MTGA_COACH_REQUEST_V1` request, and copied to the clipboard. Imported replies are persisted unchanged.
+
+The coaching instructions are maintained as a resource template:
+
+```text
+src/main/resources/coach/protocols/coach_request.txt
+```
+
+It requires `${question}` and `${context}` properties. Scoped context is sliced from the canonical `MTGA_MATCH_V4` reconstruction so event, card, object, and turn references remain stable.
+
+In the conversation view, card tokens such as `[c3]` and `[c3#194]` are resolved from the reconstruction's card dictionary while retaining the original token for traceability. See [`docs/coaching/manual-coaching-protocol.md`](docs/coaching/manual-coaching-protocol.md) for protocol boundaries, context rules, and the planned treatment of Arena-observed offered actions.

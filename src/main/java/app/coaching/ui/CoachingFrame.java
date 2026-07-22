@@ -211,7 +211,7 @@ public final class CoachingFrame extends JFrame {
         reconstruction.setText(selected.reconstruction());
         reconstruction.setCaretPosition(0);
         showGames(selected.games());
-        transcript.setText(formatTranscript(selected.messages()));
+        transcript.setText(formatTranscript(selected, selected.messages()));
         transcript.setCaretPosition(transcript.getDocument().getLength());
         status.setText("Match " + shortMatchId(selected.matchId())
                 + " — " + selected.messages().size()
@@ -289,7 +289,7 @@ public final class CoachingFrame extends JFrame {
         return new JScrollPane(area);
     }
 
-    private String formatTranscript(List<CoachingMessage> messages) {
+    private String formatTranscript(CoachingConversation conversation, List<CoachingMessage> messages) {
         if (messages.isEmpty()) {
             return """
                     No coaching conversation yet.
@@ -304,7 +304,9 @@ public final class CoachingFrame extends JFrame {
                     .append("  ")
                     .append(TIME.format(message.createdAt()))
                     .append(System.lineSeparator())
-                    .append(message.content())
+                    .append(message.role() == CoachingMessage.Role.ASSISTANT
+                            ? service.resolveReferences(conversation, message.content())
+                            : message.content())
                     .append(System.lineSeparator())
                     .append(System.lineSeparator());
         }

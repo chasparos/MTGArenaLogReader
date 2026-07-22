@@ -26,6 +26,7 @@ public final class CoachingService {
     private final GameTextExporter gameTextExporter;
     private final CoachingGameSnapshotCodec gameSnapshotCodec;
     private final ManualCoachingPromptBuilder promptBuilder;
+    private final CoachingReferenceTextResolver referenceResolver;
 
     public CoachingService(CoachingRepository repository, MatchAiExporter exporter) {
         this(repository, exporter, new GameTextExporter(), new CoachingGameSnapshotCodec());
@@ -48,6 +49,7 @@ public final class CoachingService {
         this.gameTextExporter = Objects.requireNonNull(gameTextExporter, "gameTextExporter");
         this.gameSnapshotCodec = Objects.requireNonNull(gameSnapshotCodec, "gameSnapshotCodec");
         this.promptBuilder = new ManualCoachingPromptBuilder();
+        this.referenceResolver = new CoachingReferenceTextResolver();
     }
 
     public CoachingConversation saveForCoaching(MatchSession match) {
@@ -85,6 +87,11 @@ public final class CoachingService {
                 gameNumber,
                 turns,
                 question);
+    }
+
+    public String resolveReferences(CoachingConversation conversation, String response) {
+        Objects.requireNonNull(conversation, "conversation");
+        return referenceResolver.resolve(conversation.reconstruction(), response);
     }
 
     public CoachingMessage saveUserDraft(long conversationId, String content) {
