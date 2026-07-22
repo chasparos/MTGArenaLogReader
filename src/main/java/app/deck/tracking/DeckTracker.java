@@ -44,6 +44,7 @@ public final class DeckTracker {
     private MatchDeckState matchDeckState;
     private CachedDeck currentDeck;
     private CachedDeck pendingGameDeck;
+    private final Map<String, Map<Integer, DeckGameState>> gameStates = new LinkedHashMap<>();
     private boolean started;
     private boolean complete;
     private final List<String> matchLog = new ArrayList<>();
@@ -74,6 +75,11 @@ public final class DeckTracker {
         return currentMatchId == null || currentDeck == null ? null : snapshot();
     }
 
+    public synchronized DeckGameState stateForGame(String matchId, int gameNumber) {
+        Map<Integer, DeckGameState> matchStates = gameStates.get(matchId);
+        return matchStates == null ? null : matchStates.get(gameNumber);
+    }
+
     public void accept(LogMessageInterface message) {
         String raw = message.getRawText();
         for (CachedDeck deck : deckParser.parseDecks(raw)) {
@@ -90,15 +96,21 @@ public final class DeckTracker {
             if (deck.eventName() != null && !deck.eventName().isBlank()) selectedEventName = deck.eventName();
         }
 
-        if (currentMatchId != null && complete && matchDeckState != null) {
-            for (CachedDeck submitted :
-                    deckParser.parseSubmittedGameDecks(raw, matchDeckState.selectedDeck())) {
+        CachedDeck submissionBaseline = matchDeckState == null
+                ? deckCache.find(selectedDeckId).orElse(null)
+                : matchDeckState.selectedDeck();
+        if (submissionBaseline != null) {
+            for (CachedDeck submitted : deckParser.parseSubmittedGameDecks(raw, submissionBaseline)) {
                 pendingGameDeck = submitted;
-                LOG.info("Observed submitted game deck: match={}, nextGame={}, main={}, sideboard={}",
-                        currentMatchId, currentGameNumber + 1, submitted.mainDeckSize(), submitted.sideboard().size());
-                recordMatchMessage("Submitted deck for Game " + (currentGameNumber + 1)
-                        + ": " + submitted.mainDeckSize() + " main, "
-                        + submitted.sideboard().stream().mapToInt(DeckEntry::quantity).sum() + " sideboard");
+                int targetGame = currentMatchId == null ? 1 : currentGameNumber + 1;
+                LOG.info("Observed submitted game deck: match={}, game={}, main={}, sideboard={}",
+                        currentMatchId == null ? "<pending>" : currentMatchId,
+                        targetGame, submitted.mainDeckSize(), submitted.sideboard().size());
+                if (currentMatchId != null) {
+                    recordMatchMessage("Submitted deck for Game " + targetGame
+                            + ": " + submitted.mainDeckSize() + " main, "
+                            + submitted.sideboard().stream().mapToInt(DeckEntry::quantity).sum() + " sideboard");
+                }
             }
         }
 
@@ -122,7 +134,6 @@ public final class DeckTracker {
             complete = false;
             started = false;
             clearGameObjects();
-            pendingGameDeck = null;
 
             String eventId = "";
             JsonElement players = config.get("reservedPlayers");
@@ -145,7 +156,15 @@ public final class DeckTracker {
             matchDeckState = new MatchDeckState(matchId, selectedDeck);
             LOG.info("Started deck tracking for match {} with selected deck {}", matchId,
                     selectedDeck == null ? "<unknown>" : selectedDeck.deckId());
+            if (pendingGameDeck != null) {
+                matchDeckState.observeDeckForGame(1, pendingGameDeck);
+                recordMatchMessage("Submitted deck for Game 1: " + pendingGameDeck.mainDeckSize()
+                        + " main, " + pendingGameDeck.sideboard().stream()
+                        .mapToInt(DeckEntry::quantity).sum() + " sideboard");
+                pendingGameDeck = null;
+            }
             currentDeck = matchDeckState.deckForGame(currentGameNumber);
+            rememberCurrentState();
             enrichCurrentDeckAsync();
         }
     }
@@ -176,6 +195,7 @@ public final class DeckTracker {
                             matchDeckState.observeDeckForGame(gameNo, pendingGameDeck);
                     currentDeck = matchDeckState.deckForGame(gameNo);
                     pendingGameDeck = null;
+                    rememberCurrentState();
                     change.ifPresent(sideboardChange -> {
                         LOG.info("Reconstructed sideboard change for match {} game {}: {} in, {} out ({})",
                                 sideboardChange.matchId(), sideboardChange.gameNumber(),
@@ -191,6 +211,7 @@ public final class DeckTracker {
                 } else {
                     LOG.info("Activating game {} deck without a submitted configuration: match={}", gameNo, currentMatchId);
                     currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
+                    rememberCurrentState();
                 }
                 complete = false;
                 started = false;
@@ -200,6 +221,7 @@ public final class DeckTracker {
             String stage = string(info, "stage");
             if (stage.contains("GameOver") || stage.contains("Complete")) {
                 complete = true;
+                rememberCurrentState();
                 if (started) listener.gameCompleted(currentMatchId, currentGameNumber);
                 continue;
             }
@@ -209,9 +231,13 @@ public final class DeckTracker {
 
             if (!started && currentDeck != null && currentMatchId != null) {
                 started = true;
-                listener.gameStarted(snapshot());
+                DeckGameState state = snapshot();
+                remember(state);
+                listener.gameStarted(state);
             } else if (started && !complete) {
-                listener.gameUpdated(snapshot());
+                DeckGameState state = snapshot();
+                remember(state);
+                listener.gameUpdated(state);
             }
         }
     }
@@ -314,9 +340,19 @@ public final class DeckTracker {
             if (matchDeckState != null) {
                 matchDeckState.refreshSelectedDeck(replacement);
                 currentDeck = matchDeckState.deckForGame(currentGameNumber);
+                rememberCurrentState();
                 if (started && !complete) listener.gameUpdated(snapshot());
             }
         });
+    }
+
+    private synchronized void rememberCurrentState() {
+        if (currentMatchId != null && currentDeck != null) remember(snapshot());
+    }
+
+    private synchronized void remember(DeckGameState state) {
+        gameStates.computeIfAbsent(state.matchId(), ignored -> new LinkedHashMap<>())
+                .put(state.gameNumber(), state);
     }
 
     private synchronized void recordMatchMessage(String message) {

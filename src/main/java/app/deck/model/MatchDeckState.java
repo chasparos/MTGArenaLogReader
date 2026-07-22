@@ -81,11 +81,15 @@ public final class MatchDeckState {
         if (observedDeck == null || selectedDeck == null) return Optional.empty();
         if (!Objects.equals(selectedDeck.deckId(), observedDeck.deckId())) return Optional.empty();
 
-        CachedDeck previous = gameNumber == 1
-                ? selectedDeck
-                : deckForGame(gameNumber - 1);
         CachedDeck observed = snapshot(observedDeck);
+        if (gameNumber == 1) {
+            gameDecks.put(1, observed);
+            return Optional.empty();
+        }
+
+        CachedDeck previous = gameDecks.get(gameNumber - 1);
         gameDecks.put(gameNumber, observed);
+        if (previous == null) return Optional.empty();
 
         SideboardChange change = difference(previous, observed, gameNumber);
         return change.changed() ? Optional.of(change) : Optional.empty();

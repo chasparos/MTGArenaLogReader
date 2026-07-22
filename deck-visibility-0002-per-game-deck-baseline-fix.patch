@@ -1,0 +1,357 @@
+diff --git a/src/main/java/app/deck/model/MatchDeckState.java b/src/main/java/app/deck/model/MatchDeckState.java
+index d6129a2..de9f00e 100644
+--- a/src/main/java/app/deck/model/MatchDeckState.java
++++ b/src/main/java/app/deck/model/MatchDeckState.java
+@@ -81,11 +81,15 @@ public final class MatchDeckState {
+         if (observedDeck == null || selectedDeck == null) return Optional.empty();
+         if (!Objects.equals(selectedDeck.deckId(), observedDeck.deckId())) return Optional.empty();
+ 
+-        CachedDeck previous = gameNumber == 1
+-                ? selectedDeck
+-                : deckForGame(gameNumber - 1);
+         CachedDeck observed = snapshot(observedDeck);
++        if (gameNumber == 1) {
++            gameDecks.put(1, observed);
++            return Optional.empty();
++        }
++
++        CachedDeck previous = gameDecks.get(gameNumber - 1);
+         gameDecks.put(gameNumber, observed);
++        if (previous == null) return Optional.empty();
+ 
+         SideboardChange change = difference(previous, observed, gameNumber);
+         return change.changed() ? Optional.of(change) : Optional.empty();
+diff --git a/src/main/java/app/deck/tracking/DeckTracker.java b/src/main/java/app/deck/tracking/DeckTracker.java
+index 03a461f..0e17fc2 100644
+--- a/src/main/java/app/deck/tracking/DeckTracker.java
++++ b/src/main/java/app/deck/tracking/DeckTracker.java
+@@ -44,6 +44,7 @@ public final class DeckTracker {
+     private MatchDeckState matchDeckState;
+     private CachedDeck currentDeck;
+     private CachedDeck pendingGameDeck;
++    private final Map<String, Map<Integer, DeckGameState>> gameStates = new LinkedHashMap<>();
+     private boolean started;
+     private boolean complete;
+     private final List<String> matchLog = new ArrayList<>();
+@@ -74,6 +75,11 @@ public final class DeckTracker {
+         return currentMatchId == null || currentDeck == null ? null : snapshot();
+     }
+ 
++    public synchronized DeckGameState stateForGame(String matchId, int gameNumber) {
++        Map<Integer, DeckGameState> matchStates = gameStates.get(matchId);
++        return matchStates == null ? null : matchStates.get(gameNumber);
++    }
++
+     public void accept(LogMessageInterface message) {
+         String raw = message.getRawText();
+         for (CachedDeck deck : deckParser.parseDecks(raw)) {
+@@ -90,15 +96,21 @@ public final class DeckTracker {
+             if (deck.eventName() != null && !deck.eventName().isBlank()) selectedEventName = deck.eventName();
+         }
+ 
+-        if (currentMatchId != null && complete && matchDeckState != null) {
+-            for (CachedDeck submitted :
+-                    deckParser.parseSubmittedGameDecks(raw, matchDeckState.selectedDeck())) {
++        CachedDeck submissionBaseline = matchDeckState == null
++                ? deckCache.find(selectedDeckId).orElse(null)
++                : matchDeckState.selectedDeck();
++        if (submissionBaseline != null) {
++            for (CachedDeck submitted : deckParser.parseSubmittedGameDecks(raw, submissionBaseline)) {
+                 pendingGameDeck = submitted;
+-                LOG.info("Observed submitted game deck: match={}, nextGame={}, main={}, sideboard={}",
+-                        currentMatchId, currentGameNumber + 1, submitted.mainDeckSize(), submitted.sideboard().size());
+-                recordMatchMessage("Submitted deck for Game " + (currentGameNumber + 1)
+-                        + ": " + submitted.mainDeckSize() + " main, "
+-                        + submitted.sideboard().stream().mapToInt(DeckEntry::quantity).sum() + " sideboard");
++                int targetGame = currentMatchId == null ? 1 : currentGameNumber + 1;
++                LOG.info("Observed submitted game deck: match={}, game={}, main={}, sideboard={}",
++                        currentMatchId == null ? "<pending>" : currentMatchId,
++                        targetGame, submitted.mainDeckSize(), submitted.sideboard().size());
++                if (currentMatchId != null) {
++                    recordMatchMessage("Submitted deck for Game " + targetGame
++                            + ": " + submitted.mainDeckSize() + " main, "
++                            + submitted.sideboard().stream().mapToInt(DeckEntry::quantity).sum() + " sideboard");
++                }
+             }
+         }
+ 
+@@ -122,7 +134,6 @@ public final class DeckTracker {
+             complete = false;
+             started = false;
+             clearGameObjects();
+-            pendingGameDeck = null;
+ 
+             String eventId = "";
+             JsonElement players = config.get("reservedPlayers");
+@@ -145,7 +156,15 @@ public final class DeckTracker {
+             matchDeckState = new MatchDeckState(matchId, selectedDeck);
+             LOG.info("Started deck tracking for match {} with selected deck {}", matchId,
+                     selectedDeck == null ? "<unknown>" : selectedDeck.deckId());
++            if (pendingGameDeck != null) {
++                matchDeckState.observeDeckForGame(1, pendingGameDeck);
++                recordMatchMessage("Submitted deck for Game 1: " + pendingGameDeck.mainDeckSize()
++                        + " main, " + pendingGameDeck.sideboard().stream()
++                        .mapToInt(DeckEntry::quantity).sum() + " sideboard");
++                pendingGameDeck = null;
++            }
+             currentDeck = matchDeckState.deckForGame(currentGameNumber);
++            rememberCurrentState();
+             enrichCurrentDeckAsync();
+         }
+     }
+@@ -176,6 +195,7 @@ public final class DeckTracker {
+                             matchDeckState.observeDeckForGame(gameNo, pendingGameDeck);
+                     currentDeck = matchDeckState.deckForGame(gameNo);
+                     pendingGameDeck = null;
++                    rememberCurrentState();
+                     change.ifPresent(sideboardChange -> {
+                         LOG.info("Reconstructed sideboard change for match {} game {}: {} in, {} out ({})",
+                                 sideboardChange.matchId(), sideboardChange.gameNumber(),
+@@ -191,6 +211,7 @@ public final class DeckTracker {
+                 } else {
+                     LOG.info("Activating game {} deck without a submitted configuration: match={}", gameNo, currentMatchId);
+                     currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
++                    rememberCurrentState();
+                 }
+                 complete = false;
+                 started = false;
+@@ -200,6 +221,7 @@ public final class DeckTracker {
+             String stage = string(info, "stage");
+             if (stage.contains("GameOver") || stage.contains("Complete")) {
+                 complete = true;
++                rememberCurrentState();
+                 if (started) listener.gameCompleted(currentMatchId, currentGameNumber);
+                 continue;
+             }
+@@ -209,9 +231,13 @@ public final class DeckTracker {
+ 
+             if (!started && currentDeck != null && currentMatchId != null) {
+                 started = true;
+-                listener.gameStarted(snapshot());
++                DeckGameState state = snapshot();
++                remember(state);
++                listener.gameStarted(state);
+             } else if (started && !complete) {
+-                listener.gameUpdated(snapshot());
++                DeckGameState state = snapshot();
++                remember(state);
++                listener.gameUpdated(state);
+             }
+         }
+     }
+@@ -314,11 +340,21 @@ public final class DeckTracker {
+             if (matchDeckState != null) {
+                 matchDeckState.refreshSelectedDeck(replacement);
+                 currentDeck = matchDeckState.deckForGame(currentGameNumber);
++                rememberCurrentState();
+                 if (started && !complete) listener.gameUpdated(snapshot());
+             }
+         });
+     }
+ 
++    private synchronized void rememberCurrentState() {
++        if (currentMatchId != null && currentDeck != null) remember(snapshot());
++    }
++
++    private synchronized void remember(DeckGameState state) {
++        gameStates.computeIfAbsent(state.matchId(), ignored -> new LinkedHashMap<>())
++                .put(state.gameNumber(), state);
++    }
++
+     private synchronized void recordMatchMessage(String message) {
+         matchLog.add(message);
+     }
+diff --git a/src/main/java/app/model/session/GameSession.java b/src/main/java/app/model/session/GameSession.java
+index b01cedf..fea44fa 100644
+--- a/src/main/java/app/model/session/GameSession.java
++++ b/src/main/java/app/model/session/GameSession.java
+@@ -38,7 +38,7 @@ public final class GameSession {
+ 
+     public List<GameEvent> project(LogMessageInterface message, ModelObject modelObject) {
+         List<GameEvent> gameEvents = projector.project(message, modelObject);
+-        List<GameEvent> events = matchProjector.project(gameNumber, gameEvents);
++        List<GameEvent> events = matchProjector.project(gameNumber, message.getSequence(), gameEvents);
+         if (!events.isEmpty()) {
+             LOG.info("Projected {} event(s) for match {} game {} from log sequence {}",
+                     events.size(), model.getMatchId(), gameNumber, message.getSequence());
+diff --git a/src/main/java/app/projection/MatchProjector.java b/src/main/java/app/projection/MatchProjector.java
+index fe1278d..76ce7b7 100644
+--- a/src/main/java/app/projection/MatchProjector.java
++++ b/src/main/java/app/projection/MatchProjector.java
+@@ -28,7 +28,7 @@ public final class MatchProjector {
+         this.state = state;
+     }
+ 
+-    public synchronized List<GameEvent> project(int gameNumber, List<GameEvent> gameEvents) {
++    public synchronized List<GameEvent> project(int gameNumber, long sequence, List<GameEvent> gameEvents) {
+         List<GameEvent> result = new ArrayList<>();
+         boolean gameStartEmitted = startedGames.contains(gameNumber);
+ 
+@@ -57,13 +57,20 @@ public final class MatchProjector {
+         }
+ 
+         if (!gameStartEmitted) {
+-            GameEvent anchor = gameEvents.isEmpty() ? null : gameEvents.get(0);
++            GameEvent anchor = gameEvents.isEmpty() ? sequenceAnchor(sequence) : gameEvents.get(0);
+             result.add(0, gameStartedEvent(gameNumber, anchor));
+             startedGames.add(gameNumber);
+         }
+         return result;
+     }
+ 
++
++    private GameEvent sequenceAnchor(long sequence) {
++        GameEvent event = new GameEvent();
++        event.setSequence(sequence);
++        return event;
++    }
++
+     private MatchResult inferredMatchResult(MatchScore score) {
+         Integer winnerSeat = null;
+         if (score.seatOneWins() >= 2) winnerSeat = 1;
+diff --git a/src/main/java/app/replay/GameSessionsPanel.java b/src/main/java/app/replay/GameSessionsPanel.java
+index 81f081f..b2c7a0a 100644
+--- a/src/main/java/app/replay/GameSessionsPanel.java
++++ b/src/main/java/app/replay/GameSessionsPanel.java
+@@ -120,6 +120,26 @@ public final class GameSessionsPanel extends JPanel {
+         return view;
+     }
+ 
++
++    public String selectedMatchId() {
++        GameView view = selectedGameView();
++        return view == null ? null : view.getModel().getMatchId();
++    }
++
++    public int selectedGameNumber() {
++        GameView view = selectedGameView();
++        return view == null ? 0 : view.getModel().getGameNumber();
++    }
++
++    private GameView selectedGameView() {
++        Component selected = gameTabs.getSelectedComponent();
++        if (!(selected instanceof JScrollPane scrollPane)
++                || !(scrollPane.getViewport().getView() instanceof GameView view)) {
++            return null;
++        }
++        return view;
++    }
++
+     private void copySelectedGame() {
+         Component selected = gameTabs.getSelectedComponent();
+         if (!(selected instanceof JScrollPane scrollPane) ||
+diff --git a/src/main/java/app/replay/MainFrame.java b/src/main/java/app/replay/MainFrame.java
+index 601839a..5f1c087 100644
+--- a/src/main/java/app/replay/MainFrame.java
++++ b/src/main/java/app/replay/MainFrame.java
+@@ -54,7 +54,7 @@ public final class MainFrame extends JFrame {
+         textArea.setLineWrap(false);
+ 
+         JButton showGameDeck = new JButton("Show game deck");
+-        showGameDeck.addActionListener(event -> gameDeckFrame.showState(deckTracker.currentState()));
++        showGameDeck.addActionListener(event -> showSelectedGameDeck());
+ 
+         JButton showMatchLog = new JButton("Show match log");
+         showMatchLog.addActionListener(event -> showMatchLog());
+@@ -102,6 +102,16 @@ public final class MainFrame extends JFrame {
+         status.setText("Queued UI messages: " + uiQueue.size());
+     }
+ 
++
++    private void showSelectedGameDeck() {
++        String matchId = gamesPanel.selectedMatchId();
++        int gameNumber = gamesPanel.selectedGameNumber();
++        app.deck.model.DeckGameState state = matchId == null || gameNumber <= 0
++                ? deckTracker.currentState()
++                : deckTracker.stateForGame(matchId, gameNumber);
++        gameDeckFrame.showState(state);
++    }
++
+     private void showMatchLog() {
+         String text = gamesPanel.matchLogText()
+                 + System.lineSeparator()
+diff --git a/src/test/java/app/deck/model/MatchDeckStateTest.java b/src/test/java/app/deck/model/MatchDeckStateTest.java
+index 1c1f4d8..988e8b8 100644
+--- a/src/test/java/app/deck/model/MatchDeckStateTest.java
++++ b/src/test/java/app/deck/model/MatchDeckStateTest.java
+@@ -68,6 +68,7 @@ class MatchDeckStateTest {
+                 List.of(entry(100, 1), entry(300, 1)));
+ 
+         MatchDeckState state = new MatchDeckState("match-1", selected);
++        assertTrue(state.observeDeckForGame(1, selected).isEmpty());
+         SideboardChange change = state.observeDeckForGame(2, gameTwo).orElseThrow();
+ 
+         assertEquals(SideboardChange.Confidence.RECONSTRUCTED, change.confidence());
+@@ -82,10 +83,24 @@ class MatchDeckStateTest {
+         CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
+         MatchDeckState state = new MatchDeckState("match-1", selected);
+ 
++        assertTrue(state.observeDeckForGame(1, selected).isEmpty());
+         assertTrue(state.observeDeckForGame(2, selected).isEmpty());
+         assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
+     }
+ 
++
++    @Test
++    void gameTwoObservationWithoutGameOneBaselineDoesNotInventSideboarding() {
++        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
++        CachedDeck gameTwo = deck("deck-1", List.of(entry(100, 3), entry(200, 1)),
++                List.of(entry(100, 1), entry(200, 1)));
++        MatchDeckState state = new MatchDeckState("match-1", selected);
++
++        assertTrue(state.observeDeckForGame(2, gameTwo).isEmpty());
++        assertEquals(gameTwo.mainDeck(), state.deckForGame(2).mainDeck());
++        assertFalse(state.gameDeckSnapshot().containsKey(1));
++    }
++
+     @Test
+     void observationForDifferentSelectedDeckIsIgnored() {
+         CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of());
+diff --git a/src/test/java/app/projection/MatchProjectorTest.java b/src/test/java/app/projection/MatchProjectorTest.java
+index a500e5a..2cf9f89 100644
+--- a/src/test/java/app/projection/MatchProjectorTest.java
++++ b/src/test/java/app/projection/MatchProjectorTest.java
+@@ -21,8 +21,8 @@ final class MatchProjectorTest {
+         MatchState state = stateWithPlayers();
+         MatchProjector projector = new MatchProjector(state);
+ 
+-        projector.project(1, List.of(gameResult(1, "Alice")));
+-        List<GameEvent> second = projector.project(2, List.of(gameResult(1, "Alice")));
++        projector.project(1, 0, List.of(gameResult(1, "Alice")));
++        List<GameEvent> second = projector.project(2, 0, List.of(gameResult(1, "Alice")));
+ 
+         assertEquals(
+                 List.of(
+@@ -41,9 +41,9 @@ final class MatchProjectorTest {
+         MatchState state = stateWithPlayers();
+         MatchProjector projector = new MatchProjector(state);
+ 
+-        List<GameEvent> first = projector.project(1, List.of(gameResult(1, "Alice")));
+-        List<GameEvent> second = projector.project(2, List.of(gameResult(2, "Bob")));
+-        List<GameEvent> third = projector.project(3, List.of(gameResult(1, "Alice")));
++        List<GameEvent> first = projector.project(1, 0, List.of(gameResult(1, "Alice")));
++        List<GameEvent> second = projector.project(2, 0, List.of(gameResult(2, "Bob")));
++        List<GameEvent> third = projector.project(3, 0, List.of(gameResult(1, "Alice")));
+ 
+         assertEquals(new MatchScore(1, 0, 0), scoreEvent(first).getMatchScore());
+         assertEquals(new MatchScore(1, 1, 0), scoreEvent(second).getMatchScore());
+@@ -56,7 +56,7 @@ final class MatchProjectorTest {
+         MatchState state = stateWithPlayers();
+         MatchProjector projector = new MatchProjector(state);
+ 
+-        List<GameEvent> events = projector.project(1, List.of(drawResult()));
++        List<GameEvent> events = projector.project(1, 0, List.of(drawResult()));
+ 
+         assertEquals(new MatchScore(0, 0, 1), scoreEvent(events).getMatchScore());
+         assertNull(state.matchResult());
+@@ -66,8 +66,8 @@ final class MatchProjectorTest {
+     void emitsEachGameStartOnlyOnce() {
+         MatchProjector projector = new MatchProjector(stateWithPlayers());
+ 
+-        List<GameEvent> first = projector.project(1, List.of(gameplay("Alice rolled 17")));
+-        List<GameEvent> second = projector.project(1, List.of(gameplay("Bob rolled 12")));
++        List<GameEvent> first = projector.project(1, 0, List.of(gameplay("Alice rolled 17")));
++        List<GameEvent> second = projector.project(1, 0, List.of(gameplay("Bob rolled 12")));
+ 
+         assertEquals(GameEventType.GAME_STARTED, first.get(0).getType());
+         assertEquals(2, first.size());

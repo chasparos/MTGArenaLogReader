@@ -54,7 +54,7 @@ public final class MainFrame extends JFrame {
         textArea.setLineWrap(false);
 
         JButton showGameDeck = new JButton("Show game deck");
-        showGameDeck.addActionListener(event -> gameDeckFrame.showState(deckTracker.currentState()));
+        showGameDeck.addActionListener(event -> showSelectedGameDeck());
 
         JButton showMatchLog = new JButton("Show match log");
         showMatchLog.addActionListener(event -> showMatchLog());
@@ -100,6 +100,16 @@ public final class MainFrame extends JFrame {
                     SwingUtilities.invokeLater(() -> appendEnrichment(message, model, error)));
         }
         status.setText("Queued UI messages: " + uiQueue.size());
+    }
+
+
+    private void showSelectedGameDeck() {
+        String matchId = gamesPanel.selectedMatchId();
+        int gameNumber = gamesPanel.selectedGameNumber();
+        app.deck.model.DeckGameState state = matchId == null || gameNumber <= 0
+                ? deckTracker.currentState()
+                : deckTracker.stateForGame(matchId, gameNumber);
+        gameDeckFrame.showState(state);
     }
 
     private void showMatchLog() {

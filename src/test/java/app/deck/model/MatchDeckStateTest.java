@@ -68,6 +68,7 @@ class MatchDeckStateTest {
                 List.of(entry(100, 1), entry(300, 1)));
 
         MatchDeckState state = new MatchDeckState("match-1", selected);
+        assertTrue(state.observeDeckForGame(1, selected).isEmpty());
         SideboardChange change = state.observeDeckForGame(2, gameTwo).orElseThrow();
 
         assertEquals(SideboardChange.Confidence.RECONSTRUCTED, change.confidence());
@@ -82,8 +83,22 @@ class MatchDeckStateTest {
         CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
         MatchDeckState state = new MatchDeckState("match-1", selected);
 
+        assertTrue(state.observeDeckForGame(1, selected).isEmpty());
         assertTrue(state.observeDeckForGame(2, selected).isEmpty());
         assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
+    }
+
+
+    @Test
+    void gameTwoObservationWithoutGameOneBaselineDoesNotInventSideboarding() {
+        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
+        CachedDeck gameTwo = deck("deck-1", List.of(entry(100, 3), entry(200, 1)),
+                List.of(entry(100, 1), entry(200, 1)));
+        MatchDeckState state = new MatchDeckState("match-1", selected);
+
+        assertTrue(state.observeDeckForGame(2, gameTwo).isEmpty());
+        assertEquals(gameTwo.mainDeck(), state.deckForGame(2).mainDeck());
+        assertFalse(state.gameDeckSnapshot().containsKey(1));
     }
 
     @Test

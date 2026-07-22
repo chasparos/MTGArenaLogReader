@@ -120,6 +120,26 @@ public final class GameSessionsPanel extends JPanel {
         return view;
     }
 
+
+    public String selectedMatchId() {
+        GameView view = selectedGameView();
+        return view == null ? null : view.getModel().getMatchId();
+    }
+
+    public int selectedGameNumber() {
+        GameView view = selectedGameView();
+        return view == null ? 0 : view.getModel().getGameNumber();
+    }
+
+    private GameView selectedGameView() {
+        Component selected = gameTabs.getSelectedComponent();
+        if (!(selected instanceof JScrollPane scrollPane)
+                || !(scrollPane.getViewport().getView() instanceof GameView view)) {
+            return null;
+        }
+        return view;
+    }
+
     private void copySelectedGame() {
         Component selected = gameTabs.getSelectedComponent();
         if (!(selected instanceof JScrollPane scrollPane) ||

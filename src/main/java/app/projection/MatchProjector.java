@@ -28,7 +28,7 @@ public final class MatchProjector {
         this.state = state;
     }
 
-    public synchronized List<GameEvent> project(int gameNumber, List<GameEvent> gameEvents) {
+    public synchronized List<GameEvent> project(int gameNumber, long sequence, List<GameEvent> gameEvents) {
         List<GameEvent> result = new ArrayList<>();
         boolean gameStartEmitted = startedGames.contains(gameNumber);
 
@@ -57,11 +57,18 @@ public final class MatchProjector {
         }
 
         if (!gameStartEmitted) {
-            GameEvent anchor = gameEvents.isEmpty() ? null : gameEvents.get(0);
+            GameEvent anchor = gameEvents.isEmpty() ? sequenceAnchor(sequence) : gameEvents.get(0);
             result.add(0, gameStartedEvent(gameNumber, anchor));
             startedGames.add(gameNumber);
         }
         return result;
+    }
+
+
+    private GameEvent sequenceAnchor(long sequence) {
+        GameEvent event = new GameEvent();
+        event.setSequence(sequence);
+        return event;
     }
 
     private MatchResult inferredMatchResult(MatchScore score) {

@@ -21,8 +21,8 @@ final class MatchProjectorTest {
         MatchState state = stateWithPlayers();
         MatchProjector projector = new MatchProjector(state);
 
-        projector.project(1, List.of(gameResult(1, "Alice")));
-        List<GameEvent> second = projector.project(2, List.of(gameResult(1, "Alice")));
+        projector.project(1, 0, List.of(gameResult(1, "Alice")));
+        List<GameEvent> second = projector.project(2, 0, List.of(gameResult(1, "Alice")));
 
         assertEquals(
                 List.of(
@@ -41,9 +41,9 @@ final class MatchProjectorTest {
         MatchState state = stateWithPlayers();
         MatchProjector projector = new MatchProjector(state);
 
-        List<GameEvent> first = projector.project(1, List.of(gameResult(1, "Alice")));
-        List<GameEvent> second = projector.project(2, List.of(gameResult(2, "Bob")));
-        List<GameEvent> third = projector.project(3, List.of(gameResult(1, "Alice")));
+        List<GameEvent> first = projector.project(1, 0, List.of(gameResult(1, "Alice")));
+        List<GameEvent> second = projector.project(2, 0, List.of(gameResult(2, "Bob")));
+        List<GameEvent> third = projector.project(3, 0, List.of(gameResult(1, "Alice")));
 
         assertEquals(new MatchScore(1, 0, 0), scoreEvent(first).getMatchScore());
         assertEquals(new MatchScore(1, 1, 0), scoreEvent(second).getMatchScore());
@@ -56,7 +56,7 @@ final class MatchProjectorTest {
         MatchState state = stateWithPlayers();
         MatchProjector projector = new MatchProjector(state);
 
-        List<GameEvent> events = projector.project(1, List.of(drawResult()));
+        List<GameEvent> events = projector.project(1, 0, List.of(drawResult()));
 
         assertEquals(new MatchScore(0, 0, 1), scoreEvent(events).getMatchScore());
         assertNull(state.matchResult());
@@ -66,8 +66,8 @@ final class MatchProjectorTest {
     void emitsEachGameStartOnlyOnce() {
         MatchProjector projector = new MatchProjector(stateWithPlayers());
 
-        List<GameEvent> first = projector.project(1, List.of(gameplay("Alice rolled 17")));
-        List<GameEvent> second = projector.project(1, List.of(gameplay("Bob rolled 12")));
+        List<GameEvent> first = projector.project(1, 0, List.of(gameplay("Alice rolled 17")));
+        List<GameEvent> second = projector.project(1, 0, List.of(gameplay("Bob rolled 12")));
 
         assertEquals(GameEventType.GAME_STARTED, first.get(0).getType());
         assertEquals(2, first.size());

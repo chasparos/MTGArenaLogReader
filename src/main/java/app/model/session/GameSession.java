@@ -38,7 +38,7 @@ public final class GameSession {
 
     public List<GameEvent> project(LogMessageInterface message, ModelObject modelObject) {
         List<GameEvent> gameEvents = projector.project(message, modelObject);
-        List<GameEvent> events = matchProjector.project(gameNumber, gameEvents);
+        List<GameEvent> events = matchProjector.project(gameNumber, message.getSequence(), gameEvents);
         if (!events.isEmpty()) {
             LOG.info("Projected {} event(s) for match {} game {} from log sequence {}",
                     events.size(), model.getMatchId(), gameNumber, message.getSequence());
