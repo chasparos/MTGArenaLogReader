@@ -57,6 +57,8 @@ public final class GameView extends JPanel implements Scrollable {
     private final Deque<PendingMessage> pending = new ArrayDeque<>();
     private final List<CardHitbox> cardHitboxes = new ArrayList<>();
     private final List<EventHitbox> eventHitboxes = new ArrayList<>();
+    private final List<TurnHitbox> turnHitboxes = new ArrayList<>();
+    private final NavigableSet<Integer> selectedTurns = new TreeSet<>();
     private final AbilityNameStore abilityNames;
     private final BoardStateMonitor boardStateMonitor = new BoardStateMonitor();
     private final CardImageCache imageCache = new CardImageCache(
@@ -65,6 +67,8 @@ public final class GameView extends JPanel implements Scrollable {
     private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE);
     private JWindow previewWindow;
     private CardHitbox hovered;
+    private CoachingActions coachingActions;
+    private Integer selectionAnchorTurn;
 
     public GameView(GameModel model) { this(model, new AbilityNameStore()); }
 
@@ -98,7 +102,14 @@ public final class GameView extends JPanel implements Scrollable {
             @Override public void mouseMoved(MouseEvent e) { handleHover(e); }
             @Override public void mouseExited(MouseEvent e) { hovered = null; hidePreview(); repaint(); }
             @Override public void mousePressed(MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) nameAbilityAt(e.getPoint());
+                if (e.isPopupTrigger()) {
+                    showContextMenu(e);
+                } else if (SwingUtilities.isLeftMouseButton(e)) {
+                    selectTurnAt(e);
+                }
+            }
+            @Override public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) showContextMenu(e);
             }
         };
         addMouseMotionListener(mouse);
@@ -106,6 +117,23 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     public GameModel getModel() { return model; }
+
+    /**
+     * Enables the optional coaching interaction layer. Passing {@code null}
+     * restores the normal reconstruction view.
+     */
+    public void setCoachingActions(CoachingActions coachingActions) {
+        this.coachingActions = coachingActions;
+        if (coachingActions == null) {
+            selectedTurns.clear();
+            selectionAnchorTurn = null;
+        }
+        repaint();
+    }
+
+    public Set<Integer> getSelectedTurns() {
+        return Set.copyOf(selectedTurns);
+    }
 
     public void accept(LogMessageInterface message) {
         PendingMessage pendingMessage = new PendingMessage(message);
@@ -155,6 +183,7 @@ public final class GameView extends JPanel implements Scrollable {
             configure(g);
             cardHitboxes.clear();
             eventHitboxes.clear();
+            turnHitboxes.clear();
             List<GameEvent> events = model.snapshot();
             if (events.isEmpty()) { paintEmptyState(g); return; }
 
@@ -187,11 +216,23 @@ public final class GameView extends JPanel implements Scrollable {
         g.setFont(titleFont);
         FontMetrics fm = g.getFontMetrics();
         int h = fm.getHeight() + 10;
-        g.setColor(blend(getBackground(), colorOr("List.selectionBackground", new Color(0x4477AA)), .13f));
-        g.fill(new RoundRectangle2D.Float(OUTER_PADDING, y, width, h, 14, 14));
+        boolean selected = coachingActions != null
+                && selectedTurns.contains(event.getTurnNumber());
+        Color accent = colorOr("List.selectionBackground", new Color(0x4477AA));
+        g.setColor(blend(getBackground(), accent, selected ? .34f : .13f));
+        Shape header = new RoundRectangle2D.Float(OUTER_PADDING, y, width, h, 14, 14);
+        g.fill(header);
+        if (selected) {
+            g.setColor(blend(accent, Color.BLACK, .16f));
+            g.draw(header);
+        }
         g.setColor(colorOr("Label.foreground", getForeground()));
         String title = "Turn " + event.getTurnNumber() + "  ·  " + nullToEmpty(event.getActivePlayerName());
         g.drawString(title, OUTER_PADDING + 12, y + 5 + fm.getAscent());
+        if (coachingActions != null) {
+            turnHitboxes.add(new TurnHitbox(new Rectangle(OUTER_PADDING, y, width, h),
+                    event.getTurnNumber()));
+        }
         g.setFont(old);
         return y + h + EVENT_GAP;
     }
@@ -755,6 +796,125 @@ public final class GameView extends JPanel implements Scrollable {
         if (previewWindow != null) { previewWindow.dispose(); previewWindow = null; }
     }
 
+    private void selectTurnAt(MouseEvent mouse) {
+        if (coachingActions == null) return;
+        TurnHitbox hit = turnAt(mouse.getPoint());
+        if (hit == null) return;
+
+        int turn = hit.turnNumber();
+        if (mouse.isShiftDown() && selectionAnchorTurn != null) {
+            int from = Math.min(selectionAnchorTurn, turn);
+            int to = Math.max(selectionAnchorTurn, turn);
+            if (!mouse.isControlDown() && !mouse.isMetaDown()) selectedTurns.clear();
+            for (int value = from; value <= to; value++) selectedTurns.add(value);
+        } else if (mouse.isControlDown() || mouse.isMetaDown()) {
+            if (!selectedTurns.remove(turn)) selectedTurns.add(turn);
+            selectionAnchorTurn = turn;
+        } else {
+            selectedTurns.clear();
+            selectedTurns.add(turn);
+            selectionAnchorTurn = turn;
+        }
+        repaint();
+    }
+
+    private void showContextMenu(MouseEvent mouse) {
+        if (coachingActions == null) {
+            if (SwingUtilities.isRightMouseButton(mouse)) nameAbilityAt(mouse.getPoint());
+            return;
+        }
+
+        TurnHitbox hit = turnAt(mouse.getPoint());
+        Integer turn = hit == null ? eventTurnAt(mouse.getPoint()) : hit.turnNumber();
+        if (turn != null && !selectedTurns.contains(turn)) {
+            selectedTurns.clear();
+            selectedTurns.add(turn);
+            selectionAnchorTurn = turn;
+            repaint();
+        }
+
+        JPopupMenu menu = new JPopupMenu();
+        addContextItem(menu, "Ask about this match", CoachingScope.MATCH, Set.of(), null);
+        addContextItem(menu, "Ask about this game", CoachingScope.GAME, Set.of(), null);
+        if (turn != null) {
+            addContextItem(menu, "Ask about turn " + turn, CoachingScope.TURN,
+                    Set.of(turn), null);
+        }
+        if (!selectedTurns.isEmpty()) {
+            addContextItem(menu, selectedTurns.size() == 1
+                            ? "Ask about selected turn"
+                            : "Ask about selected turns " + compactTurns(selectedTurns),
+                    CoachingScope.SELECTED_TURNS, Set.copyOf(selectedTurns), null);
+        }
+
+        menu.addSeparator();
+        JMenu standard = new JMenu("Standard questions");
+        addStandardQuestions(standard, turn);
+        menu.add(standard);
+
+        EventHitbox event = eventAt(mouse.getPoint());
+        if (event != null && event.event().getAbility() != null) {
+            menu.addSeparator();
+            JMenuItem nameAbility = new JMenuItem("Name this ability…");
+            nameAbility.addActionListener(ignored -> nameAbilityAt(mouse.getPoint()));
+            menu.add(nameAbility);
+        }
+        menu.show(this, mouse.getX(), mouse.getY());
+    }
+
+    private void addStandardQuestions(JMenu menu, Integer turn) {
+        addContextItem(menu, "What deck is my opponent using?",
+                CoachingScope.MATCH, Set.of(),
+                "What deck is my opponent using, and what should I know about decks of this kind?");
+        addContextItem(menu, "Was my starting hand keep correct?",
+                CoachingScope.GAME, Set.of(),
+                "Was keeping my starting hand correct? Explain the important factors and alternatives.");
+        if (turn != null) {
+            addContextItem(menu, "Could I have played this turn differently?",
+                    CoachingScope.TURN, Set.of(turn),
+                    "Could I have played this turn differently? Focus on realistic alternatives using only known information.");
+            addContextItem(menu, "Review attacks and blocks",
+                    CoachingScope.TURN, Set.of(turn),
+                    "Were the attacks and blocks on this turn correct? Explain better lines, if any.");
+        }
+        if (!selectedTurns.isEmpty()) {
+            addContextItem(menu, "Review selected turns",
+                    CoachingScope.SELECTED_TURNS, Set.copyOf(selectedTurns),
+                    "Review these turns as one sequence. Identify the most important decision and a better line, if one existed.");
+        }
+    }
+
+    private void addContextItem(JComponent menu, String label, CoachingScope scope,
+                                Set<Integer> turns, String question) {
+        JMenuItem item = new JMenuItem(label);
+        item.addActionListener(ignored -> coachingActions.request(
+                new CoachingRequest(scope, turns, question)));
+        menu.add(item);
+    }
+
+    private TurnHitbox turnAt(Point point) {
+        return turnHitboxes.stream()
+                .filter(value -> value.bounds().contains(point))
+                .findFirst().orElse(null);
+    }
+
+    private EventHitbox eventAt(Point point) {
+        return eventHitboxes.stream()
+                .filter(value -> value.bounds().contains(point))
+                .findFirst().orElse(null);
+    }
+
+    private Integer eventTurnAt(Point point) {
+        EventHitbox hit = eventAt(point);
+        return hit == null ? null : hit.event().getTurnNumber();
+    }
+
+    private String compactTurns(Collection<Integer> turns) {
+        if (turns.isEmpty()) return "";
+        if (turns.size() == 1) return Integer.toString(turns.iterator().next());
+        return turns.iterator().next() + "–" + ((NavigableSet<Integer>) new TreeSet<>(turns)).last();
+    }
+
     private void nameAbilityAt(Point point) {
         EventHitbox hit = eventHitboxes.stream()
                 .filter(value -> value.bounds().contains(point)).findFirst().orElse(null);
@@ -789,6 +949,21 @@ public final class GameView extends JPanel implements Scrollable {
     private record RichLayout(int height) {}
     private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event) {}
     private record EventHitbox(Rectangle bounds, GameEvent event) {}
+    private record TurnHitbox(Rectangle bounds, int turnNumber) {}
+
+    public enum CoachingScope { MATCH, GAME, TURN, SELECTED_TURNS }
+
+    public record CoachingRequest(CoachingScope scope, Set<Integer> turns, String question) {
+        public CoachingRequest {
+            Objects.requireNonNull(scope, "scope");
+            turns = turns == null ? Set.of() : Set.copyOf(turns);
+        }
+    }
+
+    @FunctionalInterface
+    public interface CoachingActions {
+        void request(CoachingRequest request);
+    }
 
     private static final class PendingMessage {
         private final LogMessageInterface message;

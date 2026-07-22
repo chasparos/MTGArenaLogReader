@@ -35,6 +35,7 @@ public final class CoachingFrame extends JFrame {
     private final JTextArea transcript = textArea();
     private final JTextArea reconstruction = textArea();
     private final JTabbedPane games = new JTabbedPane();
+    private final JTabbedPane details = new JTabbedPane();
     private final JTextArea draft = new JTextArea(4, 40);
     private final JLabel status = new JLabel("No coaching match selected");
     private CoachingConversation selected;
@@ -67,7 +68,6 @@ public final class CoachingFrame extends JFrame {
         JScrollPane browser = new JScrollPane(conversationList);
         browser.setPreferredSize(new Dimension(250, 0));
 
-        JTabbedPane details = new JTabbedPane();
         details.addTab("Conversation", conversationPanel());
         details.addTab("Games", games);
         details.addTab("AI reconstruction", new JScrollPane(reconstruction));
@@ -167,12 +167,47 @@ public final class CoachingFrame extends JFrame {
         }
         try {
             GameView view = new GameView(service.richGame(game));
+            view.setCoachingActions(request -> prepareQuestion(game.gameNumber(), request));
             JScrollPane scroll = new JScrollPane(view);
             scroll.getVerticalScrollBar().setUnitIncrement(20);
-            return scroll;
+
+            JLabel hint = new JLabel(
+                    "Select a turn · Ctrl-click toggles · Shift-click selects a range · Right-click to ask");
+            hint.setBorder(new EmptyBorder(5, 8, 5, 8));
+
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.add(hint, BorderLayout.NORTH);
+            panel.add(scroll, BorderLayout.CENTER);
+            return panel;
         } catch (RuntimeException error) {
             return textGameFallback(game, "Rich replay could not be loaded; showing the saved text reconstruction.");
         }
+    }
+
+    private void prepareQuestion(int gameNumber, GameView.CoachingRequest request) {
+        String context = switch (request.scope()) {
+            case MATCH -> "Match";
+            case GAME -> "Game " + gameNumber;
+            case TURN -> "Game " + gameNumber + ", turn " + onlyTurn(request.turns());
+            case SELECTED_TURNS -> "Game " + gameNumber + ", turns " + formatTurns(request.turns());
+        };
+        String question = request.question() == null ? "" : request.question();
+        draft.setText("[Context: " + context + "]" + System.lineSeparator()
+                + question);
+        draft.setCaretPosition(draft.getDocument().getLength());
+        details.setSelectedIndex(0);
+        draft.requestFocusInWindow();
+        status.setText("Prepared local coaching question for " + context);
+    }
+
+    private int onlyTurn(java.util.Set<Integer> turns) {
+        return turns.stream().findFirst().orElseThrow();
+    }
+
+    private String formatTurns(java.util.Set<Integer> turns) {
+        return turns.stream().sorted()
+                .map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     private JComponent textGameFallback(CoachingGame game, String reason) {
