@@ -1,0 +1,437 @@
+diff --git a/src/main/java/app/application/Application.java b/src/main/java/app/application/Application.java
+index 69fe493..43bdcba 100644
+--- a/src/main/java/app/application/Application.java
++++ b/src/main/java/app/application/Application.java
+@@ -10,6 +10,7 @@ import app.model.log.ModelObject;
+ import app.model.log.LogMessageInterface;
+ import app.model.log.RawLogEntry;
+ import app.enrichment.CardCache;
++import app.enrichment.CardImageCache;
+ import app.enrichment.InformationCollector;
+ import app.enrichment.ScryfallClient;
+ import app.replay.MainFrame;
+@@ -50,6 +51,8 @@ public final class Application implements AutoCloseable {
+     private final CardCache cardCache = new CardCache(
+             gson,
+             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "card-cache"));
++    private final CardImageCache cardImageCache = new CardImageCache(
++            Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
+ 
+     private LogTailReader logTailReader;
+     private LogMessageReader logMessageReader;
+@@ -107,7 +110,7 @@ public final class Application implements AutoCloseable {
+                 gson,
+                 cardCache,
+                 Path.of(System.getProperty("user.home"), ".arena-log-viewer", "card-cache"));
+-        DeckTrackerFrame deckFrame = new DeckTrackerFrame();
++        DeckTrackerFrame deckFrame = new DeckTrackerFrame(cardImageCache);
+         DeckTracker deckTracker = new DeckTracker(gson, cardCache, deckCache, scryfallClient, restExecutor, new DeckTrackerListener() {
+             @Override public void gameStarted(DeckGameState state) {
+                 SwingUtilities.invokeLater(() -> deckFrame.updateState(state));
+diff --git a/src/main/java/app/deck/ui/DeckTrackerFrame.java b/src/main/java/app/deck/ui/DeckTrackerFrame.java
+index ac72332..a2e2ab3 100644
+--- a/src/main/java/app/deck/ui/DeckTrackerFrame.java
++++ b/src/main/java/app/deck/ui/DeckTrackerFrame.java
+@@ -4,12 +4,14 @@ import app.deck.model.CachedDeck;
+ import app.deck.model.DeckEntry;
+ import app.deck.model.DeckGameState;
+ import app.model.card.CardInfo;
++import app.enrichment.CardImageCache;
+ 
+ import javax.swing.*;
+ import javax.swing.border.CompoundBorder;
+ import javax.swing.border.EmptyBorder;
+ import javax.swing.border.MatteBorder;
+ import java.awt.*;
++import java.awt.image.BufferedImage;
+ import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashSet;
+@@ -30,12 +32,23 @@ public final class DeckTrackerFrame extends JFrame {
+     private final JButton previousTurn = new JButton("◀ Previous turn");
+     private final JButton nextTurn = new JButton("Next turn ▶");
+     private final JTabbedPane tabs = new JTabbedPane();
++    private final JPanel handStrip = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
++    private final JScrollPane handScroll = new JScrollPane(handStrip,
++            ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
++            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
++    private final CardImageCache imageCache;
+ 
+     private List<DeckGameState> timeline = List.of();
+     private int timelineIndex = -1;
+ 
+     public DeckTrackerFrame() {
++        this(new CardImageCache(java.nio.file.Path.of(
++                System.getProperty("user.home"), ".arena-log-viewer", "images")));
++    }
++
++    public DeckTrackerFrame(CardImageCache imageCache) {
+         super("Arena Deck Tracker");
++        this.imageCache = java.util.Objects.requireNonNull(imageCache, "imageCache");
+         setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+         setSize(560, 760);
+         setLocationByPlatform(true);
+@@ -54,9 +67,15 @@ public final class DeckTrackerFrame extends JFrame {
+         browser.add(turnLabel);
+         browser.add(nextTurn);
+ 
++        handStrip.setBorder(new EmptyBorder(2, 6, 2, 6));
++        handScroll.setBorder(new MatteBorder(1, 0, 1, 0, new Color(0, 0, 0, 45)));
++        handScroll.setPreferredSize(new Dimension(100, 112));
++        handScroll.setVisible(false);
++
+         JPanel north = new JPanel(new BorderLayout());
+         north.add(header, BorderLayout.NORTH);
+-        north.add(browser, BorderLayout.SOUTH);
++        north.add(browser, BorderLayout.CENTER);
++        north.add(handScroll, BorderLayout.SOUTH);
+         add(north, BorderLayout.NORTH);
+         add(tabs, BorderLayout.CENTER);
+         updateNavigation();
+@@ -141,6 +160,7 @@ public final class DeckTrackerFrame extends JFrame {
+     private void render(DeckGameState state) {
+         tabs.removeAll();
+         if (state == null || state.deck() == null) {
++            renderHandStrip(null);
+             title.setText("Deck tracker");
+             totals.setText("");
+             tabs.addTab("Deck", messagePanel(
+@@ -153,14 +173,18 @@ public final class DeckTrackerFrame extends JFrame {
+                 ? "Observed game deck"
+                 : deck.name();
+         title.setText(deckName + " — Game " + state.gameNumber());
+-        totals.setText("Library " + state.libraryCount()
+-                + "   Hand " + state.handCount()
+-                + "   Graveyard " + state.graveyardCount()
+-                + (state.exileCount() > 0 ? "   Exile " + state.exileCount() : ""));
++        double landChance = categoryDrawChance(deck.mainDeck(), state, "Land");
++        double creatureChance = categoryDrawChance(deck.mainDeck(), state, "Creature");
++        totals.setText("<html>Library " + state.libraryCount()
++                + " &nbsp; Graveyard " + state.graveyardCount()
++                + (state.exileCount() > 0 ? " &nbsp; Exile " + state.exileCount() : "")
++                + "<br>Next draw: land " + String.format(Locale.ROOT, "%.1f%%", landChance)
++                + " &nbsp; creature " + String.format(Locale.ROOT, "%.1f%%", creatureChance)
++                + "</html>");
++        renderHandStrip(state);
+ 
+         tabs.addTab("Main deck (" + deck.mainDeckSize() + ")",
+                 deckPanel(deck.mainDeck(), state, true));
+-        tabs.addTab("Hand (" + state.handCount() + ")", handPanel(state));
+         tabs.addTab("Sideboard (" + quantity(deck.sideboard()) + ")",
+                 deckPanel(deck.sideboard(), state, false));
+     }
+@@ -196,7 +220,7 @@ public final class DeckTrackerFrame extends JFrame {
+         JPanel listPanel = new JPanel();
+         listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+ 
+-        for (DeckEntry entry : sorted(entries)) {
++        for (DeckEntry entry : sorted(entries, state, showTracking)) {
+             listPanel.add(showTracking ? trackedCardRow(entry, state) : sideboardCardRow(entry));
+         }
+         listPanel.add(Box.createVerticalGlue());
+@@ -224,6 +248,12 @@ public final class DeckTrackerFrame extends JFrame {
+         String type = card == null ? "" : card.effectiveTypeLine();
+         row.setToolTipText((type == null || type.isBlank() ? "" : type + " — ")
+                 + remaining + " known copies remaining in library");
++        if (remaining == 0) {
++            dim(row);
++            name.setText("<html><span style='color:#666666'>" + entry.quantity()
++                    + "x " + escapeHtml(entry.displayName()) + "</span></html>");
++            chance.setForeground(new Color(100, 100, 100));
++        }
+         return row;
+     }
+ 
+@@ -260,10 +290,13 @@ public final class DeckTrackerFrame extends JFrame {
+     /**
+      * Magic-oriented ordering: rising mana value, then card color, then name.
+      */
+-    private List<DeckEntry> sorted(List<DeckEntry> entries) {
++    private List<DeckEntry> sorted(List<DeckEntry> entries, DeckGameState state,
++                                   boolean moveDepletedToBottom) {
+         List<DeckEntry> result = new ArrayList<>(entries == null ? List.of() : entries);
+         result.sort(Comparator
+-                .comparingDouble(this::manaValue)
++                .comparingInt((DeckEntry entry) -> moveDepletedToBottom
++                        && state.remainingCopies(entry.arenaId(), entry.quantity()) == 0 ? 1 : 0)
++                .thenComparingDouble(this::manaValue)
+                 .thenComparingInt(this::colorOrder)
+                 .thenComparing(DeckEntry::displayName, String.CASE_INSENSITIVE_ORDER));
+         return result;
+@@ -292,6 +325,89 @@ public final class DeckTrackerFrame extends JFrame {
+         };
+     }
+ 
++    private double categoryDrawChance(List<DeckEntry> entries, DeckGameState state,
++                                      String typeToken) {
++        if (state.libraryCount() <= 0) return 0.0;
++        int remaining = entries.stream()
++                .filter(entry -> {
++                    CardInfo card = entry.card();
++                    String type = card == null ? null : card.effectiveTypeLine();
++                    return type != null && type.contains(typeToken);
++                })
++                .mapToInt(entry -> state.remainingCopies(entry.arenaId(), entry.quantity()))
++                .sum();
++        return 100.0 * remaining / state.libraryCount();
++    }
++
++    private void renderHandStrip(DeckGameState state) {
++        handStrip.removeAll();
++        if (state == null || state.handCards().isEmpty()) {
++            handScroll.setVisible(false);
++            handStrip.revalidate();
++            handStrip.repaint();
++            return;
++        }
++
++        for (DeckEntry entry : sorted(handEntries(state), state, false)) {
++            for (int copy = 0; copy < entry.quantity(); copy++) {
++                handStrip.add(thumbnail(entry));
++            }
++        }
++        handScroll.setVisible(true);
++        handStrip.revalidate();
++        handStrip.repaint();
++    }
++
++    private JComponent thumbnail(DeckEntry entry) {
++        JLabel label = new JLabel(shortName(entry.displayName()), SwingConstants.CENTER);
++        label.setVerticalTextPosition(SwingConstants.BOTTOM);
++        label.setHorizontalTextPosition(SwingConstants.CENTER);
++        label.setPreferredSize(new Dimension(62, 88));
++        label.setToolTipText(entry.displayName());
++        label.setBorder(BorderFactory.createLineBorder(new Color(0, 0, 0, 65)));
++        label.setOpaque(true);
++        label.setBackground(identityColor(entry.card()));
++
++        CardInfo card = entry.card();
++        if (card != null) {
++            imageCache.get(card).thenAccept(image -> image.ifPresent(buffered ->
++                    SwingUtilities.invokeLater(() -> {
++                        label.setIcon(new ImageIcon(scaleThumbnail(buffered, 58, 80)));
++                        label.setText("");
++                    })));
++        }
++        return label;
++    }
++
++    private Image scaleThumbnail(BufferedImage image, int maxWidth, int maxHeight) {
++        double scale = Math.min((double) maxWidth / image.getWidth(),
++                (double) maxHeight / image.getHeight());
++        int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
++        int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
++        return image.getScaledInstance(width, height, Image.SCALE_SMOOTH);
++    }
++
++    private String shortName(String name) {
++        if (name == null) return "?";
++        return name.length() <= 12 ? name : name.substring(0, 11) + "…";
++    }
++
++    private void dim(JPanel row) {
++        row.setBackground(blend(row.getBackground(), getBackground(), .58f));
++    }
++
++    private Color blend(Color left, Color right, float amount) {
++        float n = Math.max(0f, Math.min(1f, amount));
++        return new Color(
++                Math.round(left.getRed() * (1 - n) + right.getRed() * n),
++                Math.round(left.getGreen() * (1 - n) + right.getGreen() * n),
++                Math.round(left.getBlue() * (1 - n) + right.getBlue() * n));
++    }
++
++    private String escapeHtml(String value) {
++        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
++    }
++
+     private int quantity(List<DeckEntry> entries) {
+         return entries == null ? 0 : entries.stream().mapToInt(DeckEntry::quantity).sum();
+     }
+diff --git a/src/main/java/app/replay/GameView.java b/src/main/java/app/replay/GameView.java
+index 4e143df..92035d0 100644
+--- a/src/main/java/app/replay/GameView.java
++++ b/src/main/java/app/replay/GameView.java
+@@ -36,10 +36,11 @@ public final class GameView extends JPanel implements Scrollable {
+     private static final int EVENT_GAP = 9;
+     private static final int CARD_PADDING = 11;
+     private static final int CONTEXT_WIDTH = 190;
+-    private static final int CHIP_X_PADDING = 18;
+-    private static final int CHIP_Y_PADDING = 3;
++    private static final int CHIP_X_PADDING = 12;
++    private static final int CHIP_Y_PADDING = 2;
+     private static final int CHIP_ARC = 14;
+-    private static final int SYMBOL_SIZE = 12;
++    private static final int SYMBOL_SIZE = 11;
++    private static final int CARD_MANA_GAP = 14;
+     private static final Pattern MANA = Pattern.compile("\\{([^}]+)}");
+     private static final Pattern POWER_TOUGHNESS = Pattern.compile(
+             "\\(?(-?\\d+|\\*)/(-?\\d+|\\*)\\)?");
+@@ -59,6 +60,7 @@ public final class GameView extends JPanel implements Scrollable {
+     private final CardImageCache imageCache = new CardImageCache(
+             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
+     private final SvgAssetRenderer svgAssets = new SvgAssetRenderer();
++    private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE);
+     private JWindow previewWindow;
+     private CardHitbox hovered;
+ 
+@@ -397,8 +399,11 @@ public final class GameView extends JPanel implements Scrollable {
+             return SYMBOL_SIZE + 4 + fm.stringWidth(keyword.label()) + CHIP_X_PADDING * 2;
+         }
+         CardInfo card = ((CardFragment) fragment).card();
+-        int mana = manaTokens(card.getManaCost()).size() * (SYMBOL_SIZE + 1);
+-        return fm.stringWidth(card.getName()) + CHIP_X_PADDING * 2 + mana + (mana > 0 ? 18 : 0);
++        Font chipFont = getFont().deriveFont(Font.BOLD, Math.max(9f, getFont().getSize2D() - 1f));
++        FontMetrics chipMetrics = g.getFontMetrics(chipFont);
++        int mana = manaCostPainter.width(card.getManaCost());
++        return chipMetrics.stringWidth(card.getName()) + CHIP_X_PADDING * 2
++                + mana + (mana > 0 ? CARD_MANA_GAP : 0);
+     }
+ 
+     private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY, int lineHeight, GameEvent event) {
+@@ -439,15 +444,21 @@ public final class GameView extends JPanel implements Scrollable {
+ 
+         Color textColor = contrast(base);
+         g.setColor(textColor);
+-        g.setFont(getFont().deriveFont(Font.BOLD));
++        Font oldFont = g.getFont();
++        Font chipFont = oldFont.deriveFont(Font.BOLD, Math.max(9f, oldFont.getSize2D() - 1f));
++        g.setFont(chipFont);
++        FontMetrics chipMetrics = g.getFontMetrics();
+         int textX = x + CHIP_X_PADDING;
+-        g.drawString(card.getName(), textX, baseline);
+-        int manaX = textX + fm.stringWidth(card.getName()) + SYMBOL_SIZE;
+-        for (String symbol : manaTokens(card.getManaCost())) {
+-            paintMana(g, symbol, manaX, topY + (lineHeight - SYMBOL_SIZE) / 2);
+-            manaX += SYMBOL_SIZE + 1;
++        int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
++        g.drawString(card.getName(), textX, textBaseline);
++
++        int manaWidth = manaCostPainter.width(card.getManaCost());
++        if (manaWidth > 0) {
++            int manaX = x + width - CHIP_X_PADDING - manaWidth;
++            int manaY = chipY + (chipHeight - SYMBOL_SIZE) / 2;
++            manaCostPainter.paint(g, card.getManaCost(), manaX, manaY, base);
+         }
+-        g.setFont(getFont());
++        g.setFont(oldFont);
+         cardHitboxes.add(new CardHitbox(bounds, card, event));
+     }
+ 
+@@ -455,8 +466,13 @@ public final class GameView extends JPanel implements Scrollable {
+                                          int x, int topY, int lineHeight) {
+         FontMetrics fm = g.getFontMetrics(getFont());
+         String value = pt.power() + "/" + pt.toughness();
+-        int width = fm.stringWidth(value) + CHIP_X_PADDING * 2;
+-        int height = fm.getHeight() + CHIP_Y_PADDING * 2;
++        Font old = g.getFont();
++        Font compact = old.deriveFont(Font.BOLD, Math.max(9f, old.getSize2D() - 2f));
++        FontMetrics compactMetrics = g.getFontMetrics(compact);
++        int overlap = 4;
++        x -= overlap;
++        int width = compactMetrics.stringWidth(value) + 12;
++        int height = compactMetrics.getHeight() + 2;
+         int y = topY + (lineHeight - height) / 2;
+         Color base = blend(colorOr("TextArea.background", Color.WHITE),
+                 new Color(0x9D785A), .24f);
+@@ -466,10 +482,9 @@ public final class GameView extends JPanel implements Scrollable {
+         g.setColor(blend(base, Color.BLACK, .30f));
+         g.draw(chip);
+         g.setColor(contrast(base));
+-        Font old = g.getFont();
+-        g.setFont(old.deriveFont(Font.BOLD));
+-        g.drawString(value, x + CHIP_X_PADDING,
+-                topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent());
++        g.setFont(compact);
++        g.drawString(value, x + 6,
++                y + (height - compactMetrics.getHeight()) / 2 + compactMetrics.getAscent());
+         g.setFont(old);
+     }
+ 
+diff --git a/src/main/java/app/replay/ManaCostPainter.java b/src/main/java/app/replay/ManaCostPainter.java
+new file mode 100644
+index 0000000..c8e515d
+--- /dev/null
++++ b/src/main/java/app/replay/ManaCostPainter.java
+@@ -0,0 +1,81 @@
++package app.replay;
++
++import java.awt.*;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++/**
++ * Paints compact mana-cost symbols as one right-aligned visual unit.
++ *
++ * <p>This remains a presentation helper: mana parsing here is limited to
++ * display tokens and does not interpret game rules.</p>
++ */
++final class ManaCostPainter {
++    private static final Pattern TOKEN = Pattern.compile("\\{([^}]+)}");
++    private final SvgAssetRenderer svgAssets;
++    private final int symbolSize;
++
++    ManaCostPainter(SvgAssetRenderer svgAssets, int symbolSize) {
++        this.svgAssets = svgAssets;
++        this.symbolSize = symbolSize;
++    }
++
++    int width(String manaCost) {
++        int count = tokens(manaCost).size();
++        return count == 0 ? 0 : count * symbolSize + Math.max(0, count - 1);
++    }
++
++    void paint(Graphics2D graphics, String manaCost, int x, int y, Color cardColor) {
++        int currentX = x;
++        for (String token : tokens(manaCost)) {
++            paintSymbol(graphics, token, currentX, y, cardColor);
++            currentX += symbolSize + 1;
++        }
++    }
++
++    private void paintSymbol(Graphics2D graphics, String token, int x, int y, Color cardColor) {
++        Color surround = blend(cardColor, Color.WHITE, .55f);
++        graphics.setColor(surround);
++        graphics.fillOval(x, y, symbolSize, symbolSize);
++        graphics.setColor(blend(surround, Color.BLACK, .30f));
++        graphics.drawOval(x, y, symbolSize, symbolSize);
++
++        String resource = normalize(token).replace("/", "_");
++        if (svgAssets.paint(graphics, "/mana-svg/" + resource + ".svg",
++                x, y, symbolSize, symbolSize)) {
++            return;
++        }
++
++        Font old = graphics.getFont();
++        graphics.setFont(old.deriveFont(Font.BOLD, token.length() > 2 ? 7f : 8f));
++        FontMetrics metrics = graphics.getFontMetrics();
++        String text = token.length() > 3 ? token.substring(0, 3) : token;
++        graphics.setColor(Color.DARK_GRAY);
++        graphics.drawString(text, x + (symbolSize - metrics.stringWidth(text)) / 2,
++                y + (symbolSize - metrics.getHeight()) / 2 + metrics.getAscent());
++        graphics.setFont(old);
++    }
++
++    private List<String> tokens(String manaCost) {
++        if (manaCost == null || manaCost.isBlank()) return List.of();
++        List<String> result = new ArrayList<>();
++        Matcher matcher = TOKEN.matcher(manaCost);
++        while (matcher.find()) result.add(matcher.group(1));
++        return result;
++    }
++
++    private String normalize(String symbol) {
++        return symbol.trim().toUpperCase(Locale.ROOT);
++    }
++
++    private Color blend(Color left, Color right, float amount) {
++        float n = Math.max(0, Math.min(1, amount));
++        return new Color(
++                Math.round(left.getRed() * (1 - n) + right.getRed() * n),
++                Math.round(left.getGreen() * (1 - n) + right.getGreen() * n),
++                Math.round(left.getBlue() * (1 - n) + right.getBlue() * n));
++    }
++}

@@ -4,12 +4,14 @@ import app.deck.model.CachedDeck;
 import app.deck.model.DeckEntry;
 import app.deck.model.DeckGameState;
 import app.model.card.CardInfo;
+import app.enrichment.CardImageCache;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -30,12 +32,23 @@ public final class DeckTrackerFrame extends JFrame {
     private final JButton previousTurn = new JButton("◀ Previous turn");
     private final JButton nextTurn = new JButton("Next turn ▶");
     private final JTabbedPane tabs = new JTabbedPane();
+    private final JPanel handStrip = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+    private final JScrollPane handScroll = new JScrollPane(handStrip,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+    private final CardImageCache imageCache;
 
     private List<DeckGameState> timeline = List.of();
     private int timelineIndex = -1;
 
     public DeckTrackerFrame() {
+        this(new CardImageCache(java.nio.file.Path.of(
+                System.getProperty("user.home"), ".arena-log-viewer", "images")));
+    }
+
+    public DeckTrackerFrame(CardImageCache imageCache) {
         super("Arena Deck Tracker");
+        this.imageCache = java.util.Objects.requireNonNull(imageCache, "imageCache");
         setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
         setSize(560, 760);
         setLocationByPlatform(true);
@@ -54,9 +67,15 @@ public final class DeckTrackerFrame extends JFrame {
         browser.add(turnLabel);
         browser.add(nextTurn);
 
+        handStrip.setBorder(new EmptyBorder(2, 6, 2, 6));
+        handScroll.setBorder(new MatteBorder(1, 0, 1, 0, new Color(0, 0, 0, 45)));
+        handScroll.setPreferredSize(new Dimension(100, 112));
+        handScroll.setVisible(false);
+
         JPanel north = new JPanel(new BorderLayout());
         north.add(header, BorderLayout.NORTH);
-        north.add(browser, BorderLayout.SOUTH);
+        north.add(browser, BorderLayout.CENTER);
+        north.add(handScroll, BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
         updateNavigation();
@@ -141,6 +160,7 @@ public final class DeckTrackerFrame extends JFrame {
     private void render(DeckGameState state) {
         tabs.removeAll();
         if (state == null || state.deck() == null) {
+            renderHandStrip(null);
             title.setText("Deck tracker");
             totals.setText("");
             tabs.addTab("Deck", messagePanel(
@@ -153,14 +173,18 @@ public final class DeckTrackerFrame extends JFrame {
                 ? "Observed game deck"
                 : deck.name();
         title.setText(deckName + " — Game " + state.gameNumber());
-        totals.setText("Library " + state.libraryCount()
-                + "   Hand " + state.handCount()
-                + "   Graveyard " + state.graveyardCount()
-                + (state.exileCount() > 0 ? "   Exile " + state.exileCount() : ""));
+        double landChance = categoryDrawChance(deck.mainDeck(), state, "Land");
+        double creatureChance = categoryDrawChance(deck.mainDeck(), state, "Creature");
+        totals.setText("<html>Library " + state.libraryCount()
+                + " &nbsp; Graveyard " + state.graveyardCount()
+                + (state.exileCount() > 0 ? " &nbsp; Exile " + state.exileCount() : "")
+                + "<br>Next draw: land " + String.format(Locale.ROOT, "%.1f%%", landChance)
+                + " &nbsp; creature " + String.format(Locale.ROOT, "%.1f%%", creatureChance)
+                + "</html>");
+        renderHandStrip(state);
 
         tabs.addTab("Main deck (" + deck.mainDeckSize() + ")",
                 deckPanel(deck.mainDeck(), state, true));
-        tabs.addTab("Hand (" + state.handCount() + ")", handPanel(state));
         tabs.addTab("Sideboard (" + quantity(deck.sideboard()) + ")",
                 deckPanel(deck.sideboard(), state, false));
     }
@@ -196,7 +220,7 @@ public final class DeckTrackerFrame extends JFrame {
         JPanel listPanel = new JPanel();
         listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
 
-        for (DeckEntry entry : sorted(entries)) {
+        for (DeckEntry entry : sorted(entries, state, showTracking)) {
             listPanel.add(showTracking ? trackedCardRow(entry, state) : sideboardCardRow(entry));
         }
         listPanel.add(Box.createVerticalGlue());
@@ -224,6 +248,12 @@ public final class DeckTrackerFrame extends JFrame {
         String type = card == null ? "" : card.effectiveTypeLine();
         row.setToolTipText((type == null || type.isBlank() ? "" : type + " — ")
                 + remaining + " known copies remaining in library");
+        if (remaining == 0) {
+            dim(row);
+            name.setText("<html><span style='color:#666666'>" + entry.quantity()
+                    + "x " + escapeHtml(entry.displayName()) + "</span></html>");
+            chance.setForeground(new Color(100, 100, 100));
+        }
         return row;
     }
 
@@ -260,10 +290,13 @@ public final class DeckTrackerFrame extends JFrame {
     /**
      * Magic-oriented ordering: rising mana value, then card color, then name.
      */
-    private List<DeckEntry> sorted(List<DeckEntry> entries) {
+    private List<DeckEntry> sorted(List<DeckEntry> entries, DeckGameState state,
+                                   boolean moveDepletedToBottom) {
         List<DeckEntry> result = new ArrayList<>(entries == null ? List.of() : entries);
         result.sort(Comparator
-                .comparingDouble(this::manaValue)
+                .comparingInt((DeckEntry entry) -> moveDepletedToBottom
+                        && state.remainingCopies(entry.arenaId(), entry.quantity()) == 0 ? 1 : 0)
+                .thenComparingDouble(this::manaValue)
                 .thenComparingInt(this::colorOrder)
                 .thenComparing(DeckEntry::displayName, String.CASE_INSENSITIVE_ORDER));
         return result;
@@ -290,6 +323,89 @@ public final class DeckTrackerFrame extends JFrame {
             case "G" -> 4;
             default -> 6;
         };
+    }
+
+    private double categoryDrawChance(List<DeckEntry> entries, DeckGameState state,
+                                      String typeToken) {
+        if (state.libraryCount() <= 0) return 0.0;
+        int remaining = entries.stream()
+                .filter(entry -> {
+                    CardInfo card = entry.card();
+                    String type = card == null ? null : card.effectiveTypeLine();
+                    return type != null && type.contains(typeToken);
+                })
+                .mapToInt(entry -> state.remainingCopies(entry.arenaId(), entry.quantity()))
+                .sum();
+        return 100.0 * remaining / state.libraryCount();
+    }
+
+    private void renderHandStrip(DeckGameState state) {
+        handStrip.removeAll();
+        if (state == null || state.handCards().isEmpty()) {
+            handScroll.setVisible(false);
+            handStrip.revalidate();
+            handStrip.repaint();
+            return;
+        }
+
+        for (DeckEntry entry : sorted(handEntries(state), state, false)) {
+            for (int copy = 0; copy < entry.quantity(); copy++) {
+                handStrip.add(thumbnail(entry));
+            }
+        }
+        handScroll.setVisible(true);
+        handStrip.revalidate();
+        handStrip.repaint();
+    }
+
+    private JComponent thumbnail(DeckEntry entry) {
+        JLabel label = new JLabel(shortName(entry.displayName()), SwingConstants.CENTER);
+        label.setVerticalTextPosition(SwingConstants.BOTTOM);
+        label.setHorizontalTextPosition(SwingConstants.CENTER);
+        label.setPreferredSize(new Dimension(62, 88));
+        label.setToolTipText(entry.displayName());
+        label.setBorder(BorderFactory.createLineBorder(new Color(0, 0, 0, 65)));
+        label.setOpaque(true);
+        label.setBackground(identityColor(entry.card()));
+
+        CardInfo card = entry.card();
+        if (card != null) {
+            imageCache.get(card).thenAccept(image -> image.ifPresent(buffered ->
+                    SwingUtilities.invokeLater(() -> {
+                        label.setIcon(new ImageIcon(scaleThumbnail(buffered, 58, 80)));
+                        label.setText("");
+                    })));
+        }
+        return label;
+    }
+
+    private Image scaleThumbnail(BufferedImage image, int maxWidth, int maxHeight) {
+        double scale = Math.min((double) maxWidth / image.getWidth(),
+                (double) maxHeight / image.getHeight());
+        int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
+        int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
+        return image.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+    }
+
+    private String shortName(String name) {
+        if (name == null) return "?";
+        return name.length() <= 12 ? name : name.substring(0, 11) + "…";
+    }
+
+    private void dim(JPanel row) {
+        row.setBackground(blend(row.getBackground(), getBackground(), .58f));
+    }
+
+    private Color blend(Color left, Color right, float amount) {
+        float n = Math.max(0f, Math.min(1f, amount));
+        return new Color(
+                Math.round(left.getRed() * (1 - n) + right.getRed() * n),
+                Math.round(left.getGreen() * (1 - n) + right.getGreen() * n),
+                Math.round(left.getBlue() * (1 - n) + right.getBlue() * n));
+    }
+
+    private String escapeHtml(String value) {
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private int quantity(List<DeckEntry> entries) {

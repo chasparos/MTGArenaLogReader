@@ -10,6 +10,7 @@ import app.model.log.ModelObject;
 import app.model.log.LogMessageInterface;
 import app.model.log.RawLogEntry;
 import app.enrichment.CardCache;
+import app.enrichment.CardImageCache;
 import app.enrichment.InformationCollector;
 import app.enrichment.ScryfallClient;
 import app.replay.MainFrame;
@@ -50,6 +51,8 @@ public final class Application implements AutoCloseable {
     private final CardCache cardCache = new CardCache(
             gson,
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "card-cache"));
+    private final CardImageCache cardImageCache = new CardImageCache(
+            Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
 
     private LogTailReader logTailReader;
     private LogMessageReader logMessageReader;
@@ -107,7 +110,7 @@ public final class Application implements AutoCloseable {
                 gson,
                 cardCache,
                 Path.of(System.getProperty("user.home"), ".arena-log-viewer", "card-cache"));
-        DeckTrackerFrame deckFrame = new DeckTrackerFrame();
+        DeckTrackerFrame deckFrame = new DeckTrackerFrame(cardImageCache);
         DeckTracker deckTracker = new DeckTracker(gson, cardCache, deckCache, scryfallClient, restExecutor, new DeckTrackerListener() {
             @Override public void gameStarted(DeckGameState state) {
                 SwingUtilities.invokeLater(() -> deckFrame.updateState(state));

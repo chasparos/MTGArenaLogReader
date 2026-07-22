@@ -36,10 +36,11 @@ public final class GameView extends JPanel implements Scrollable {
     private static final int EVENT_GAP = 9;
     private static final int CARD_PADDING = 11;
     private static final int CONTEXT_WIDTH = 190;
-    private static final int CHIP_X_PADDING = 18;
-    private static final int CHIP_Y_PADDING = 3;
+    private static final int CHIP_X_PADDING = 12;
+    private static final int CHIP_Y_PADDING = 2;
     private static final int CHIP_ARC = 14;
-    private static final int SYMBOL_SIZE = 12;
+    private static final int SYMBOL_SIZE = 11;
+    private static final int CARD_MANA_GAP = 14;
     private static final Pattern MANA = Pattern.compile("\\{([^}]+)}");
     private static final Pattern POWER_TOUGHNESS = Pattern.compile(
             "\\(?(-?\\d+|\\*)/(-?\\d+|\\*)\\)?");
@@ -59,6 +60,7 @@ public final class GameView extends JPanel implements Scrollable {
     private final CardImageCache imageCache = new CardImageCache(
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
     private final SvgAssetRenderer svgAssets = new SvgAssetRenderer();
+    private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE);
     private JWindow previewWindow;
     private CardHitbox hovered;
 
@@ -397,8 +399,11 @@ public final class GameView extends JPanel implements Scrollable {
             return SYMBOL_SIZE + 4 + fm.stringWidth(keyword.label()) + CHIP_X_PADDING * 2;
         }
         CardInfo card = ((CardFragment) fragment).card();
-        int mana = manaTokens(card.getManaCost()).size() * (SYMBOL_SIZE + 1);
-        return fm.stringWidth(card.getName()) + CHIP_X_PADDING * 2 + mana + (mana > 0 ? 18 : 0);
+        Font chipFont = getFont().deriveFont(Font.BOLD, Math.max(9f, getFont().getSize2D() - 1f));
+        FontMetrics chipMetrics = g.getFontMetrics(chipFont);
+        int mana = manaCostPainter.width(card.getManaCost());
+        return chipMetrics.stringWidth(card.getName()) + CHIP_X_PADDING * 2
+                + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
     private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY, int lineHeight, GameEvent event) {
@@ -439,15 +444,21 @@ public final class GameView extends JPanel implements Scrollable {
 
         Color textColor = contrast(base);
         g.setColor(textColor);
-        g.setFont(getFont().deriveFont(Font.BOLD));
+        Font oldFont = g.getFont();
+        Font chipFont = oldFont.deriveFont(Font.BOLD, Math.max(9f, oldFont.getSize2D() - 1f));
+        g.setFont(chipFont);
+        FontMetrics chipMetrics = g.getFontMetrics();
         int textX = x + CHIP_X_PADDING;
-        g.drawString(card.getName(), textX, baseline);
-        int manaX = textX + fm.stringWidth(card.getName()) + SYMBOL_SIZE;
-        for (String symbol : manaTokens(card.getManaCost())) {
-            paintMana(g, symbol, manaX, topY + (lineHeight - SYMBOL_SIZE) / 2);
-            manaX += SYMBOL_SIZE + 1;
+        int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
+        g.drawString(card.getName(), textX, textBaseline);
+
+        int manaWidth = manaCostPainter.width(card.getManaCost());
+        if (manaWidth > 0) {
+            int manaX = x + width - CHIP_X_PADDING - manaWidth;
+            int manaY = chipY + (chipHeight - SYMBOL_SIZE) / 2;
+            manaCostPainter.paint(g, card.getManaCost(), manaX, manaY, base);
         }
-        g.setFont(getFont());
+        g.setFont(oldFont);
         cardHitboxes.add(new CardHitbox(bounds, card, event));
     }
 
@@ -455,8 +466,13 @@ public final class GameView extends JPanel implements Scrollable {
                                          int x, int topY, int lineHeight) {
         FontMetrics fm = g.getFontMetrics(getFont());
         String value = pt.power() + "/" + pt.toughness();
-        int width = fm.stringWidth(value) + CHIP_X_PADDING * 2;
-        int height = fm.getHeight() + CHIP_Y_PADDING * 2;
+        Font old = g.getFont();
+        Font compact = old.deriveFont(Font.BOLD, Math.max(9f, old.getSize2D() - 2f));
+        FontMetrics compactMetrics = g.getFontMetrics(compact);
+        int overlap = 4;
+        x -= overlap;
+        int width = compactMetrics.stringWidth(value) + 12;
+        int height = compactMetrics.getHeight() + 2;
         int y = topY + (lineHeight - height) / 2;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 new Color(0x9D785A), .24f);
@@ -466,10 +482,9 @@ public final class GameView extends JPanel implements Scrollable {
         g.setColor(blend(base, Color.BLACK, .30f));
         g.draw(chip);
         g.setColor(contrast(base));
-        Font old = g.getFont();
-        g.setFont(old.deriveFont(Font.BOLD));
-        g.drawString(value, x + CHIP_X_PADDING,
-                topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent());
+        g.setFont(compact);
+        g.drawString(value, x + 6,
+                y + (height - compactMetrics.getHeight()) / 2 + compactMetrics.getAscent());
         g.setFont(old);
     }
 
