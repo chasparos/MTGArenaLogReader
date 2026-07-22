@@ -10,6 +10,7 @@ import app.model.log.LogMessageInterface;
 import app.projection.AbilityNameStore;
 import app.routing.GameMessageRouter;
 import app.export.GameTextExporter;
+import app.export.MatchAiExporter;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -35,6 +36,7 @@ public final class GameSessionsPanel extends JPanel {
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
     private final GameMessageRouter router = new GameMessageRouter();
     private final GameTextExporter exporter = new GameTextExporter();
+    private final MatchAiExporter aiExporter = new MatchAiExporter();
     private final AbilityNameStore abilityNames = new AbilityNameStore();
     private final JLabel status = new JLabel("No games loaded");
 
@@ -47,6 +49,10 @@ public final class GameSessionsPanel extends JPanel {
         JButton copyRaw = new JButton("Copy raw game log");
         copyRaw.addActionListener(event -> copySelectedRawGame());
 
+        JButton copyMatchForAi = new JButton("Copy match for AI");
+        copyMatchForAi.setToolTipText("Copy a compact semantic reconstruction of the selected match");
+        copyMatchForAi.addActionListener(event -> copySelectedMatchForAi());
+
         JButton clear = new JButton("Clear games");
         clear.addActionListener(event -> clear());
 
@@ -56,6 +62,7 @@ public final class GameSessionsPanel extends JPanel {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         actions.add(copy);
+        actions.add(copyMatchForAi);
         actions.add(copyRaw);
         actions.add(clear);
         toolbar.add(actions, BorderLayout.EAST);
@@ -160,6 +167,33 @@ public final class GameSessionsPanel extends JPanel {
                 " — " + view.getModel().snapshot().size() + " events");
     }
 
+
+    private void copySelectedMatchForAi() {
+        GameView view = selectedGameView();
+        if (view == null) {
+            status.setText("No match selected");
+            return;
+        }
+
+        MatchSession match = matches.get(view.getModel().getMatchId());
+        if (match == null) {
+            status.setText("Selected match is unavailable");
+            return;
+        }
+
+        String text = aiExporter.export(match);
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+                .setContents(new StringSelection(text), null);
+        int gameCount = match.gameSnapshot().size();
+        status.setText("Copied compact AI report for match "
+                + shortMatchId(view.getModel().getMatchId())
+                + " — " + gameCount + (gameCount == 1 ? " game" : " games"));
+    }
+
+    private String shortMatchId(String matchId) {
+        if (matchId == null || matchId.isBlank()) return "unknown";
+        return matchId.length() <= 8 ? matchId : matchId.substring(0, 8);
+    }
 
     private void copySelectedRawGame() {
         Component selected = gameTabs.getSelectedComponent();

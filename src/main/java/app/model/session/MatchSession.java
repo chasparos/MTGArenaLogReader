@@ -6,6 +6,7 @@ import app.projection.GameEventProjector;
 import app.projection.MatchProjector;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,6 +32,15 @@ public final class MatchSession {
 
     public MatchState matchState() {
         return matchState;
+    }
+
+    /**
+     * Returns the games currently known for this match in game-number order.
+     */
+    public synchronized List<GameModel> gameSnapshot() {
+        return games.values().stream()
+                .map(GameSession::model)
+                .toList();
     }
 
     private GameSession createGame(int gameNumber) {
