@@ -21,3 +21,10 @@ SHA-256: `fadb965d22b8e317e130c58b659e58d20da61bf1970245358dfb5ee8c6217176`
 
 Treat this fixture as immutable. Add a new fixture rather than editing it when a new edge
 case cannot be represented by focused synthetic records.
+
+
+`cast-cancelled-during-selection.log` is a focused fixture derived from an Arena
+log where a sorcery reached the Stack during target selection and the local
+player then sent `ClientMessageType_CancelActionReq`. It retains the exact
+outgoing action, Stack observation, cancellation request, and rollback state,
+with player names replaced by stable test values.

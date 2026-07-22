@@ -165,6 +165,11 @@ public final class GameEventProjector {
                                       List<GameEvent> result) {
         String type = stringAt(payload, "type");
 
+        if ("ClientMessageType_CancelActionReq".equals(type)) {
+            cancelMostRecentPendingCast(source, result);
+            return;
+        }
+
         if ("ClientMessageType_SelectTargetsResp".equals(type)) {
             projectTargetDecisionResponse(source, payload, result);
             return;
@@ -779,9 +784,16 @@ public final class GameEventProjector {
             observedCardsByGrpId.put(current.getGrpId(), current.copy());
         }
 
-        // A real Stack object is the authoritative confirmation that the cast
-        // completed.  Do not emit a cancellation after this point.
-        if ("Stack".equals(zoneType(incomingZone))) {
+        /*
+         * Seeing the spell on the Stack confirms the cast attempt, but Arena can
+         * still roll that object back when the player cancels target, mode, or
+         * payment selection. Keep the correlation until the object leaves the
+         * Stack normally or an explicit cancellation is observed.
+         */
+        if (previous != null
+                && "Stack".equals(zoneType(previousSemanticZone))
+                && !"Stack".equals(zoneType(incomingZone))
+                && !"Hand".equals(zoneType(incomingZone))) {
             removePendingCastFor(instanceId, current);
         }
 
@@ -821,10 +833,6 @@ public final class GameEventProjector {
                 object.setSemanticZoneId(toZone);
                 object.setZoneId(toZone);
 
-                if ("Stack".equals(zoneType(toZone))) {
-                    removePendingCastFor(instanceId, object);
-                }
-
                 /*
                  * Cancelling target/mode/payment selection commonly rolls the
                  * card from Limbo back to Hand.  Limbo is intentionally not a
@@ -839,6 +847,8 @@ public final class GameEventProjector {
                         result.add(cancelledCastEvent(source, pending));
                         continue;
                     }
+                } else if ("Stack".equals(zoneType(fromZone))) {
+                    removePendingCastFor(instanceId, object);
                 }
 
                 result.add(objectEvent(source, describeTransition(before, object, cards, category), object));
