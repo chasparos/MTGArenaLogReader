@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Comparator;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,9 +40,15 @@ public final class GameSessionsPanel extends JPanel {
     private final MatchAiExporter aiExporter = new MatchAiExporter();
     private final AbilityNameStore abilityNames = new AbilityNameStore();
     private final JLabel status = new JLabel("No games loaded");
+    private final Consumer<MatchSession> coachingAction;
 
     public GameSessionsPanel() {
+        this(match -> { });
+    }
+
+    public GameSessionsPanel(Consumer<MatchSession> coachingAction) {
         super(new BorderLayout());
+        this.coachingAction = coachingAction;
 
         JButton copy = new JButton("Copy selected game");
         copy.addActionListener(event -> copySelectedGame());
@@ -53,6 +60,10 @@ public final class GameSessionsPanel extends JPanel {
         copyMatchForAi.setToolTipText("Copy a compact semantic reconstruction of the selected match");
         copyMatchForAi.addActionListener(event -> copySelectedMatchForAi());
 
+        JButton coachMatch = new JButton("Coach match…");
+        coachMatch.setToolTipText("Persist this match and open its local coaching conversation");
+        coachMatch.addActionListener(event -> openSelectedMatchForCoaching());
+
         JButton clear = new JButton("Clear games");
         clear.addActionListener(event -> clear());
 
@@ -63,6 +74,7 @@ public final class GameSessionsPanel extends JPanel {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         actions.add(copy);
         actions.add(copyMatchForAi);
+        actions.add(coachMatch);
         actions.add(copyRaw);
         actions.add(clear);
         toolbar.add(actions, BorderLayout.EAST);
@@ -167,6 +179,25 @@ public final class GameSessionsPanel extends JPanel {
                 " — " + view.getModel().snapshot().size() + " events");
     }
 
+
+
+    private void openSelectedMatchForCoaching() {
+        GameView view = selectedGameView();
+        if (view == null) {
+            status.setText("No match selected");
+            return;
+        }
+
+        MatchSession match = matches.get(view.getModel().getMatchId());
+        if (match == null) {
+            status.setText("Selected match is unavailable");
+            return;
+        }
+
+        coachingAction.accept(match);
+        status.setText("Saved match " + shortMatchId(view.getModel().getMatchId())
+                + " for coaching");
+    }
 
     private void copySelectedMatchForAi() {
         GameView view = selectedGameView();

@@ -6,6 +6,10 @@ import app.deck.persistence.DeckCache;
 import app.deck.tracking.DeckTracker;
 import app.deck.tracking.DeckTrackerListener;
 import app.deck.ui.DeckTrackerFrame;
+import app.coaching.application.CoachingService;
+import app.coaching.persistence.CoachingRepository;
+import app.coaching.ui.CoachingFrame;
+import app.export.MatchAiExporter;
 import app.model.log.ModelObject;
 import app.model.log.LogMessageInterface;
 import app.model.log.RawLogEntry;
@@ -58,6 +62,7 @@ public final class Application implements AutoCloseable {
     private LogMessageReader logMessageReader;
     private InformationCollector informationCollector;
     private DeckCache deckCache;
+    private CoachingRepository coachingRepository;
 
     public static void main(String[] args) {
         installSystemLookAndFeel();
@@ -123,7 +128,18 @@ public final class Application implements AutoCloseable {
             }
         });
 
-        MainFrame frame = new MainFrame(uiQueue, deckTracker, deckFrame, ignored -> close());
+        coachingRepository = new CoachingRepository(
+                Path.of(System.getProperty("user.home"), ".arena-log-viewer", "coaching"));
+        CoachingService coachingService =
+                new CoachingService(coachingRepository, new MatchAiExporter());
+        CoachingFrame coachingFrame = new CoachingFrame(coachingService);
+
+        MainFrame frame = new MainFrame(
+                uiQueue,
+                deckTracker,
+                deckFrame,
+                coachingFrame::open,
+                ignored -> close());
         frame.setVisible(true);
     }
 
@@ -146,6 +162,7 @@ public final class Application implements AutoCloseable {
         restExecutor.shutdownNow();
         scryfallClient.close();
         if (deckCache != null) deckCache.close();
+        if (coachingRepository != null) coachingRepository.close();
         cardCache.close();
     }
 }

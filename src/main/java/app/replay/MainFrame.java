@@ -3,6 +3,7 @@ package app.replay;
 import app.deck.tracking.DeckTracker;
 import app.deck.ui.DeckTrackerFrame;
 import app.model.InformationBundle;
+import app.model.session.MatchSession;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
 
@@ -30,19 +31,22 @@ public final class MainFrame extends JFrame {
 
     private final BlockingQueue<LogMessageInterface> uiQueue;
     private final JTextArea textArea = new JTextArea();
-    private final GameSessionsPanel gamesPanel = new GameSessionsPanel();
+    private final GameSessionsPanel gamesPanel;
     private final JLabel status = new JLabel("Running");
     private final Consumer<Void> closeAction;
     private final DeckTracker deckTracker;
     private final DeckTrackerFrame deckTrackerFrame;
 
     public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker,
-                     DeckTrackerFrame deckTrackerFrame, Consumer<Void> closeAction) {
+                     DeckTrackerFrame deckTrackerFrame,
+                     Consumer<MatchSession> coachingAction,
+                     Consumer<Void> closeAction) {
         super("MTG Arena Parallel Log");
         this.uiQueue = uiQueue;
         this.closeAction = closeAction;
         this.deckTracker = deckTracker;
         this.deckTrackerFrame = deckTrackerFrame;
+        this.gamesPanel = new GameSessionsPanel(coachingAction);
         initialize();
         gamesPanel.addGameSelectionListener(this::selectedGameChanged);
     }
