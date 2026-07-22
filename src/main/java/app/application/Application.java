@@ -120,7 +120,7 @@ public final class Application implements AutoCloseable {
             }
         });
 
-        MainFrame frame = new MainFrame(uiQueue, deckTracker, ignored -> close());
+        MainFrame frame = new MainFrame(uiQueue, deckTracker, deckFrame, ignored -> close());
         frame.setVisible(true);
     }
 

@@ -1,7 +1,7 @@
 package app.replay;
 
 import app.deck.tracking.DeckTracker;
-import app.deck.ui.GameDeckFrame;
+import app.deck.ui.DeckTrackerFrame;
 import app.model.InformationBundle;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
@@ -34,13 +34,15 @@ public final class MainFrame extends JFrame {
     private final JLabel status = new JLabel("Running");
     private final Consumer<Void> closeAction;
     private final DeckTracker deckTracker;
-    private final GameDeckFrame gameDeckFrame = new GameDeckFrame();
+    private final DeckTrackerFrame deckTrackerFrame;
 
-    public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker, Consumer<Void> closeAction) {
+    public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker,
+                     DeckTrackerFrame deckTrackerFrame, Consumer<Void> closeAction) {
         super("MTG Arena Parallel Log");
         this.uiQueue = uiQueue;
         this.closeAction = closeAction;
         this.deckTracker = deckTracker;
+        this.deckTrackerFrame = deckTrackerFrame;
         initialize();
     }
 
@@ -53,8 +55,8 @@ public final class MainFrame extends JFrame {
         textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
         textArea.setLineWrap(false);
 
-        JButton showGameDeck = new JButton("Show game deck");
-        showGameDeck.addActionListener(event -> showSelectedGameDeck());
+        JButton showDeckTracker = new JButton("Show deck tracker");
+        showDeckTracker.addActionListener(event -> showSelectedDeckTracker());
 
         JButton showMatchLog = new JButton("Show match log");
         showMatchLog.addActionListener(event -> showMatchLog());
@@ -66,7 +68,7 @@ public final class MainFrame extends JFrame {
         footer.setBorder(new EmptyBorder(5, 8, 8, 8));
         footer.add(status, BorderLayout.WEST);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-        actions.add(showGameDeck);
+        actions.add(showDeckTracker);
         actions.add(showMatchLog);
         actions.add(clearRaw);
         footer.add(actions, BorderLayout.EAST);
@@ -103,13 +105,13 @@ public final class MainFrame extends JFrame {
     }
 
 
-    private void showSelectedGameDeck() {
+    private void showSelectedDeckTracker() {
         String matchId = gamesPanel.selectedMatchId();
         int gameNumber = gamesPanel.selectedGameNumber();
         app.deck.model.DeckGameState state = matchId == null || gameNumber <= 0
                 ? deckTracker.currentState()
                 : deckTracker.stateForGame(matchId, gameNumber);
-        gameDeckFrame.showState(state);
+        deckTrackerFrame.showState(state);
     }
 
     private void showMatchLog() {
