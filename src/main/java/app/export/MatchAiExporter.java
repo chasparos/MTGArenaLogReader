@@ -36,14 +36,19 @@ public final class MatchAiExporter {
         games.sort(Comparator.comparingInt(GameModel::getGameNumber));
 
         StringBuilder out = new StringBuilder(8192);
-        out.append("MTGA_MATCH_V1\n");
-        out.append("schema=G game;H opening;T turn;P phase;S state;E event;"
-                + "L life;D pw-damage;GR result;MS score;MR match-result;? unknown\n");
+        out.append("MTGA_MATCH_V2\n");
+        out.append("schema=G game;H opening;T turn;P phase;S# state;"
+                + "E# event;A# ability;L# life;D# pw-damage;"
+                + "GR# result;MS# score;MR# match-result;? unknown\n");
+        out.append("ids=E/A/L/D/GR/MS/MR are stable within this export;"
+                + " battlefield objects use name#logicalObjectId;"
+                + " card identities use name@arenaId when known\n");
         out.append("match=").append(value(match.matchState().getMatchId(), "?")).append('\n');
         appendPlayers(out, match.matchState().playerSnapshot());
 
+        int[] nextEventId = {1};
         for (GameModel game : games) {
-            appendGame(out, game);
+            appendGame(out, game, nextEventId);
         }
         return out.toString();
     }
@@ -57,7 +62,7 @@ public final class MatchAiExporter {
         out.append("players=").append(values).append('\n');
     }
 
-    private void appendGame(StringBuilder out, GameModel game) {
+    private void appendGame(StringBuilder out, GameModel game, int[] nextEventId) {
         out.append("\nG").append(game.getGameNumber());
         if (game.isComplete()) out.append(" complete");
         out.append('\n');
@@ -80,6 +85,7 @@ public final class MatchAiExporter {
                     || event.getType() == app.model.event.GameEventType.OPENING_HAND) {
                 continue;
             }
+            int eventId = nextEventId[0]++;
 
             if (event.getTurnNumber() != null && !event.getTurnNumber().equals(currentTurn)) {
                 currentTurn = event.getTurnNumber();
@@ -93,32 +99,32 @@ public final class MatchAiExporter {
             }
 
             if (!event.getTurnSnapshot().isEmpty()) {
-                appendTurnSnapshot(out, event.getTurnSnapshot());
+                appendTurnSnapshot(out, eventId, event.getTurnSnapshot());
                 continue;
             }
 
             if (event.getGameResult() != null) {
-                appendGameResult(out, event.getGameResult());
+                appendGameResult(out, eventId, event.getGameResult());
                 continue;
             }
             if (event.getMatchScore() != null) {
                 MatchScore score = event.getMatchScore();
-                out.append("MS ").append(score.seatOneWins()).append('-')
+                out.append("MS#").append(eventId).append(' ').append(score.seatOneWins()).append('-')
                         .append(score.seatTwoWins());
                 if (score.draws() > 0) out.append(" d=").append(score.draws());
                 out.append('\n');
                 continue;
             }
             if (event.getMatchResult() != null) {
-                appendMatchResult(out, event.getMatchResult());
+                appendMatchResult(out, eventId, event.getMatchResult());
                 continue;
             }
             if (event.getPlayerLifeChange() != null) {
-                appendLifeChange(out, event.getPlayerLifeChange());
+                appendLifeChange(out, eventId, event.getPlayerLifeChange());
                 continue;
             }
             if (event.getPermanentDamage() != null) {
-                appendPermanentDamage(out, event.getPermanentDamage());
+                appendPermanentDamage(out, eventId, event.getPermanentDamage());
                 continue;
             }
 
@@ -137,15 +143,20 @@ public final class MatchAiExporter {
                     out.append('\n');
                 }
             }
-            if (hasText(event.getText())) {
-                out.append("E ").append(compact(event.getText())).append('\n');
+            if (event.getAbility() != null) {
+                appendAbility(out, eventId, event);
+            } else if (hasText(event.getText())) {
+                out.append("E#").append(eventId)
+                        .append(" text=").append(compact(event.getText()));
+                appendCardIdentities(out, event.getCards());
+                out.append('\n');
             }
         }
     }
 
-    private void appendTurnSnapshot(StringBuilder out, List<PlayerTurnSnapshot> snapshots) {
+    private void appendTurnSnapshot(StringBuilder out, int eventId, List<PlayerTurnSnapshot> snapshots) {
         for (PlayerTurnSnapshot player : snapshots) {
-            out.append("S ").append(compact(value(player.getPlayerName(),
+            out.append("S#").append(eventId).append(' ').append(compact(value(player.getPlayerName(),
                             "seat" + player.getSeatId())))
                     .append(" life=").append(number(player.getLifeTotal()))
                     .append(" poison=").append(number(player.getPoisonCounters()))
@@ -165,7 +176,8 @@ public final class MatchAiExporter {
     }
 
     private String permanent(BoardPermanentSnapshot permanent) {
-        StringBuilder out = new StringBuilder(compact(value(permanent.getName(), "?")));
+        StringBuilder out = new StringBuilder(compact(value(permanent.getName(), "?")))
+                .append('#').append(permanent.getLogicalObjectId());
         List<String> attributes = new ArrayList<>();
         if (permanent.getPower() != null && permanent.getToughness() != null) {
             attributes.add(permanent.getPower() + "/" + permanent.getToughness());
@@ -187,8 +199,8 @@ public final class MatchAiExporter {
         return out.toString();
     }
 
-    private void appendGameResult(StringBuilder out, GameResult result) {
-        out.append("GR winner=").append(compact(value(result.getWinnerName(), "?")))
+    private void appendGameResult(StringBuilder out, int eventId, GameResult result) {
+        out.append("GR#").append(eventId).append(" winner=").append(compact(value(result.getWinnerName(), "?")))
                 .append(" reason=").append(result.getReason())
                 .append(" confidence=").append(result.getConfidence());
         if (hasText(result.getFinishingCard())) {
@@ -197,8 +209,8 @@ public final class MatchAiExporter {
         out.append('\n');
     }
 
-    private void appendMatchResult(StringBuilder out, MatchResult result) {
-        out.append("MR winner=").append(compact(value(result.winnerName(), "?")));
+    private void appendMatchResult(StringBuilder out, int eventId, MatchResult result) {
+        out.append("MR#").append(eventId).append(" winner=").append(compact(value(result.winnerName(), "?")));
         if (result.finalScore() != null) {
             out.append(" score=").append(result.finalScore().seatOneWins())
                     .append('-').append(result.finalScore().seatTwoWins());
@@ -209,8 +221,8 @@ public final class MatchAiExporter {
         out.append(" confidence=").append(result.confidence()).append('\n');
     }
 
-    private void appendLifeChange(StringBuilder out, PlayerLifeChange change) {
-        out.append("L ").append(compact(value(change.playerName(), "seat" + change.seatId())))
+    private void appendLifeChange(StringBuilder out, int eventId, PlayerLifeChange change) {
+        out.append("L#").append(eventId).append(' ').append(compact(value(change.playerName(), "seat" + change.seatId())))
                 .append(' ').append(change.kind())
                 .append(' ').append(change.amount())
                 .append(' ').append(change.previousLife()).append('>').append(change.currentLife());
@@ -220,13 +232,48 @@ public final class MatchAiExporter {
         out.append('\n');
     }
 
-    private void appendPermanentDamage(StringBuilder out, PermanentDamage damage) {
-        out.append("D ").append(compact(value(damage.targetName(), "?")))
+    private void appendPermanentDamage(StringBuilder out, int eventId, PermanentDamage damage) {
+        out.append("D#").append(eventId).append(' ').append(compact(value(damage.targetName(), "?")))
                 .append(" amount=").append(damage.amount());
         if (hasText(damage.sourceName())) {
             out.append(" src=").append(compact(damage.sourceName()));
         }
         out.append('\n');
+    }
+
+    private void appendAbility(StringBuilder out, int eventId, GameEvent event) {
+        app.model.event.AbilityReference ability = event.getAbility();
+        out.append("A#").append(eventId)
+                .append(" kind=").append(compact(value(ability.getKind(), "unknown")))
+                .append(" source=").append(compact(value(ability.getSourceName(), "?")));
+        if (ability.getSourceGrpId() > 0) {
+            out.append("@").append(ability.getSourceGrpId());
+        }
+        if (ability.getAbilityGrpId() > 0) {
+            out.append(" abilityGrp=").append(ability.getAbilityGrpId());
+        }
+        if (hasText(event.getText())) {
+            out.append(" text=").append(compact(event.getText()));
+        }
+        appendCardIdentities(out, event.getCards());
+        out.append('\n');
+    }
+
+    private void appendCardIdentities(StringBuilder out, List<CardInfo> cards) {
+        if (cards == null || cards.isEmpty()) return;
+        StringJoiner identities = new StringJoiner("|");
+        for (CardInfo card : cards) {
+            if (card == null) {
+                identities.add("?");
+                continue;
+            }
+            StringBuilder identity = new StringBuilder(compact(value(card.getName(), "?")));
+            if (card.getArenaId() != null) {
+                identity.append('@').append(card.getArenaId());
+            }
+            identities.add(identity);
+        }
+        out.append(" cards=").append(identities);
     }
 
     private void appendCardNames(StringBuilder out, List<CardInfo> cards) {

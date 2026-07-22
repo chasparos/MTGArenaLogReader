@@ -1,6 +1,7 @@
 package app.export;
 
 import app.model.card.CardInfo;
+import app.model.event.AbilityReference;
 import app.model.event.GameEvent;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.game.GameResult;
@@ -61,13 +62,13 @@ class MatchAiExporterTest {
 
         String report = new MatchAiExporter().export(match);
 
-        assertTrue(report.startsWith("MTGA_MATCH_V1\n"));
+        assertTrue(report.startsWith("MTGA_MATCH_V2\n"));
         assertTrue(report.contains("players=1:Me|2:Opponent"));
         assertTrue(report.indexOf("\nG1") < report.indexOf("\nG2"));
-        assertTrue(report.contains("S Me life=18 poison=0 hand=5 board=Bear[2/2,tap]"));
+        assertTrue(report.contains("S#1 Me life=18 poison=0 hand=5 board=Bear#10[2/2,tap]"));
         assertTrue(report.contains("H player=Me mull=1 cards=Island|Counterspell"));
         assertTrue(report.contains("P Main1"));
-        assertTrue(report.contains("E Opponent plays Mountain"));
+        assertTrue(report.contains("E#2 text=Opponent plays Mountain"));
         assertFalse(report.contains("large raw record"));
     }
 
@@ -94,9 +95,37 @@ class MatchAiExporterTest {
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "GR winner=Me reason=DAMAGE confidence=CORRELATED card=Lightning Bolt"));
-        assertTrue(report.contains("MS 1-0"));
+                "GR#1 winner=Me reason=DAMAGE confidence=CORRELATED card=Lightning Bolt"));
+        assertTrue(report.contains("MS#2 1-0"));
         assertFalse(report.contains("Me wins by damage"));
+    }
+
+
+    @Test
+    void exportsAbilitySourceAndArenaCardIdentityStructurally() {
+        MatchSession match = new MatchSession("match-ability", new AbilityNameStore());
+        GameModel game = match.game(1).model();
+
+        CardInfo sourceCard = card("The Serpent Society");
+        sourceCard.setArenaId(12345L);
+
+        AbilityReference ability = new AbilityReference();
+        ability.setKind("triggered");
+        ability.setSourceName("The Serpent Society");
+        ability.setSourceGrpId(12345L);
+        ability.setAbilityGrpId(67890L);
+
+        GameEvent event = new GameEvent();
+        event.setAbility(ability);
+        event.setText("Me puts an ability from The Serpent Society on the stack");
+        event.getCards().add(sourceCard);
+        game.addEvents(List.of(event));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains(
+                "A#1 kind=triggered source=The Serpent Society@12345 abilityGrp=67890"));
+        assertTrue(report.contains("cards=The Serpent Society@12345"));
     }
 
     private CardInfo card(String name) {
