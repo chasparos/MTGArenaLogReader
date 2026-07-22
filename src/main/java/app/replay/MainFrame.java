@@ -44,6 +44,7 @@ public final class MainFrame extends JFrame {
         this.deckTracker = deckTracker;
         this.deckTrackerFrame = deckTrackerFrame;
         initialize();
+        gamesPanel.addGameSelectionListener(this::selectedGameChanged);
     }
 
     private void initialize() {
@@ -108,10 +109,29 @@ public final class MainFrame extends JFrame {
     private void showSelectedDeckTracker() {
         String matchId = gamesPanel.selectedMatchId();
         int gameNumber = gamesPanel.selectedGameNumber();
-        app.deck.model.DeckGameState state = matchId == null || gameNumber <= 0
-                ? deckTracker.currentState()
-                : deckTracker.stateForGame(matchId, gameNumber);
-        deckTrackerFrame.showState(state);
+        java.util.List<app.deck.model.DeckGameState> states =
+                matchId == null || gameNumber <= 0
+                        ? currentTimeline()
+                        : deckTracker.statesForGame(matchId, gameNumber);
+        deckTrackerFrame.showTimeline(states);
+    }
+
+    private void selectedGameChanged() {
+        if (!deckTrackerFrame.isVisible()) return;
+        String matchId = gamesPanel.selectedMatchId();
+        int gameNumber = gamesPanel.selectedGameNumber();
+        java.util.List<app.deck.model.DeckGameState> states =
+                matchId == null || gameNumber <= 0
+                        ? currentTimeline()
+                        : deckTracker.statesForGame(matchId, gameNumber);
+        deckTrackerFrame.selectTimeline(states);
+    }
+
+    private java.util.List<app.deck.model.DeckGameState> currentTimeline() {
+        app.deck.model.DeckGameState current = deckTracker.currentState();
+        return current == null
+                ? java.util.List.of()
+                : deckTracker.statesForGame(current.matchId(), current.gameNumber());
     }
 
     private void showMatchLog() {

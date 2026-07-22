@@ -116,7 +116,7 @@ public final class Application implements AutoCloseable {
                 SwingUtilities.invokeLater(() -> deckFrame.updateState(state));
             }
             @Override public void gameCompleted(String matchId, int gameNumber) {
-                SwingUtilities.invokeLater(() -> deckFrame.setVisible(false));
+                // Retained snapshots remain browsable after game completion.
             }
         });
 

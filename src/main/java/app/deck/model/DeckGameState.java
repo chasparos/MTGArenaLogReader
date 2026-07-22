@@ -15,6 +15,7 @@ import java.util.Map;
 public record DeckGameState(
         String matchId,
         int gameNumber,
+        int turnNumber,
         CachedDeck deck,
         int libraryCount,
         int graveyardCount,

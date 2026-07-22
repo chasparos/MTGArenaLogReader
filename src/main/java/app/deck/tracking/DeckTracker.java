@@ -45,6 +45,9 @@ public final class DeckTracker {
     private CachedDeck currentDeck;
     private CachedDeck pendingGameDeck;
     private final Map<String, Map<Integer, DeckGameState>> gameStates = new LinkedHashMap<>();
+    private final Map<String, Map<Integer, NavigableMap<Integer, DeckGameState>>> turnStates =
+            new LinkedHashMap<>();
+    private int currentTurnNumber;
     private boolean started;
     private boolean complete;
     private final List<String> matchLog = new ArrayList<>();
@@ -78,6 +81,22 @@ public final class DeckTracker {
     public synchronized DeckGameState stateForGame(String matchId, int gameNumber) {
         Map<Integer, DeckGameState> matchStates = gameStates.get(matchId);
         return matchStates == null ? null : matchStates.get(gameNumber);
+    }
+
+    /**
+     * Returns immutable turn snapshots for one game in chronological order.
+     * Repeated Arena observations within a turn replace that turn's snapshot,
+     * so historical turns retain their final known deck-tracker state.
+     */
+    public synchronized List<DeckGameState> statesForGame(String matchId, int gameNumber) {
+        Map<Integer, NavigableMap<Integer, DeckGameState>> matchTurns = turnStates.get(matchId);
+        NavigableMap<Integer, DeckGameState> gameTurns =
+                matchTurns == null ? null : matchTurns.get(gameNumber);
+        if (gameTurns == null || gameTurns.isEmpty()) {
+            DeckGameState latest = stateForGame(matchId, gameNumber);
+            return latest == null ? List.of() : List.of(latest);
+        }
+        return List.copyOf(gameTurns.values());
     }
 
     public void accept(LogMessageInterface message) {
@@ -131,6 +150,7 @@ public final class DeckTracker {
             matchLog.clear();
             recordMatchMessage("Match " + matchId + " started");
             currentGameNumber = 1;
+            currentTurnNumber = 0;
             complete = false;
             started = false;
             clearGameObjects();
@@ -213,10 +233,14 @@ public final class DeckTracker {
                     currentDeck = matchDeckState == null ? null : matchDeckState.deckForGame(gameNo);
                     rememberCurrentState();
                 }
+                currentTurnNumber = 0;
                 complete = false;
                 started = false;
                 clearGameObjects();
             }
+
+            JsonObject turnInfo = object(gsm, "turnInfo");
+            currentTurnNumber = integer(turnInfo, "turnNumber", currentTurnNumber);
 
             String stage = string(info, "stage");
             if (stage.contains("GameOver") || stage.contains("Complete")) {
@@ -304,7 +328,7 @@ public final class DeckTracker {
             library = Math.max(0, currentDeck.mainDeckSize() - knownOutside);
         }
 
-        return new DeckGameState(currentMatchId, currentGameNumber, currentDeck,
+        return new DeckGameState(currentMatchId, currentGameNumber, currentTurnNumber, currentDeck,
                 library, graveyard, exile, outside, complete);
     }
 
@@ -353,6 +377,9 @@ public final class DeckTracker {
     private synchronized void remember(DeckGameState state) {
         gameStates.computeIfAbsent(state.matchId(), ignored -> new LinkedHashMap<>())
                 .put(state.gameNumber(), state);
+        turnStates.computeIfAbsent(state.matchId(), ignored -> new LinkedHashMap<>())
+                .computeIfAbsent(state.gameNumber(), ignored -> new TreeMap<>())
+                .put(state.turnNumber(), state);
     }
 
     private synchronized void recordMatchMessage(String message) {

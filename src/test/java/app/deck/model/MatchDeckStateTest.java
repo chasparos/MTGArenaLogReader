@@ -30,6 +30,7 @@ class MatchDeckStateTest {
                 List.of(entry(100, 1), entry(200, 1)));
 
         MatchDeckState state = new MatchDeckState("match-1", selected);
+        state.observeDeckForGame(1, selected);
         CachedDeck gameOne = state.deckForGame(1);
         state.setDeckForGame(2, sideboarded);
 
@@ -48,7 +49,7 @@ class MatchDeckStateTest {
                 List.of(), List.of());
 
         MatchDeckState state = new MatchDeckState("match-1", selected);
-        state.deckForGame(1);
+        state.observeDeckForGame(1, selected);
         state.setDeckForGame(2, sideboarded);
         state.refreshSelectedDeck(enriched);
 
@@ -102,13 +103,23 @@ class MatchDeckStateTest {
     }
 
     @Test
-    void observationForDifferentSelectedDeckIsIgnored() {
+    void observedGameDeckDoesNotRequireSelectedDeckIdentity() {
         CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of());
         CachedDeck unrelated = deck("deck-2", List.of(entry(200, 4)), List.of());
         MatchDeckState state = new MatchDeckState("match-1", selected);
 
         assertTrue(state.observeDeckForGame(2, unrelated).isEmpty());
-        assertEquals(selected.mainDeck(), state.deckForGame(2).mainDeck());
+        assertEquals(unrelated.mainDeck(), state.deckForGame(2).mainDeck());
+    }
+
+
+    @Test
+    void selectedDeckIsNeverUsedAsAnUnobservedGameFallback() {
+        CachedDeck selected = deck("deck-1", List.of(entry(100, 4)), List.of(entry(200, 2)));
+        MatchDeckState state = new MatchDeckState("match-1", selected);
+
+        assertNull(state.deckForGame(1));
+        assertTrue(state.gameDeckSnapshot().isEmpty());
     }
 
     private static CachedDeck deck(String id, List<DeckEntry> main, List<DeckEntry> sideboard) {

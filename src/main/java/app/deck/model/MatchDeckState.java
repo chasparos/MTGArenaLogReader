@@ -38,8 +38,7 @@ public final class MatchDeckState {
 
     public synchronized CachedDeck deckForGame(int gameNumber) {
         if (gameNumber <= 0) throw new IllegalArgumentException("gameNumber must be positive");
-        if (selectedDeck == null) return null;
-        return gameDecks.computeIfAbsent(gameNumber, ignored -> snapshot(selectedDeck));
+        return gameDecks.get(gameNumber);
     }
 
     /**
@@ -78,8 +77,7 @@ public final class MatchDeckState {
     public synchronized Optional<SideboardChange> observeDeckForGame(
             int gameNumber, CachedDeck observedDeck) {
         if (gameNumber <= 0) throw new IllegalArgumentException("gameNumber must be positive");
-        if (observedDeck == null || selectedDeck == null) return Optional.empty();
-        if (!Objects.equals(selectedDeck.deckId(), observedDeck.deckId())) return Optional.empty();
+        if (observedDeck == null) return Optional.empty();
 
         CachedDeck observed = snapshot(observedDeck);
         if (gameNumber == 1) {

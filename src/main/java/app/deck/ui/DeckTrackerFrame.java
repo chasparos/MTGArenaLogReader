@@ -18,56 +18,124 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Presents both live deck-tracker state and retained per-game deck snapshots.
+ * Presents retained per-turn deck-tracker snapshots for the game selected in replay.
  *
- * <p>The deck subsystem consumes routed Arena observations alongside cached deck
- * metadata while remaining separate from replay reconstruction.</p>
- *
- * <p><strong>Architectural role:</strong> This type belongs to the deck-tracker
- * Swing presentation layer and does not own deck parsing or persistence.</p>
+ * <p>The frame is reused across game selection changes. It owns only presentation
+ * selection; parsing, reconstruction, and snapshot retention remain in DeckTracker.</p>
  */
 public final class DeckTrackerFrame extends JFrame {
     private final JLabel title = new JLabel("Deck tracker");
     private final JLabel totals = new JLabel();
+    private final JLabel turnLabel = new JLabel("No turn");
+    private final JButton previousTurn = new JButton("◀ Previous turn");
+    private final JButton nextTurn = new JButton("Next turn ▶");
     private final JTabbedPane tabs = new JTabbedPane();
+
+    private List<DeckGameState> timeline = List.of();
+    private int timelineIndex = -1;
 
     public DeckTrackerFrame() {
         super("Arena Deck Tracker");
         setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
-        setSize(520, 720);
+        setSize(560, 760);
         setLocationByPlatform(true);
 
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
         JPanel header = new JPanel(new BorderLayout(12, 0));
-        header.setBorder(new EmptyBorder(10, 12, 8, 12));
+        header.setBorder(new EmptyBorder(10, 12, 6, 12));
         header.add(title, BorderLayout.WEST);
         header.add(totals, BorderLayout.EAST);
 
-        add(header, BorderLayout.NORTH);
+        previousTurn.addActionListener(event -> selectIndex(timelineIndex - 1));
+        nextTurn.addActionListener(event -> selectIndex(timelineIndex + 1));
+        JPanel browser = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 2));
+        browser.setBorder(new EmptyBorder(0, 8, 6, 8));
+        browser.add(previousTurn);
+        browser.add(turnLabel);
+        browser.add(nextTurn);
+
+        JPanel north = new JPanel(new BorderLayout());
+        north.add(header, BorderLayout.NORTH);
+        north.add(browser, BorderLayout.SOUTH);
+        add(north, BorderLayout.NORTH);
         add(tabs, BorderLayout.CENTER);
+        updateNavigation();
     }
 
     /**
-     * Updates the live tracker. Completed games continue to be available through
-     * {@link #showState(DeckGameState)} but do not keep the live window open.
+     * Replaces the displayed game with its complete retained turn timeline.
+     * The most recent turn is selected by default.
      */
-    public void updateState(DeckGameState state) {
-        if (state == null || state.complete() || state.deck() == null) {
-            setVisible(false);
-            return;
-        }
-
-        render(state);
-        if (!isVisible()) setVisible(true);
-    }
-
-    /**
-     * Shows the retained snapshot for the game selected in the replay UI.
-     */
-    public void showState(DeckGameState state) {
-        render(state);
+    public void showTimeline(List<DeckGameState> states) {
+        setTimeline(states);
         setVisible(true);
         toFront();
+    }
+
+    /**
+     * Updates the frame after the selected replay tab changes without reopening it.
+     */
+    public void selectTimeline(List<DeckGameState> states) {
+        if (!isVisible()) return;
+        setTimeline(states);
+    }
+
+    /**
+     * Incorporates live updates only when they belong to the game already shown.
+     * The frame no longer jumps away from the replay tab selected by the user.
+     */
+    public void updateState(DeckGameState state) {
+        if (state == null) return;
+        if (timeline.isEmpty()) {
+            if (!isVisible()) return;
+            setTimeline(List.of(state));
+            return;
+        }
+        DeckGameState shown = timeline.get(Math.max(0, timelineIndex));
+        if (!sameGame(shown, state)) return;
+
+        List<DeckGameState> updated = new ArrayList<>(timeline);
+        int existing = indexOfTurn(updated, state.turnNumber());
+        boolean followingLatest = timelineIndex == timeline.size() - 1;
+        if (existing >= 0) updated.set(existing, state);
+        else updated.add(state);
+        updated.sort(Comparator.comparingInt(DeckGameState::turnNumber));
+        timeline = List.copyOf(updated);
+        timelineIndex = followingLatest ? timeline.size() - 1
+                : Math.min(timelineIndex, timeline.size() - 1);
+        renderSelected();
+    }
+
+    private void setTimeline(List<DeckGameState> states) {
+        List<DeckGameState> ordered = new ArrayList<>(states == null ? List.of() : states);
+        ordered.sort(Comparator.comparingInt(DeckGameState::turnNumber));
+        timeline = List.copyOf(ordered);
+        timelineIndex = timeline.isEmpty() ? -1 : timeline.size() - 1;
+        renderSelected();
+    }
+
+    private void selectIndex(int index) {
+        if (index < 0 || index >= timeline.size()) return;
+        timelineIndex = index;
+        renderSelected();
+    }
+
+    private void renderSelected() {
+        DeckGameState state = timelineIndex < 0 || timelineIndex >= timeline.size()
+                ? null : timeline.get(timelineIndex);
+        render(state);
+        updateNavigation();
+    }
+
+    private void updateNavigation() {
+        previousTurn.setEnabled(timelineIndex > 0);
+        nextTurn.setEnabled(timelineIndex >= 0 && timelineIndex < timeline.size() - 1);
+        if (timelineIndex < 0 || timelineIndex >= timeline.size()) {
+            turnLabel.setText("No turn");
+        } else {
+            int turn = timeline.get(timelineIndex).turnNumber();
+            turnLabel.setText(turn <= 0 ? "Opening state" : "Turn " + turn);
+        }
     }
 
     private void render(DeckGameState state) {
@@ -76,13 +144,13 @@ public final class DeckTrackerFrame extends JFrame {
             title.setText("Deck tracker");
             totals.setText("");
             tabs.addTab("Deck", messagePanel(
-                    "No deck configuration has been observed for the selected game."));
+                    "No authoritative deck configuration has been observed for the selected game."));
             return;
         }
 
         CachedDeck deck = state.deck();
         String deckName = deck.name() == null || deck.name().isBlank()
-                ? "Game deck"
+                ? "Observed game deck"
                 : deck.name();
         title.setText(deckName + " — Game " + state.gameNumber());
         totals.setText("Library " + state.libraryCount()
@@ -160,19 +228,55 @@ public final class DeckTrackerFrame extends JFrame {
         return new JScrollPane(area);
     }
 
+    /**
+     * Magic-oriented ordering: rising mana value, then card color, then name.
+     */
     private List<DeckEntry> sorted(List<DeckEntry> entries) {
         List<DeckEntry> result = new ArrayList<>(entries == null ? List.of() : entries);
         result.sort(Comparator
-                .comparingDouble((DeckEntry entry) ->
-                        entry.card() == null || entry.card().getCmc() == null
-                                ? 99
-                                : entry.card().getCmc())
+                .comparingDouble(this::manaValue)
+                .thenComparingInt(this::colorOrder)
                 .thenComparing(DeckEntry::displayName, String.CASE_INSENSITIVE_ORDER));
         return result;
     }
 
+    private double manaValue(DeckEntry entry) {
+        CardInfo card = entry.card();
+        return card == null || card.getCmc() == null ? Double.MAX_VALUE : card.getCmc();
+    }
+
+    private int colorOrder(DeckEntry entry) {
+        CardInfo card = entry.card();
+        if (card == null) return 7;
+        List<String> colors = card.getColors();
+        if (colors == null || colors.isEmpty()) colors = card.getColorIdentity();
+        if (colors == null || colors.isEmpty()) return 6;
+        Set<String> distinct = new HashSet<>(colors);
+        if (distinct.size() > 1) return 5;
+        return switch (distinct.iterator().next()) {
+            case "W" -> 0;
+            case "U" -> 1;
+            case "B" -> 2;
+            case "R" -> 3;
+            case "G" -> 4;
+            default -> 6;
+        };
+    }
+
     private int quantity(List<DeckEntry> entries) {
         return entries == null ? 0 : entries.stream().mapToInt(DeckEntry::quantity).sum();
+    }
+
+    private boolean sameGame(DeckGameState left, DeckGameState right) {
+        return left.gameNumber() == right.gameNumber()
+                && java.util.Objects.equals(left.matchId(), right.matchId());
+    }
+
+    private int indexOfTurn(List<DeckGameState> states, int turnNumber) {
+        for (int i = 0; i < states.size(); i++) {
+            if (states.get(i).turnNumber() == turnNumber) return i;
+        }
+        return -1;
     }
 
     private Color identityColor(CardInfo card) {

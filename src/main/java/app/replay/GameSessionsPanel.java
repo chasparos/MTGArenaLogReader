@@ -121,6 +121,11 @@ public final class GameSessionsPanel extends JPanel {
     }
 
 
+
+    public void addGameSelectionListener(Runnable listener) {
+        gameTabs.addChangeListener(event -> listener.run());
+    }
+
     public String selectedMatchId() {
         GameView view = selectedGameView();
         return view == null ? null : view.getModel().getMatchId();

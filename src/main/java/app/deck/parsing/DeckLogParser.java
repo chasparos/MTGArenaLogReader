@@ -64,7 +64,7 @@ final public class DeckLogParser {
                 if (deck.size() > 0) {
                     out.add(new CachedDeck(
                             template.deckId(),
-                            template.name(),
+                            "Observed game deck",
                             template.format(),
                             template.eventName(),
                             Instant.now(),
