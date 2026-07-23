@@ -25,19 +25,30 @@ final class TabiCatRoomLogReplayTest {
                 .map(GameEvent::getText)
                 .toList();
 
-        assertFalse(eventText.stream().anyMatch(text ->
-                        text.contains("Arena #92137")),
-                "The right Room facet must not be projected as an independent object");
+        List<String> roomFacetArenaIds = List.of(
+                "92136", "92137",
+                "92132", "92133",
+                "92334", "92335");
+
+        for (String arenaId : roomFacetArenaIds) {
+            assertFalse(eventText.stream().anyMatch(text ->
+                            text.contains("Arena #" + arenaId)),
+                    "Room facet Arena #" + arenaId
+                            + " must not be projected as an independent object");
+        }
 
         List<BoardPermanentSnapshot> battlefield = game.snapshot().stream()
                 .flatMap(event -> event.getTurnSnapshot().stream())
                 .flatMap(player -> player.getBattlefield().stream())
                 .toList();
 
-        assertFalse(battlefield.stream().anyMatch(permanent ->
-                        permanent.getName() != null
-                                && permanent.getName().contains("Arena #92137")),
-                "The right Room facet must not appear as an independent battlefield permanent");
+        for (String arenaId : roomFacetArenaIds) {
+            assertFalse(battlefield.stream().anyMatch(permanent ->
+                            permanent.getName() != null
+                                    && permanent.getName().contains("Arena #" + arenaId)),
+                    "Room facet Arena #" + arenaId
+                            + " must not appear as an independent battlefield permanent");
+        }
 
         assertTrue(eventText.stream().anyMatch(text ->
                         text.contains("Arena #92135") || text.contains("Arena #92136")),

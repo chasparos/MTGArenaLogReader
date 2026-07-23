@@ -835,6 +835,15 @@ public final class GameEventProjector {
             for (long instanceId : longArray(annotation, "affectedIds")) {
                 GameObjectState object = state.getObjects().get(instanceId);
                 if (object == null) continue;
+
+                /*
+                 * Room halves are represented by Arena as child game objects,
+                 * but their zone transfers describe the parent Room spell or
+                 * permanent. They are evidence for the parent, not separate
+                 * semantic objects.
+                 */
+                if (isRoomFacet(object)) continue;
+
                 GameObjectState before = object.copy();
                 before.setSemanticZoneId(fromZone);
                 object.setSemanticZoneId(toZone);
@@ -1277,9 +1286,21 @@ public final class GameEventProjector {
     }
 
     private boolean isRoomFacet(GameObjectState object) {
+        if (object == null) return false;
+
         String objectType = object.getObjectType();
-        return "GameObjectType_RoomLeft".equals(objectType)
-                || "GameObjectType_RoomRight".equals(objectType);
+        if ("GameObjectType_RoomLeft".equals(objectType)
+                || "GameObjectType_RoomRight".equals(objectType)) {
+            return true;
+        }
+
+        /*
+         * Some incremental observations omit the object type. The stable
+         * relationship is that a Room facet is a Room subtype child of the
+         * parent Room card.
+         */
+        return object.getParentId() >= 0
+                && object.getSubtypes().contains("Room");
     }
 
     private boolean isToken(GameObjectState object) {
