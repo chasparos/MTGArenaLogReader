@@ -135,6 +135,24 @@ public final class GameView extends JPanel implements Scrollable {
         return Set.copyOf(selectedTurns);
     }
 
+    /**
+     * Selects and reveals a turn on behalf of an external UI coordinator.
+     */
+    public void navigateToTurn(int turnNumber) {
+        selectedTurns.clear();
+        selectedTurns.add(turnNumber);
+        selectionAnchorTurn = turnNumber;
+        repaint();
+        SwingUtilities.invokeLater(() -> turnHitboxes.stream()
+                .filter(hitbox -> hitbox.turnNumber() == turnNumber)
+                .findFirst()
+                .ifPresent(hitbox -> scrollRectToVisible(
+                        new Rectangle(hitbox.bounds().x,
+                                Math.max(0, hitbox.bounds().y - 12),
+                                hitbox.bounds().width,
+                                hitbox.bounds().height + 24))));
+    }
+
     public void accept(LogMessageInterface message) {
         PendingMessage pendingMessage = new PendingMessage(message);
         synchronized (pending) { pending.addLast(pendingMessage); }

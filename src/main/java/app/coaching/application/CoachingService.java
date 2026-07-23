@@ -4,6 +4,7 @@ import app.coaching.model.CoachingConversation;
 import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingMessage;
 import app.coaching.model.CoachingGame;
+import app.coaching.model.CoachingContext;
 import app.coaching.persistence.CoachingRepository;
 import app.coaching.persistence.CoachingGameSnapshotCodec;
 import app.export.MatchAiExporter;
@@ -96,6 +97,17 @@ public final class CoachingService {
 
     public CoachingMessage saveUserDraft(long conversationId, String content) {
         return repository.appendMessage(conversationId, CoachingMessage.Role.USER, content);
+    }
+
+    public CoachingMessage saveUserDraft(
+            long conversationId,
+            String content,
+            CoachingContext context) {
+        return repository.appendMessage(
+                conversationId,
+                CoachingMessage.Role.USER,
+                content,
+                context);
     }
 
     public CoachingMessage saveMessage(

@@ -5,6 +5,7 @@ import app.coaching.model.CoachingConversation;
 import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingMessage;
 import app.coaching.model.CoachingGame;
+import app.coaching.model.CoachingContext;
 import app.model.session.MatchSession;
 import app.replay.GameView;
 
@@ -17,6 +18,8 @@ import java.io.IOException;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Browses explicitly persisted match reconstructions and their coaching transcript.
@@ -35,10 +38,9 @@ public final class CoachingFrame extends JFrame {
             new DefaultListModel<>();
     private final JList<CoachingConversationSummary> conversationList =
             new JList<>(conversations);
-    private final JTextArea transcript = textArea();
-    private final JTextArea reconstruction = textArea();
+    private final RichConversationView transcript = new RichConversationView();
     private final JTabbedPane games = new JTabbedPane();
-    private final JTabbedPane details = new JTabbedPane();
+    private final Map<Integer, GameView> gameViews = new LinkedHashMap<>();
     private final JTextArea draft = new JTextArea(4, 40);
     private final JLabel status = new JLabel("No coaching match selected");
     private CoachingConversation selected;
@@ -72,13 +74,18 @@ public final class CoachingFrame extends JFrame {
         JScrollPane browser = new JScrollPane(conversationList);
         browser.setPreferredSize(new Dimension(250, 0));
 
-        details.addTab("Conversation", conversationPanel());
-        details.addTab("Games", games);
-        details.addTab("AI reconstruction", new JScrollPane(reconstruction));
+        transcript.setCoordinator(this::navigateTo);
 
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, browser, details);
-        split.setResizeWeight(0.24);
-        split.setDividerLocation(250);
+        JSplitPane workspace = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT,
+                games,
+                conversationPanel());
+        workspace.setResizeWeight(0.55);
+        workspace.setDividerLocation(430);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, browser, workspace);
+        split.setResizeWeight(0.22);
+        split.setDividerLocation(230);
 
         JPanel root = new JPanel(new BorderLayout(8, 8));
         root.setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -103,6 +110,10 @@ public final class CoachingFrame extends JFrame {
         importReply.setToolTipText("Persist the clipboard text as the assistant's exact reply");
         importReply.addActionListener(event -> importManualReply());
 
+        JButton copyReconstruction = new JButton("AI reconstruction to clipboard");
+        copyReconstruction.setToolTipText("Copy the persisted match reconstruction without instructions");
+        copyReconstruction.addActionListener(event -> copyReconstruction());
+
         JLabel hint = new JLabel(
                 "Manual copy/paste coaching only. These actions never call an API.");
 
@@ -110,6 +121,7 @@ public final class CoachingFrame extends JFrame {
         actions.add(saveDraft);
         actions.add(copyPrompt);
         actions.add(importReply);
+        actions.add(copyReconstruction);
 
         JPanel composerFooter = new JPanel(new BorderLayout(0, 4));
         composerFooter.add(hint, BorderLayout.NORTH);
@@ -121,7 +133,7 @@ public final class CoachingFrame extends JFrame {
         composer.add(composerFooter, BorderLayout.SOUTH);
 
         JPanel panel = new JPanel(new BorderLayout());
-        panel.add(new JScrollPane(transcript), BorderLayout.CENTER);
+        panel.add(transcript, BorderLayout.CENTER);
         panel.add(composer, BorderLayout.SOUTH);
         return panel;
     }
@@ -147,7 +159,7 @@ public final class CoachingFrame extends JFrame {
             String contextLabel = manualContext.label();
             Toolkit.getDefaultToolkit().getSystemClipboard()
                     .setContents(new StringSelection(prompt), null);
-            service.saveUserDraft(selected.id(), question);
+            service.saveUserDraft(selected.id(), question, manualContext.toModel());
             draft.setText("");
             selectConversation(selected.id());
             status.setText("AI-speak copied for " + contextLabel
@@ -190,7 +202,7 @@ public final class CoachingFrame extends JFrame {
             return;
         }
 
-        service.saveUserDraft(selected.id(), content);
+        service.saveUserDraft(selected.id(), content, manualContext.toModel());
         draft.setText("");
         selectConversation(selected.id());
         status.setText("Question saved locally — no API request made");
@@ -200,19 +212,16 @@ public final class CoachingFrame extends JFrame {
         CoachingConversationSummary summary = conversationList.getSelectedValue();
         if (summary == null) {
             selected = null;
-            transcript.setText("");
-            reconstruction.setText("");
+            transcript.showConversation("", List.of());
             games.removeAll();
+            gameViews.clear();
             return;
         }
 
         selected = service.conversation(summary.id());
         manualContext = ManualContext.match();
-        reconstruction.setText(selected.reconstruction());
-        reconstruction.setCaretPosition(0);
         showGames(selected.games());
-        transcript.setText(formatTranscript(selected, selected.messages()));
-        transcript.setCaretPosition(transcript.getDocument().getLength());
+        transcript.showConversation(selected.reconstruction(), selected.messages());
         status.setText("Match " + shortMatchId(selected.matchId())
                 + " — " + selected.messages().size()
                 + (selected.messages().size() == 1 ? " message" : " messages"));
@@ -221,6 +230,7 @@ public final class CoachingFrame extends JFrame {
 
     private void showGames(List<CoachingGame> persistedGames) {
         games.removeAll();
+        gameViews.clear();
         if (persistedGames.isEmpty()) {
             JTextArea empty = textArea();
             empty.setText("No human-readable game reconstruction was persisted.");
@@ -239,6 +249,7 @@ public final class CoachingFrame extends JFrame {
         try {
             GameView view = new GameView(service.richGame(game));
             view.setCoachingActions(request -> prepareQuestion(game.gameNumber(), request));
+            gameViews.put(game.gameNumber(), view);
             JScrollPane scroll = new JScrollPane(view);
             scroll.getVerticalScrollBar().setUnitIncrement(20);
 
@@ -266,7 +277,6 @@ public final class CoachingFrame extends JFrame {
         String question = request.question() == null ? "" : request.question();
         draft.setText(question);
         draft.setCaretPosition(draft.getDocument().getLength());
-        details.setSelectedIndex(0);
         draft.requestFocusInWindow();
         status.setText("Prepared local coaching question for " + context);
     }
@@ -289,28 +299,101 @@ public final class CoachingFrame extends JFrame {
         return new JScrollPane(area);
     }
 
-    private String formatTranscript(CoachingConversation conversation, List<CoachingMessage> messages) {
-        if (messages.isEmpty()) {
-            return """
-                    No coaching conversation yet.
 
-                    Save a question draft below. It stays local and costs nothing.
-                    """;
+    private void copyReconstruction() {
+        if (selected == null) {
+            status.setText("Select a coaching match first");
+            return;
         }
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+                .setContents(new StringSelection(selected.reconstruction()), null);
+        status.setText("AI reconstruction copied to clipboard");
+    }
 
-        StringBuilder out = new StringBuilder();
-        for (CoachingMessage message : messages) {
-            out.append(message.role())
-                    .append("  ")
-                    .append(TIME.format(message.createdAt()))
-                    .append(System.lineSeparator())
-                    .append(message.role() == CoachingMessage.Role.ASSISTANT
-                            ? service.resolveReferences(conversation, message.content())
-                            : message.content())
-                    .append(System.lineSeparator())
-                    .append(System.lineSeparator());
+    private void navigateTo(CoachingReference reference) {
+        if (selected == null || reference == null) return;
+
+        Integer gameNumber = switch (reference.kind()) {
+            case GAME -> reference.number();
+            case TURN -> selectedGameNumber();
+            case EVENT, ABILITY, DECISION, LIFE, RESULT, SNAPSHOT -> gameForReference(reference);
+            case CARD, MATCH -> selectedGameNumber();
+        };
+
+        if (gameNumber != null) selectGame(gameNumber);
+
+        Integer turnNumber = switch (reference.kind()) {
+            case TURN -> reference.number();
+            case EVENT, ABILITY, DECISION, LIFE, RESULT, SNAPSHOT -> turnForReference(reference);
+            default -> null;
+        };
+        if (turnNumber != null && gameNumber != null) {
+            GameView view = gameViews.get(gameNumber);
+            if (view != null) view.navigateToTurn(turnNumber);
+            status.setText("Navigated to game " + gameNumber + ", turn " + turnNumber);
+        } else if (gameNumber != null) {
+            status.setText("Navigated to game " + gameNumber);
         }
-        return out.toString();
+    }
+
+    private Integer selectedGameNumber() {
+        int index = games.getSelectedIndex();
+        if (index < 0) return gameViews.keySet().stream().findFirst().orElse(null);
+        String title = games.getTitleAt(index);
+        try {
+            return Integer.parseInt(title.replaceAll("\\D", ""));
+        } catch (NumberFormatException ignored) {
+            return gameViews.keySet().stream().findFirst().orElse(null);
+        }
+    }
+
+    private void selectGame(int gameNumber) {
+        for (int index = 0; index < games.getTabCount(); index++) {
+            if (games.getTitleAt(index).equals("Game " + gameNumber)) {
+                games.setSelectedIndex(index);
+                return;
+            }
+        }
+    }
+
+    private Integer gameForReference(CoachingReference reference) {
+        String marker = referenceMarker(reference);
+        if (marker == null) return selectedGameNumber();
+        int game = 0;
+        for (String line : selected.reconstruction().split("\\R")) {
+            if (line.matches("G\\d+.*")) {
+                String digits = line.substring(1).replaceAll("\\D.*", "");
+                if (!digits.isEmpty()) game = Integer.parseInt(digits);
+            }
+            if (line.startsWith(marker)) return game == 0 ? selectedGameNumber() : game;
+        }
+        return selectedGameNumber();
+    }
+
+    private Integer turnForReference(CoachingReference reference) {
+        String marker = referenceMarker(reference);
+        if (marker == null) return null;
+        Integer turn = null;
+        for (String line : selected.reconstruction().split("\\R")) {
+            if (line.matches("T\\d+.*")) {
+                String digits = line.substring(1).replaceAll("\\D.*", "");
+                if (!digits.isEmpty()) turn = Integer.parseInt(digits);
+            }
+            if (line.startsWith(marker)) return turn;
+        }
+        return null;
+    }
+
+    private String referenceMarker(CoachingReference reference) {
+        return switch (reference.kind()) {
+            case EVENT -> "E#" + reference.number();
+            case ABILITY -> "A#" + reference.number();
+            case DECISION -> "C#" + reference.number();
+            case LIFE -> "L#" + reference.number();
+            case RESULT -> "GR#" + reference.number();
+            case SNAPSHOT -> "S#" + reference.number();
+            default -> null;
+        };
     }
 
     private void reloadList(Long selectId) {
@@ -356,6 +439,13 @@ public final class CoachingFrame extends JFrame {
 
         static ManualContext match() {
             return new ManualContext(GameView.CoachingScope.MATCH, null, java.util.Set.of());
+        }
+
+        CoachingContext toModel() {
+            return new CoachingContext(
+                    CoachingContext.Scope.valueOf(scope.name()),
+                    gameNumber,
+                    turns);
         }
 
         String label() {

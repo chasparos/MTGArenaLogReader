@@ -3,6 +3,7 @@ package app.coaching.persistence;
 import app.coaching.model.CoachingConversation;
 import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingGame;
+import app.coaching.model.CoachingContext;
 import app.coaching.model.CoachingMessage;
 
 import java.nio.file.Files;
@@ -90,17 +91,36 @@ public final class CoachingRepository implements AutoCloseable {
             long conversationId,
             CoachingMessage.Role role,
             String content) {
+        return appendMessage(conversationId, role, content, null);
+    }
+
+    public synchronized CoachingMessage appendMessage(
+            long conversationId,
+            CoachingMessage.Role role,
+            String content,
+            CoachingContext context) {
         if (conversationId <= 0) throw new IllegalArgumentException("conversationId must be positive");
         if (role == null) throw new IllegalArgumentException("role is required");
         requireText(content, "content");
 
         try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO coaching_message (conversation_id, role_name, content, created_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO coaching_message
+                    (conversation_id, role_name, content, context_scope, context_game, context_turns, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, Statement.RETURN_GENERATED_KEYS)) {
             statement.setLong(1, conversationId);
             statement.setString(2, role.name());
             statement.setString(3, content);
+            if (context == null) {
+                statement.setNull(4, Types.VARCHAR);
+                statement.setNull(5, Types.INTEGER);
+                statement.setNull(6, Types.VARCHAR);
+            } else {
+                statement.setString(4, context.scope().name());
+                if (context.gameNumber() == null) statement.setNull(5, Types.INTEGER);
+                else statement.setInt(5, context.gameNumber());
+                statement.setString(6, context.persistedTurns());
+            }
             statement.executeUpdate();
             long id;
             try (ResultSet keys = statement.getGeneratedKeys()) {
@@ -207,7 +227,8 @@ public final class CoachingRepository implements AutoCloseable {
 
     private List<CoachingMessage> messages(long conversationId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT id, conversation_id, role_name, content, created_at
+                SELECT id, conversation_id, role_name, content, created_at,
+                       context_scope, context_game, context_turns
                   FROM coaching_message
                  WHERE conversation_id = ?
                  ORDER BY id
@@ -235,7 +256,8 @@ public final class CoachingRepository implements AutoCloseable {
 
     private Optional<CoachingMessage> findMessage(long id) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT id, conversation_id, role_name, content, created_at
+                SELECT id, conversation_id, role_name, content, created_at,
+                       context_scope, context_game, context_turns
                   FROM coaching_message
                  WHERE id = ?
                 """)) {
@@ -265,7 +287,19 @@ public final class CoachingRepository implements AutoCloseable {
                 result.getLong("conversation_id"),
                 CoachingMessage.Role.valueOf(result.getString("role_name")),
                 result.getString("content"),
-                result.getTimestamp("created_at").toInstant());
+                result.getTimestamp("created_at").toInstant(),
+                readContext(result));
+    }
+
+
+    private CoachingContext readContext(ResultSet result) throws SQLException {
+        String scope = result.getString("context_scope");
+        if (scope == null || scope.isBlank()) return null;
+        Integer game = (Integer) result.getObject("context_game");
+        return new CoachingContext(
+                CoachingContext.Scope.valueOf(scope),
+                game,
+                CoachingContext.parseTurns(result.getString("context_turns")));
     }
 
     private void initialize() throws SQLException {
@@ -309,6 +343,18 @@ public final class CoachingRepository implements AutoCloseable {
                             REFERENCES coaching_conversation(id)
                             ON DELETE CASCADE
                     )
+                    """);
+            statement.executeUpdate("""
+                    ALTER TABLE coaching_message
+                    ADD COLUMN IF NOT EXISTS context_scope VARCHAR
+                    """);
+            statement.executeUpdate("""
+                    ALTER TABLE coaching_message
+                    ADD COLUMN IF NOT EXISTS context_game INT
+                    """);
+            statement.executeUpdate("""
+                    ALTER TABLE coaching_message
+                    ADD COLUMN IF NOT EXISTS context_turns VARCHAR
                     """);
             statement.executeUpdate("""
                     CREATE INDEX IF NOT EXISTS idx_coaching_message_conversation
