@@ -807,6 +807,13 @@ public final class GameEventProjector {
             }
         }
 
+        /*
+         * RoomLeft/RoomRight objects are facets of the parent Room permanent,
+         * not independent permanents. Retain them in canonical state as Arena
+         * evidence, but never project their zone changes as semantic objects.
+         */
+        if (isRoomFacet(current)) return;
+
         if (transferredIds.contains(instanceId)) return; // authoritative annotation handles it
         if (previous == null) emitNewVisibleObject(source, current, cards, result);
         else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
@@ -1232,6 +1239,7 @@ public final class GameEventProjector {
                 .filter(objectIdentityTracker::isCurrent)
                 .filter(object -> "Battlefield".equals(zoneType(object.getSemanticZoneId())))
                 .filter(object -> !isAbility(object))
+                .filter(object -> !isRoomFacet(object))
                 .sorted(java.util.Comparator
                         .comparingInt(GameObjectState::getControllerSeatId)
                         .thenComparingLong(GameObjectState::getLogicalObjectId))
@@ -1266,6 +1274,12 @@ public final class GameEventProjector {
                 .filter(zone -> zone.getOwnerSeatId() != null && zone.getOwnerSeatId() == seat)
                 .filter(zone -> "Hand".equals(zone.displayName()))
                 .map(ZoneInfo::getObjectCount).filter(count -> count >= 0).findFirst().orElse(null);
+    }
+
+    private boolean isRoomFacet(GameObjectState object) {
+        String objectType = object.getObjectType();
+        return "GameObjectType_RoomLeft".equals(objectType)
+                || "GameObjectType_RoomRight".equals(objectType);
     }
 
     private boolean isToken(GameObjectState object) {
