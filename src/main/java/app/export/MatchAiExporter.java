@@ -308,7 +308,8 @@ public final class MatchAiExporter {
     }
 
     private void appendGameResult(StringBuilder out, int eventId, GameResult result) {
-        out.append("GR#").append(eventId).append(" winner=").append(compact(value(result.getWinnerName(), "?")))
+        out.append("GR#").append(eventId).append(" winner=")
+                .append(playerReference(result.getWinnerSeatId(), result.getWinnerName()))
                 .append(" reason=").append(result.getReason())
                 .append(" confidence=").append(result.getConfidence());
         if (hasText(result.getFinishingCard())) {
@@ -318,7 +319,8 @@ public final class MatchAiExporter {
     }
 
     private void appendMatchResult(StringBuilder out, int eventId, MatchResult result) {
-        out.append("MR#").append(eventId).append(" winner=").append(compact(value(result.winnerName(), "?")));
+        out.append("MR#").append(eventId).append(" winner=")
+                .append(playerReference(result.winnerSeatId(), result.winnerName()));
         if (result.finalScore() != null) {
             out.append(" score=").append(result.finalScore().seatOneWins())
                     .append('-').append(result.finalScore().seatTwoWins());
@@ -327,6 +329,13 @@ public final class MatchAiExporter {
             }
         }
         out.append(" confidence=").append(result.confidence()).append('\n');
+    }
+
+    private String playerReference(Integer seatId, String playerName) {
+        if (seatId != null && seatId > 0) {
+            return "p" + seatId;
+        }
+        return compact(value(playerName, "?"));
     }
 
     private void appendLifeChange(StringBuilder out, int eventId, PlayerLifeChange change) {

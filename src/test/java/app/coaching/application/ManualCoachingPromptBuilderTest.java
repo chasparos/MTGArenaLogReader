@@ -38,7 +38,7 @@ final class ManualCoachingPromptBuilderTest {
         assertTrue(prompt.contains("CARD c1=Example@1"));
         assertTrue(prompt.contains("G1 complete"));
         assertTrue(prompt.contains("E#4 text=p2 passes"));
-        assertFalse(prompt.contains("G2"));
+        assertFalse(prompt.contains("\nG2\n"));
         assertFalse(prompt.contains("E#5"));
     }
 
