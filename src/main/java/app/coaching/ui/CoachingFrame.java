@@ -6,6 +6,8 @@ import app.coaching.model.CoachingConversationSummary;
 import app.coaching.model.CoachingMessage;
 import app.coaching.model.CoachingGame;
 import app.coaching.model.CoachingContext;
+import app.model.event.GameEvent;
+import app.model.event.GameEventType;
 import app.model.session.MatchSession;
 import app.replay.GameView;
 
@@ -20,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.TreeSet;
 
 /**
  * Browses explicitly persisted match reconstructions and their coaching transcript.
@@ -313,14 +316,26 @@ public final class CoachingFrame extends JFrame {
     private void navigateTo(CoachingReference reference) {
         if (selected == null || reference == null) return;
 
+        ReferencedEvent referencedEvent = isEventReference(reference)
+                ? referencedEvent(reference.number())
+                : null;
         Integer gameNumber = switch (reference.kind()) {
             case GAME -> reference.number();
             case TURN -> selectedGameNumber();
-            case EVENT, ABILITY, DECISION, LIFE, RESULT, SNAPSHOT -> gameForReference(reference);
+            case EVENT, ABILITY, DECISION, LIFE, RESULT, SNAPSHOT ->
+                    referencedEvent == null ? gameForReference(reference) : referencedEvent.gameNumber();
             case CARD, MATCH -> selectedGameNumber();
         };
 
         if (gameNumber != null) selectGame(gameNumber);
+
+        if (referencedEvent != null) {
+            GameView view = gameViews.get(referencedEvent.gameNumber());
+            if (view != null) view.navigateToEvent(referencedEvent.event());
+            status.setText("Navigated to game " + referencedEvent.gameNumber()
+                    + ", turn " + referencedEvent.event().getTurnNumber());
+            return;
+        }
 
         Integer turnNumber = switch (reference.kind()) {
             case TURN -> reference.number();
@@ -334,6 +349,39 @@ public final class CoachingFrame extends JFrame {
         } else if (gameNumber != null) {
             status.setText("Navigated to game " + gameNumber);
         }
+    }
+
+    private boolean isEventReference(CoachingReference reference) {
+        return switch (reference.kind()) {
+            case EVENT, ABILITY, DECISION, LIFE, RESULT, SNAPSHOT -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Reproduces the exporter's stable event numbering over the persisted rich
+     * snapshots. This keeps navigation tied to semantic events rather than to
+     * rendered text or Swing hitboxes.
+     */
+    private ReferencedEvent referencedEvent(int referenceNumber) {
+        int nextReference = 1;
+        for (Map.Entry<Integer, GameView> entry : gameViews.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .toList()) {
+            for (GameEvent event : entry.getValue().getModel().snapshot()) {
+                if (!isExportedEvent(event)) continue;
+                if (nextReference++ == referenceNumber) {
+                    return new ReferencedEvent(entry.getKey(), event);
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isExportedEvent(GameEvent event) {
+        return event.getType() != GameEventType.MATCH_STARTED
+                && event.getType() != GameEventType.GAME_STARTED
+                && event.getType() != GameEventType.OPENING_HAND;
     }
 
     private Integer selectedGameNumber() {
@@ -429,6 +477,9 @@ public final class CoachingFrame extends JFrame {
         return matchId.length() <= 8 ? matchId : matchId.substring(0, 8);
     }
 
+    private record ReferencedEvent(int gameNumber, GameEvent event) {
+    }
+
     private record ManualContext(
             GameView.CoachingScope scope,
             Integer gameNumber,
@@ -442,10 +493,11 @@ public final class CoachingFrame extends JFrame {
         }
 
         CoachingContext toModel() {
+
             return new CoachingContext(
                     CoachingContext.Scope.valueOf(scope.name()),
                     gameNumber,
-                    turns);
+                    new TreeSet<>(turns));
         }
 
         String label() {

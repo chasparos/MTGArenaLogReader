@@ -69,6 +69,7 @@ public final class GameView extends JPanel implements Scrollable {
     private CardHitbox hovered;
     private CoachingActions coachingActions;
     private Integer selectionAnchorTurn;
+    private GameEvent highlightedEvent;
 
     public GameView(GameModel model) { this(model, new AbilityNameStore()); }
 
@@ -139,18 +140,62 @@ public final class GameView extends JPanel implements Scrollable {
      * Selects and reveals a turn on behalf of an external UI coordinator.
      */
     public void navigateToTurn(int turnNumber) {
+        highlightedEvent = null;
+        selectTurn(turnNumber);
+        SwingUtilities.invokeLater(() -> scrollTurnToTop(turnNumber));
+    }
+
+    /**
+     * Selects the owning turn, aligns it to the top of the viewport and then
+     * reveals and highlights the referenced event when necessary.
+     */
+    public void navigateToEvent(GameEvent event) {
+        if (event == null || event.getTurnNumber() == null) return;
+        highlightedEvent = event;
+        selectTurn(event.getTurnNumber());
+        SwingUtilities.invokeLater(() -> {
+            scrollTurnToTop(event.getTurnNumber());
+            SwingUtilities.invokeLater(() -> revealEvent(event));
+        });
+    }
+
+    private void selectTurn(int turnNumber) {
         selectedTurns.clear();
         selectedTurns.add(turnNumber);
         selectionAnchorTurn = turnNumber;
         repaint();
-        SwingUtilities.invokeLater(() -> turnHitboxes.stream()
+    }
+
+    private void scrollTurnToTop(int turnNumber) {
+        turnHitboxes.stream()
                 .filter(hitbox -> hitbox.turnNumber() == turnNumber)
                 .findFirst()
-                .ifPresent(hitbox -> scrollRectToVisible(
-                        new Rectangle(hitbox.bounds().x,
-                                Math.max(0, hitbox.bounds().y - 12),
-                                hitbox.bounds().width,
-                                hitbox.bounds().height + 24))));
+                .ifPresent(hitbox -> setViewportY(Math.max(0, hitbox.bounds().y - 8)));
+    }
+
+    private void revealEvent(GameEvent event) {
+        eventHitboxes.stream()
+                .filter(hitbox -> hitbox.event() == event)
+                .findFirst()
+                .ifPresent(hitbox -> {
+                    Rectangle visible = getVisibleRect();
+                    if (!visible.contains(hitbox.bounds())) {
+                        int targetY = hitbox.bounds().y < visible.y
+                                ? hitbox.bounds().y - 8
+                                : hitbox.bounds().y + hitbox.bounds().height
+                                        - visible.height + 8;
+                        setViewportY(Math.max(0, targetY));
+                    }
+                    repaint(hitbox.bounds());
+                });
+    }
+
+    private void setViewportY(int y) {
+        Container ancestor = SwingUtilities.getAncestorOfClass(JViewport.class, this);
+        if (!(ancestor instanceof JViewport viewport)) return;
+        Point position = viewport.getViewPosition();
+        int maximumY = Math.max(0, getHeight() - viewport.getExtentSize().height);
+        viewport.setViewPosition(new Point(position.x, Math.min(y, maximumY)));
     }
 
     public void accept(LogMessageInterface message) {
@@ -312,7 +357,7 @@ public final class GameView extends JPanel implements Scrollable {
         RichLayout layout = layoutEvent(g, event, contentX, maxX, y + CARD_PADDING, draw);
         int boxHeight = Math.max(g.getFontMetrics().getHeight(), layout.height()) + CARD_PADDING * 2;
         if (draw) {
-            paintPanel(g, y, width, boxHeight, false);
+            paintPanel(g, y, width, boxHeight, false, event == highlightedEvent);
             String context = contextText(event);
             g.setColor(colorOr("Label.disabledForeground", getForeground()));
             g.setFont(getFont().deriveFont(Font.PLAIN, 12f));
@@ -326,12 +371,31 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void paintPanel(Graphics2D g, int y, int width, int height, boolean snapshot) {
+        paintPanel(g, y, width, height, snapshot, false);
+    }
+
+    private void paintPanel(
+            Graphics2D g,
+            int y,
+            int width,
+            int height,
+            boolean snapshot,
+            boolean highlighted) {
+        Color accent = colorOr("List.selectionBackground", new Color(0x4477AA));
         Color panel = colorOr("TextArea.background", Color.WHITE);
-        if (snapshot) panel = blend(panel, colorOr("List.selectionBackground", new Color(0x4477AA)), .045f);
-        Color border = blend(colorOr("Separator.foreground", new Color(0xAAAAAA)), panel, .30f);
+        if (snapshot) panel = blend(panel, accent, .045f);
+        if (highlighted) panel = blend(panel, accent, .22f);
+        Color border = highlighted
+                ? blend(accent, Color.BLACK, .12f)
+                : blend(colorOr("Separator.foreground", new Color(0xAAAAAA)), panel, .30f);
         Shape box = new RoundRectangle2D.Float(OUTER_PADDING, y, width, height, 15, 15);
-        g.setColor(panel); g.fill(box);
-        g.setColor(border); g.draw(box);
+        g.setColor(panel);
+        g.fill(box);
+        g.setColor(border);
+        Stroke previous = g.getStroke();
+        if (highlighted) g.setStroke(new BasicStroke(2f));
+        g.draw(box);
+        g.setStroke(previous);
     }
 
     private RichLayout layoutEvent(Graphics2D g, GameEvent event, int startX, int maxX, int topY, boolean draw) {

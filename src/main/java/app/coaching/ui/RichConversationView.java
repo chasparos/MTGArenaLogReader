@@ -32,6 +32,7 @@ public final class RichConversationView extends JScrollPane {
     private final JEditorPane document = new JEditorPane();
     private Consumer<CoachingReference> coordinator = ignored -> { };
     private Map<Integer, String> cardNames = Map.of();
+    private Map<String, String> referenceLabels = Map.of();
 
     public RichConversationView() {
         document.setEditable(false);
@@ -53,6 +54,7 @@ public final class RichConversationView extends JScrollPane {
 
     public void showConversation(String reconstruction, List<CoachingMessage> messages) {
         cardNames = readCardNames(reconstruction);
+        referenceLabels = readReferenceLabels(reconstruction);
         document.setText(render(messages == null ? List.of() : messages));
         document.setCaretPosition(document.getDocument().getLength());
     }
@@ -184,10 +186,89 @@ public final class RichConversationView extends JScrollPane {
     }
 
     private String referenceLabel(String token) {
+        String label = referenceLabels.get(token);
+        if (label != null) return label;
+
         Matcher card = Pattern.compile("\\[c(\\d+)(?:#\\d+)?]").matcher(token);
         if (!card.matches()) return token;
         String name = cardNames.get(Integer.parseInt(card.group(1)));
-        return name == null ? token : name + " " + token;
+        return name == null ? "Card" : name;
+    }
+
+    private Map<String, String> readReferenceLabels(String reconstruction) {
+        if (reconstruction == null || reconstruction.isBlank()) return Map.of();
+
+        Map<String, String> labels = new LinkedHashMap<>();
+        Integer currentGame = null;
+        Integer currentTurn = null;
+        for (String rawLine : reconstruction.split("\\R")) {
+            String line = rawLine.strip();
+            Matcher game = Pattern.compile("^G(\\d+)(?:\\s.*)?$").matcher(line);
+            if (game.matches()) {
+                currentGame = Integer.parseInt(game.group(1));
+                labels.put("[G" + currentGame + "]", "Game " + currentGame);
+                continue;
+            }
+
+            Matcher turn = Pattern.compile("^T(\\d+)(?:\\s.*)?$").matcher(line);
+            if (turn.matches()) {
+                currentTurn = Integer.parseInt(turn.group(1));
+                labels.put("[T" + currentTurn + "]", "Turn " + currentTurn);
+                continue;
+            }
+
+            Matcher reference = Pattern.compile("^(E|A|C|L|GR|S)#(\\d+)\\b(.*)$")
+                    .matcher(line);
+            if (!reference.matches()) continue;
+
+            String token = "[" + reference.group(1) + reference.group(2) + "]";
+            labels.put(token, eventLabel(
+                    reference.group(1),
+                    currentGame,
+                    currentTurn,
+                    reference.group(3)));
+        }
+        labels.put("[MATCH]", "Match");
+        return Map.copyOf(labels);
+    }
+
+    private String eventLabel(
+            String kind,
+            Integer gameNumber,
+            Integer turnNumber,
+            String details) {
+        String location;
+        if (turnNumber != null) {
+            location = "Turn " + turnNumber;
+        } else if (gameNumber != null) {
+            location = "Game " + gameNumber;
+        } else {
+            location = "Match";
+        }
+
+        String action = switch (kind) {
+            case "A" -> "Ability";
+            case "C" -> "Decision";
+            case "L" -> "Life change";
+            case "GR" -> "Result";
+            case "S" -> "Start of turn";
+            case "E" -> eventAction(details);
+            default -> "Event";
+        };
+        return location + " - " + action;
+    }
+
+    private String eventAction(String details) {
+        String text = details == null ? "" : details.toLowerCase(java.util.Locale.ROOT);
+        if (text.contains("attacks ")) return "Attack";
+        if (text.contains("blocks:")) return "Block";
+        if (text.contains(" casts ")) return "Cast";
+        if (text.contains(" resolves ")) return "Resolve";
+        if (text.contains(" draws ")) return "Draw";
+        if (text.contains(" plays ")) return "Play";
+        if (text.contains(" enters the battlefield")) return "Enters battlefield";
+        if (text.contains("graveyard")) return "Graveyard";
+        return "Event";
     }
 
     private String referenceLink(String token, String label) {
