@@ -291,6 +291,12 @@ public final class MatchAiExporter {
             attributes.add(permanent.getPower() + "/" + permanent.getToughness());
         }
         if (Boolean.TRUE.equals(permanent.getTapped())) attributes.add("tap");
+        if (!permanent.getUnlockedRoomHalves().isEmpty()) {
+            attributes.add("unlocked="
+                    + permanent.getUnlockedRoomHalves().stream()
+                            .map(this::compact)
+                            .collect(java.util.stream.Collectors.joining("|")));
+        }
         if (permanent.getAttachedToLogicalObjectId() != null) {
             attributes.add("attached#" + permanent.getAttachedToLogicalObjectId());
         }

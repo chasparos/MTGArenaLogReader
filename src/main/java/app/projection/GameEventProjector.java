@@ -2,6 +2,7 @@ package app.projection;
 
 import app.model.event.AbilityReference;
 import app.model.card.CardInfo;
+import app.model.card.CardFaceInfo;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.DecisionObservation;
@@ -73,11 +74,17 @@ public final class GameEventProjector {
      */
     private final Map<Long, PendingCast> pendingCasts = new LinkedHashMap<>();
     private final Map<Long, PendingTargetDecision> pendingTargetDecisions = new LinkedHashMap<>();
+    /** Cast events retained until the parent Room card identity is known. */
+    private final Map<Long, List<RoomCastProjection>> roomCastEvents = new LinkedHashMap<>();
     private final AbilityNameStore abilityNames;
     private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
     private boolean openingHandEventEmitted;
 
     private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
+
+    private enum RoomHalf { LEFT, RIGHT }
+
+    private record RoomCastProjection(GameEvent event, RoomHalf half, int seatId) {}
 
     private record PendingTargetDecision(
             ObjectReference source,
@@ -288,6 +295,7 @@ public final class GameEventProjector {
             historicalAbilityOwnerNames.clear();
             pendingCasts.clear();
             pendingTargetDecisions.clear();
+            roomCastEvents.clear();
             attachmentTracker.reset();
             pendingTurnSnapshot = null;
             pendingTurnSnapshotNeedsNextMessage = false;
@@ -780,6 +788,7 @@ public final class GameEventProjector {
         if (!isTransientZone(incomingZone)) current.setSemanticZoneId(incomingZone);
         else if (previous != null) current.setSemanticZoneId(previousSemanticZone);
         state.getObjects().put(instanceId, current);
+        repairRoomCastEvents(current, cards);
         if (current.getGrpId() > 0 && !isAbility(current)) {
             observedCardsByGrpId.put(current.getGrpId(), current.copy());
         }
@@ -867,7 +876,27 @@ public final class GameEventProjector {
                     removePendingCastFor(instanceId, object);
                 }
 
-                result.add(objectEvent(source, describeTransition(before, object, cards, category), object));
+                if ("CastSpell".equals(category) && isRoomParent(object)) {
+                    RoomHalf half = roomHalfFor(object);
+                    if (half != null && object.getGrpId() > 0
+                            && !object.getUnlockedRoomGrpIds().contains(object.getGrpId())) {
+                        object.getUnlockedRoomGrpIds().add(object.getGrpId());
+                    }
+                    GameEvent castEvent = objectEvent(
+                            source,
+                            describeRoomCast(object, cards, half),
+                            object);
+                    result.add(castEvent);
+                    if (half != null) {
+                        roomCastEvents
+                                .computeIfAbsent(object.getLogicalObjectId(), ignored -> new ArrayList<>())
+                                .add(new RoomCastProjection(
+                                        castEvent, half, object.getControllerSeatId()));
+                    }
+                } else {
+                    result.add(objectEvent(source,
+                            describeTransition(before, object, cards, category), object));
+                }
             }
         }
     }
@@ -1266,6 +1295,8 @@ public final class GameEventProjector {
                             attachmentTracker.attachedHostFor(object.getLogicalObjectId()));
                     object.getCounters().forEach(counter ->
                             permanent.getCounters().add(counter.copy()));
+                    roomUnlockedHalfNames(object, knownCards)
+                            .forEach(permanent.getUnlockedRoomHalves()::add);
                     return permanent;
                 })
                 .toList();
@@ -1283,6 +1314,102 @@ public final class GameEventProjector {
                 .filter(zone -> zone.getOwnerSeatId() != null && zone.getOwnerSeatId() == seat)
                 .filter(zone -> "Hand".equals(zone.displayName()))
                 .map(ZoneInfo::getObjectCount).filter(count -> count >= 0).findFirst().orElse(null);
+    }
+
+    private boolean isRoomParent(GameObjectState object) {
+        return object != null
+                && !isRoomFacet(object)
+                && object.getSubtypes().contains("Room");
+    }
+
+    private RoomHalf roomHalfFor(GameObjectState room) {
+        if (!isRoomParent(room) || room.getGrpId() <= 0) return null;
+        for (GameObjectState candidate : state.getObjects().values()) {
+            if (!isRoomFacet(candidate) || candidate.getGrpId() != room.getGrpId()) continue;
+            long parentLogicalId = objectIdentityTracker.logicalIdOf(candidate.getParentId());
+            if (parentLogicalId != room.getLogicalObjectId()) continue;
+            return "GameObjectType_RoomLeft".equals(candidate.getObjectType())
+                    ? RoomHalf.LEFT
+                    : "GameObjectType_RoomRight".equals(candidate.getObjectType())
+                    ? RoomHalf.RIGHT
+                    : null;
+        }
+        return null;
+    }
+
+    private String describeRoomCast(GameObjectState room,
+                                    Map<Long, CardInfo> cards,
+                                    RoomHalf half) {
+        String halfName = roomHalfName(room, cards, half);
+        String actor = playerName(room.getControllerSeatId());
+        return actor + " casts " + halfName;
+    }
+
+    private String roomHalfName(GameObjectState room,
+                                Map<Long, CardInfo> cards,
+                                RoomHalf half) {
+        CardInfo parentCard = roomParentCard(room, cards);
+        if (parentCard != null && parentCard.getCardFaces() != null
+                && parentCard.getCardFaces().size() >= 2 && half != null) {
+            CardFaceInfo face = parentCard.getCardFaces().get(half == RoomHalf.LEFT ? 0 : 1);
+            if (face != null && face.getName() != null && !face.getName().isBlank()) {
+                return face.getName();
+            }
+        }
+        return half == RoomHalf.LEFT ? "left Room half"
+                : half == RoomHalf.RIGHT ? "right Room half"
+                : objectDisplayName(room, cards);
+    }
+
+    private CardInfo roomParentCard(GameObjectState room, Map<Long, CardInfo> cards) {
+        if (room == null) return null;
+        if (room.getCard() != null && room.getCard().getCardFaces() != null
+                && room.getCard().getCardFaces().size() >= 2) {
+            return room.getCard();
+        }
+        CardInfo direct = cards.get(room.getGrpId());
+        if (direct != null && direct.getCardFaces() != null
+                && direct.getCardFaces().size() >= 2) {
+            return direct;
+        }
+        return null;
+    }
+
+    private List<String> roomUnlockedHalfNames(GameObjectState room,
+                                                Map<Long, CardInfo> cards) {
+        if (!isRoomParent(room) || room.getUnlockedRoomGrpIds().isEmpty()) return List.of();
+        List<String> names = new ArrayList<>();
+        for (long grpId : room.getUnlockedRoomGrpIds()) {
+            RoomHalf half = null;
+            for (GameObjectState candidate : state.getObjects().values()) {
+                if (isRoomFacet(candidate) && candidate.getGrpId() == grpId) {
+                    half = "GameObjectType_RoomLeft".equals(candidate.getObjectType())
+                            ? RoomHalf.LEFT : RoomHalf.RIGHT;
+                    break;
+                }
+            }
+            String name = roomHalfName(room, cards, half);
+            if (!names.contains(name)) names.add(name);
+        }
+        return names;
+    }
+
+    private void repairRoomCastEvents(GameObjectState room,
+                                      Map<Long, CardInfo> cards) {
+        if (!isRoomParent(room)) return;
+        CardInfo parentCard = roomParentCard(room, cards);
+        if (parentCard == null) return;
+        List<RoomCastProjection> projections =
+                roomCastEvents.get(room.getLogicalObjectId());
+        if (projections == null) return;
+        for (RoomCastProjection projection : projections) {
+            projection.event().setText(
+                    playerName(projection.seatId()) + " casts "
+                            + roomHalfName(room, cards, projection.half()));
+            if (!projection.event().getCards().contains(parentCard)) {
+                projection.event().getCards().add(parentCard);
+            }
+        }
     }
 
     private boolean isRoomFacet(GameObjectState object) {

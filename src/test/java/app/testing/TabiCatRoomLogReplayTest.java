@@ -51,8 +51,27 @@ final class TabiCatRoomLogReplayTest {
         }
 
         assertTrue(eventText.stream().anyMatch(text ->
-                        text.contains("Arena #92135") || text.contains("Arena #92136")),
-                "The parent Room observation should still be preserved");
+                        text.contains("casts Mirror Room")),
+                "The cast event should identify the selected Room half");
+        assertTrue(eventText.stream().anyMatch(text ->
+                        text.contains("casts Meat Locker")),
+                "Each Room cast should identify its selected half");
+        assertTrue(eventText.stream().anyMatch(text ->
+                        text.contains("casts Misty Salon")),
+                "The right Room half should be identified when that half was cast");
+
+        assertTrue(battlefield.stream().anyMatch(permanent ->
+                        "Mirror Room // Fractured Realm".equals(permanent.getName())
+                                && permanent.getUnlockedRoomHalves().contains("Mirror Room")),
+                "The parent Room permanent should retain its unlocked half");
+        assertTrue(battlefield.stream().anyMatch(permanent ->
+                        "Meat Locker // Drowned Diner".equals(permanent.getName())
+                                && permanent.getUnlockedRoomHalves().contains("Meat Locker")),
+                "Unlocked state belongs to the parent Room permanent");
+        assertTrue(battlefield.stream().anyMatch(permanent ->
+                        "Smoky Lounge // Misty Salon".equals(permanent.getName())
+                                && permanent.getUnlockedRoomHalves().contains("Misty Salon")),
+                "The board snapshot should reflect a right-half unlock");
     }
 
     private Path fixture(String resource) throws URISyntaxException {

@@ -133,6 +133,11 @@ public final class GameTextExporter {
                     .append(permanent.getToughness()).append(')');
         }
         if (Boolean.TRUE.equals(permanent.getTapped())) text.append(" [tapped]");
+        if (!permanent.getUnlockedRoomHalves().isEmpty()) {
+            text.append(" [unlocked: ")
+                    .append(String.join(", ", permanent.getUnlockedRoomHalves()))
+                    .append(']');
+        }
         return text.toString();
     }
 

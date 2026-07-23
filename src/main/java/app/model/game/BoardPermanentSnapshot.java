@@ -29,4 +29,6 @@ public class BoardPermanentSnapshot {
     /** Logical object id of the permanent this card is attached to, if any. */
     private Long attachedToLogicalObjectId;
     private final List<CounterState> counters = new ArrayList<>();
+    /** Human-readable Room halves known to be unlocked on this permanent. */
+    private final List<String> unlockedRoomHalves = new ArrayList<>();
 }

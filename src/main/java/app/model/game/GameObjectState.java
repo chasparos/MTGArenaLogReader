@@ -30,6 +30,8 @@ public class GameObjectState {
     private final List<String> subtypes = new ArrayList<>();
     private final List<String> colors = new ArrayList<>();
     private final List<Long> uniqueAbilityGrpIds = new ArrayList<>();
+    /** Arena group ids of Room halves observed being cast/unlocked for this permanent. */
+    private final List<Long> unlockedRoomGrpIds = new ArrayList<>();
     /** All counter types are retained in canonical state, even when only P/T is rendered. */
     private final List<CounterState> counters = new ArrayList<>();
     private Integer power;
@@ -64,6 +66,7 @@ public class GameObjectState {
         copy.subtypes.addAll(subtypes);
         copy.colors.addAll(colors);
         copy.uniqueAbilityGrpIds.addAll(uniqueAbilityGrpIds);
+        copy.unlockedRoomGrpIds.addAll(unlockedRoomGrpIds);
         for (CounterState counter : counters) copy.counters.add(counter.copy());
         copy.power = power;
         copy.toughness = toughness;
