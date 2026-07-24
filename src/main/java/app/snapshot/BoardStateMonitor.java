@@ -89,6 +89,7 @@ public final class BoardStateMonitor {
         copy.setToughness(source.getToughness());
         copy.setAttachedToLogicalObjectId(source.getAttachedToLogicalObjectId());
         source.getCounters().forEach(counter -> copy.getCounters().add(counter.copy()));
+        copy.getUnlockedRoomHalves().addAll(source.getUnlockedRoomHalves());
         return copy;
     }
 }

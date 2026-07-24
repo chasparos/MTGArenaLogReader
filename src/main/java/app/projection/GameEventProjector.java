@@ -1285,6 +1285,9 @@ public final class GameEventProjector {
             snapshot.setLifeTotal(state.getLifeTotals().get(player.getKey()));
             snapshot.setPoisonCounters(state.getPoisonCounters().getOrDefault(player.getKey(), 0));
             snapshot.setHandSize(handSize(player.getKey()));
+            snapshot.getKnownHand().addAll(knownCardsInZone(player.getKey(), "Hand"));
+            snapshot.getKnownGraveyard().addAll(knownCardsInZone(player.getKey(), "Graveyard"));
+            snapshot.getKnownExile().addAll(knownCardsInZone(player.getKey(), "Exile"));
             event.getTurnSnapshot().add(snapshot);
         }
         return event;
@@ -1332,6 +1335,19 @@ public final class GameEventProjector {
                 .filter(zone -> zone.getOwnerSeatId() != null && zone.getOwnerSeatId() == seat)
                 .filter(zone -> "Hand".equals(zone.displayName()))
                 .map(ZoneInfo::getObjectCount).filter(count -> count >= 0).findFirst().orElse(null);
+    }
+
+    private List<CardInfo> knownCardsInZone(int seat, String zoneName) {
+        return state.getObjects().values().stream()
+                .filter(objectIdentityTracker::isCurrent)
+                .filter(object -> object.getOwnerSeatId() == seat)
+                .filter(object -> zoneName.equals(zoneType(object.getSemanticZoneId())))
+                .filter(object -> !isAbility(object) && !isRoomFacet(object))
+                .map(GameObjectState::getCard)
+                .filter(java.util.Objects::nonNull)
+                .sorted(java.util.Comparator.comparing(CardInfo::getName,
+                        java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .toList();
     }
 
     private boolean isRoomParent(GameObjectState object) {

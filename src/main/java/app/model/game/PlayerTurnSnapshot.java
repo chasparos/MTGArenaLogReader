@@ -21,4 +21,10 @@ public class PlayerTurnSnapshot {
     private Integer poisonCounters;
     private Integer handSize;
     private final List<BoardPermanentSnapshot> battlefield = new ArrayList<>();
+    /** Cards whose identity is currently known in this player's hand. */
+    private final List<app.model.card.CardInfo> knownHand = new ArrayList<>();
+    /** Public cards currently known in this player's graveyard. */
+    private final List<app.model.card.CardInfo> knownGraveyard = new ArrayList<>();
+    /** Public cards currently known in this player's exile zone. */
+    private final List<app.model.card.CardInfo> knownExile = new ArrayList<>();
 }

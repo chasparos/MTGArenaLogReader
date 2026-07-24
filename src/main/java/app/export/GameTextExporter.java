@@ -60,6 +60,9 @@ public final class GameTextExporter {
                             ? ", hand ?"
                             : ", " + snapshot.getHandSize() + " cards in hand");
                     out.append('\n');
+                    appendKnownCards(out, "Known hand", snapshot.getKnownHand());
+                    appendKnownCards(out, "Graveyard", snapshot.getKnownGraveyard());
+                    appendKnownCards(out, "Exile", snapshot.getKnownExile());
                     if (snapshot.getBattlefield().isEmpty()) {
                         out.append("  Battlefield: empty\n");
                     } else {
@@ -122,6 +125,17 @@ public final class GameTextExporter {
                 .filter(permanent -> permanent.getAttachedToLogicalObjectId() != null
                         && permanent.getAttachedToLogicalObjectId() == hostId)
                 .toList();
+    }
+
+    private void appendKnownCards(StringBuilder out, String label,
+                                  java.util.List<app.model.card.CardInfo> cards) {
+        if (cards.isEmpty()) return;
+        out.append("  ").append(label).append(": ")
+                .append(cards.stream()
+                        .map(app.model.card.CardInfo::getName)
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.joining(", ")))
+                .append('\n');
     }
 
     private String boardPermanentText(BoardPermanentSnapshot permanent) {
