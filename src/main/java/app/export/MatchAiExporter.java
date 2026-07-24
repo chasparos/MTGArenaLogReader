@@ -318,8 +318,8 @@ public final class MatchAiExporter {
     }
 
     private int cardTypeOrder(CardInfo card) {
-        String typeLine = card == null || card.getEffectiveTypeLine() == null
-                ? "" : card.getEffectiveTypeLine().toLowerCase(java.util.Locale.ROOT);
+        String typeLine = card == null || card.effectiveTypeLine() == null
+                ? "" : card.effectiveTypeLine().toLowerCase(java.util.Locale.ROOT);
         if (typeLine.contains("land")) return 0;
         if (typeLine.contains("creature")) return 1;
         if (typeLine.contains("enchantment")) return 2;
