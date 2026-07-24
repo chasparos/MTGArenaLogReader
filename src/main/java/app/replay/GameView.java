@@ -918,8 +918,8 @@ public final class GameView extends JPanel implements Scrollable {
                                 String.valueOf(permanent.getToughness())),
                         x + width, topY, lineHeight);
             }
-            paintActivatedAbilityMiniChip(g, card, x, topY);
-            paintPermanentAbilityMiniChip(g, permanent, cardNameX, topY, lineHeight);
+            paintActivatedAbilityMiniChip(g, card, cardNameX, topY, lineHeight);
+            paintPermanentAbilityMiniChip(g, permanent, x + width, topY);
             paintTappedMiniChip(g, permanent, x, topY, lineHeight);
         }
         g.setFont(oldFont);
@@ -944,7 +944,7 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void paintPermanentAbilityMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
-                                               int cardNameX, int topY, int lineHeight) {
+                                               int rightX, int topY) {
         List<String> abilities = permanent.getEvergreenAbilities();
         if (abilities == null || abilities.isEmpty()) return;
         int visible = Math.min(4, abilities.size());
@@ -953,8 +953,8 @@ public final class GameView extends JPanel implements Scrollable {
         int gap = 2;
         int width = padding * 2 + visible * iconSize + Math.max(0, visible - 1) * gap;
         int height = iconSize + padding * 2;
-        int x = cardNameX;
-        int y = topY + lineHeight - height - 1;
+        int x = rightX - width + 5;
+        int y = topY;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
@@ -996,7 +996,8 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
 
-    private void paintActivatedAbilityMiniChip(Graphics2D g, CardInfo card, int leftX, int topY) {
+    private void paintActivatedAbilityMiniChip(Graphics2D g, CardInfo card,
+                                                 int cardNameX, int topY, int lineHeight) {
         ActivatedAbilityBadge badge = activatedAbilityBadge(card);
         if (badge == null) return;
 
@@ -1023,8 +1024,8 @@ public final class GameView extends JPanel implements Scrollable {
 
         int width = padding * 2 + contentWidth;
         int height = Math.max(12, tapSize + padding * 2);
-        int x = leftX - 5;
-        int y = topY;
+        int x = cardNameX;
+        int y = topY + lineHeight - height - 1;
 
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
