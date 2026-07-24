@@ -518,7 +518,7 @@ public final class GameEventProjector {
         combatProjector.projectDeclarations(message, cards, result);
         projectZoneTransfers(message, annotations, cards, result);
         projectTargets(message, persistentAnnotations, cards, result);
-        reorderLandPlayBeforeOwnAbilities(result, messageStartIndex);
+        reorderBattlefieldEntryBeforeOwnAbilities(result, messageStartIndex);
         openingHandTracker.observe(state, knownCards);
         projectOpeningHand(message, result);
         boolean turnChanged = state.getTurnNumber() != null && state.getTurnNumber() != previousTurn;
@@ -1020,33 +1020,51 @@ public final class GameEventProjector {
     }
 
     /**
-     * Arena can report an enters-the-battlefield ability object before the
-     * ZoneTransfer/PlayLand annotation in the same GameStateMessage.  Humans
-     * expect the land play first, so move only that land's play event ahead of
-     * its own already-projected ability events.
+     * Arena game-state messages are batched observations rather than a
+     * rules-ordered event stream. An ability object can therefore be listed on
+     * the stack before the same message's authoritative zone-transfer
+     * annotation reports its source entering the battlefield.
+     *
+     * <p>Normalize only the explicit causal relationship we can prove: a
+     * battlefield-entry (or land-play) event precedes ability events whose
+     * structured source group id is the entering object's group id. Unrelated
+     * triggers retain Arena's observed order.</p>
      */
-    private void reorderLandPlayBeforeOwnAbilities(List<GameEvent> events, int fromIndex) {
-        for (int playIndex = fromIndex; playIndex < events.size(); playIndex++) {
-            String text = events.get(playIndex).getText();
-            int marker = text == null ? -1 : text.indexOf(" plays ");
-            if (marker < 0) continue;
+    private void reorderBattlefieldEntryBeforeOwnAbilities(List<GameEvent> events, int fromIndex) {
+        for (int entryIndex = fromIndex; entryIndex < events.size(); entryIndex++) {
+            GameEvent entryEvent = events.get(entryIndex);
+            if (!isBattlefieldEntryEvent(entryEvent)) continue;
 
-            String landName = text.substring(marker + " plays ".length())
-                    .replaceFirst("\\s+(?:tapped|untapped)$", "");
-            int earliestOwnAbility = playIndex;
-            for (int i = fromIndex; i < playIndex; i++) {
-                String earlier = events.get(i).getText();
-                if (earlier != null && (earlier.contains("ability from " + landName)
-                        || earlier.contains(landName + "'s ability"))) {
+            Set<Long> enteringGrpIds = entryEvent.getObjects().stream()
+                    .filter(reference -> !reference.isPlayer())
+                    .map(ObjectReference::arenaGrpId)
+                    .filter(grpId -> grpId > 0)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (enteringGrpIds.isEmpty()) continue;
+
+            int earliestOwnAbility = entryIndex;
+            for (int i = fromIndex; i < entryIndex; i++) {
+                AbilityReference ability = events.get(i).getAbility();
+                if (ability != null && enteringGrpIds.contains(ability.getSourceGrpId())) {
                     earliestOwnAbility = i;
                     break;
                 }
             }
-            if (earliestOwnAbility < playIndex) {
-                GameEvent play = events.remove(playIndex);
-                events.add(earliestOwnAbility, play);
+
+            if (earliestOwnAbility < entryIndex) {
+                GameEvent entry = events.remove(entryIndex);
+                events.add(earliestOwnAbility, entry);
             }
         }
+    }
+
+    private boolean isBattlefieldEntryEvent(GameEvent event) {
+        if (event.getAbility() != null || event.getObjects().isEmpty()) return false;
+        String text = event.getText();
+        return text != null
+                && (text.contains(" enters the battlefield")
+                || text.contains(" entered the battlefield")
+                || text.contains(" plays "));
     }
 
     private String tappedSuffix(GameObjectState object) {

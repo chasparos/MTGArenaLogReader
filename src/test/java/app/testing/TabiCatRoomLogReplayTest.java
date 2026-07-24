@@ -74,6 +74,33 @@ final class TabiCatRoomLogReplayTest {
                 "The board snapshot should reflect a right-half unlock");
     }
 
+
+    @Test
+    void sourceEntersBattlefieldBeforeItsEtbAbilityIsProjected() throws Exception {
+        List<GameEvent> events = new ArenaLogReplayHarness()
+                .replay(fixture("logs/tabi-cat-room.log"))
+                .requireGame(MATCH_ID, 1)
+                .snapshot();
+
+        int firstDeathcapEntry = indexOf(events,
+                "Deathcap Marionette resolves and enters the battlefield");
+        int firstDeathcapAbility = indexOf(events,
+                "puts an ability from Deathcap Marionette");
+
+        assertTrue(firstDeathcapEntry >= 0, "Expected Deathcap Marionette battlefield entry");
+        assertTrue(firstDeathcapAbility >= 0, "Expected Deathcap Marionette ETB ability");
+        assertTrue(firstDeathcapEntry < firstDeathcapAbility,
+                "A permanent must enter the battlefield before its ETB ability is put on the stack");
+    }
+
+    private int indexOf(List<GameEvent> events, String text) {
+        for (int i = 0; i < events.size(); i++) {
+            String eventText = events.get(i).getText();
+            if (eventText != null && eventText.contains(text)) return i;
+        }
+        return -1;
+    }
+
     private Path fixture(String resource) throws URISyntaxException {
         return Path.of(getClass().getClassLoader().getResource(resource).toURI());
     }
