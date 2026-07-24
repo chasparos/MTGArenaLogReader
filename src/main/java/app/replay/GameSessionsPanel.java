@@ -11,6 +11,7 @@ import app.projection.AbilityNameStore;
 import app.routing.GameMessageRouter;
 import app.export.GameTextExporter;
 import app.export.MatchAiExporter;
+import app.archive.MatchArchiveStore;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -21,6 +22,9 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Comparator;
+import java.nio.file.Path;
+import java.io.IOException;
+import java.util.Objects;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,12 +36,17 @@ import org.slf4j.LoggerFactory;
  */
 public final class GameSessionsPanel extends JPanel {
     private static final Logger LOG = LoggerFactory.getLogger(GameSessionsPanel.class);
+    private static final int MAX_VISIBLE_GAMES = 12;
     private final JTabbedPane gameTabs = new JTabbedPane();
     private final Map<GameKey, GameView> views = new LinkedHashMap<>();
+    private final Map<GameKey, JScrollPane> tabComponents = new LinkedHashMap<>();
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
     private final GameMessageRouter router = new GameMessageRouter();
     private final GameTextExporter exporter = new GameTextExporter();
     private final MatchAiExporter aiExporter = new MatchAiExporter();
+    private final MatchArchiveStore archiveStore = new MatchArchiveStore(
+            Path.of(System.getProperty("user.home"), ".arena-log-viewer", "archive"),
+            aiExporter);
     private final AbilityNameStore abilityNames = new AbilityNameStore();
     private final JLabel status = new JLabel("No games loaded");
     private final Consumer<MatchSession> coachingAction;
@@ -64,8 +73,9 @@ public final class GameSessionsPanel extends JPanel {
         coachMatch.setToolTipText("Persist this match and open its local coaching conversation");
         coachMatch.addActionListener(event -> openSelectedMatchForCoaching());
 
-        JButton clear = new JButton("Clear games");
-        clear.addActionListener(event -> clear());
+        JButton closeMatch = new JButton("Close match");
+        closeMatch.setToolTipText("Close every game tab belonging to the selected match");
+        closeMatch.addActionListener(event -> closeSelectedMatch());
 
         JPanel toolbar = new JPanel(new BorderLayout(8, 0));
         toolbar.setBorder(new EmptyBorder(6, 8, 6, 8));
@@ -76,7 +86,7 @@ public final class GameSessionsPanel extends JPanel {
         actions.add(copyMatchForAi);
         actions.add(coachMatch);
         actions.add(copyRaw);
-        actions.add(clear);
+        actions.add(closeMatch);
         toolbar.add(actions, BorderLayout.EAST);
 
         add(toolbar, BorderLayout.NORTH);
@@ -88,13 +98,15 @@ public final class GameSessionsPanel extends JPanel {
             GameView view = views.computeIfAbsent(key, this::createGameView);
             view.getModel().addRawRecord(message.getRawText());
             view.accept(message);
-            status.setText(views.size() + (views.size() == 1 ? " game" : " games") + " loaded");
+            enforceVisibleGameLimit();
+            updateStatus();
         });
     }
 
     public void clear() {
         views.values().forEach(GameView::clear);
         views.clear();
+        tabComponents.clear();
         matches.clear();
         gameTabs.removeAll();
         status.setText("No games loaded");
@@ -134,12 +146,81 @@ public final class GameSessionsPanel extends JPanel {
         GameView view = new GameView(game, abilityNames);
         JScrollPane scrollPane = new JScrollPane(view);
         scrollPane.getVerticalScrollBar().setUnitIncrement(20);
-        gameTabs.addTab(key.displayName(), scrollPane);
+        tabComponents.put(key, scrollPane);
+        gameTabs.addTab(humanReadableTitle(key), scrollPane);
         gameTabs.setSelectedComponent(scrollPane);
+        view.setModelChangedListener(() -> updateTabTitle(key));
         return view;
     }
 
 
+
+
+
+    private void updateStatus() {
+        status.setText(views.size() + (views.size() == 1 ? " game" : " games") + " loaded");
+    }
+
+    private void updateTabTitle(GameKey key) {
+        JScrollPane component = tabComponents.get(key);
+        if (component == null) return;
+        int index = gameTabs.indexOfComponent(component);
+        if (index >= 0) gameTabs.setTitleAt(index, humanReadableTitle(key));
+    }
+
+    private String humanReadableTitle(GameKey key) {
+        MatchSession match = matches.get(key.getMatchId());
+        GameView view = views.get(key);
+        String localPlayer = view == null ? null : view.getModel().getOpeningHandPlayer();
+        String opponent = match == null ? null : match.matchState().playerSnapshot().values().stream()
+                .filter(name -> name != null && !name.isBlank())
+                .filter(name -> localPlayer == null || !name.equals(localPlayer))
+                .findFirst()
+                .orElse(null);
+        return opponent == null
+                ? "Game " + key.getGameNumber()
+                : "vs " + opponent + ", game " + key.getGameNumber();
+    }
+
+    private void closeSelectedMatch() {
+        String matchId = selectedMatchId();
+        if (matchId == null) {
+            status.setText("No match selected");
+            return;
+        }
+        removeMatch(matchId, false);
+    }
+
+    private void enforceVisibleGameLimit() {
+        while (views.size() > MAX_VISIBLE_GAMES && !matches.isEmpty()) {
+            String oldestMatchId = matches.keySet().iterator().next();
+            removeMatch(oldestMatchId, true);
+        }
+    }
+
+    private void removeMatch(String matchId, boolean archive) {
+        MatchSession match = matches.get(matchId);
+        if (match == null) return;
+        if (archive) {
+            try {
+                archiveStore.archive(match);
+            } catch (IOException error) {
+                LOG.warn("Could not archive match {}", matchId, error);
+            }
+        }
+
+        List<GameKey> keys = views.keySet().stream()
+                .filter(key -> Objects.equals(key.getMatchId(), matchId))
+                .toList();
+        for (GameKey key : keys) {
+            GameView view = views.remove(key);
+            if (view != null) view.clear();
+            JScrollPane component = tabComponents.remove(key);
+            if (component != null) gameTabs.remove(component);
+        }
+        matches.remove(matchId);
+        updateStatus();
+    }
 
     public void addGameSelectionListener(Runnable listener) {
         gameTabs.addChangeListener(event -> listener.run());

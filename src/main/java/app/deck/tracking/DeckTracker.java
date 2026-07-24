@@ -431,4 +431,13 @@ public final class DeckTracker {
         try { JsonElement e=o.get(key); return e!=null&&e.isJsonPrimitive()?e.getAsLong():fallback; }
         catch(RuntimeException ex){ return fallback; }
     }
+    public synchronized void reset() {
+        currentMatchId = null;
+        currentGameNumber = 0;
+        complete = false;
+        started = false;
+        matchLog.clear();
+        clearGameObjects();
+    }
+
 }

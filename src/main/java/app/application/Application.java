@@ -88,7 +88,7 @@ public final class Application implements AutoCloseable {
                 logPath,
                 filteredLogQueue,
                 Duration.ofMillis(250),
-                false,
+                true,
                 this::reportError);
         pipelineExecutor.submit(logTailReader);
 
@@ -139,8 +139,17 @@ public final class Application implements AutoCloseable {
                 deckTracker,
                 deckFrame,
                 coachingFrame::open,
+                this::rescanLog,
                 ignored -> close());
         frame.setVisible(true);
+    }
+
+
+    private void rescanLog() {
+        filteredLogQueue.clear();
+        enrichmentQueue.clear();
+        uiQueue.clear();
+        if (logTailReader != null) logTailReader.requestRescanFromBeginning();
     }
 
     private Path defaultLogPath() {

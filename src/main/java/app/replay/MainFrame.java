@@ -2,16 +2,12 @@ package app.replay;
 
 import app.deck.tracking.DeckTracker;
 import app.deck.ui.DeckTrackerFrame;
-import app.model.InformationBundle;
 import app.model.session.MatchSession;
 import app.model.log.LogMessageInterface;
-import app.model.log.ModelObject;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -26,13 +22,10 @@ import java.util.function.Consumer;
  * <p><strong>Architectural role:</strong> This type belongs to the Swing presentation boundary and consumes structured models and events without owning game reconstruction.</p>
  */
 public final class MainFrame extends JFrame {
-    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss")
-            .withZone(ZoneId.systemDefault());
-
     private final BlockingQueue<LogMessageInterface> uiQueue;
-    private final JTextArea textArea = new JTextArea();
     private final GameSessionsPanel gamesPanel;
     private final JLabel status = new JLabel("Running");
+    private final Runnable rescanAction;
     private final Consumer<Void> closeAction;
     private final DeckTracker deckTracker;
     private final DeckTrackerFrame deckTrackerFrame;
@@ -40,9 +33,11 @@ public final class MainFrame extends JFrame {
     public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker,
                      DeckTrackerFrame deckTrackerFrame,
                      Consumer<MatchSession> coachingAction,
+                     Runnable rescanAction,
                      Consumer<Void> closeAction) {
         super("MTG Arena Parallel Log");
         this.uiQueue = uiQueue;
+        this.rescanAction = rescanAction;
         this.closeAction = closeAction;
         this.deckTracker = deckTracker;
         this.deckTrackerFrame = deckTrackerFrame;
@@ -56,18 +51,19 @@ public final class MainFrame extends JFrame {
         setSize(1100, 760);
         setLocationByPlatform(true);
 
-        textArea.setEditable(true);
-        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        textArea.setLineWrap(false);
-
         JButton showDeckTracker = new JButton("Show deck tracker");
         showDeckTracker.addActionListener(event -> showSelectedDeckTracker());
 
         JButton showMatchLog = new JButton("Show match log");
         showMatchLog.addActionListener(event -> showMatchLog());
 
-        JButton clearRaw = new JButton("Clear raw log");
-        clearRaw.addActionListener(event -> textArea.setText(""));
+        JButton rescan = new JButton("Clear all and rescan log file");
+        rescan.addActionListener(event -> {
+            gamesPanel.clear();
+            deckTracker.reset();
+            rescanAction.run();
+            status.setText("Rescanning Player.log from the beginning");
+        });
 
         JPanel footer = new JPanel(new BorderLayout());
         footer.setBorder(new EmptyBorder(5, 8, 8, 8));
@@ -75,13 +71,10 @@ public final class MainFrame extends JFrame {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         actions.add(showDeckTracker);
         actions.add(showMatchLog);
-        actions.add(clearRaw);
+        actions.add(rescan);
         footer.add(actions, BorderLayout.EAST);
 
-        JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Games", gamesPanel);
-        tabs.addTab("Raw log", new JScrollPane(textArea));
-        add(tabs, BorderLayout.CENTER);
+        add(gamesPanel, BorderLayout.CENTER);
         add(footer, BorderLayout.SOUTH);
 
         Timer timer = new Timer(100, event -> drainQueue());
@@ -102,9 +95,6 @@ public final class MainFrame extends JFrame {
         for (LogMessageInterface message : batch) {
             deckTracker.accept(message);
             gamesPanel.accept(message);
-            appendBase(message);
-            message.getModelFuture().whenComplete((model, error) ->
-                    SwingUtilities.invokeLater(() -> appendEnrichment(message, model, error)));
         }
         status.setText("Queued UI messages: " + uiQueue.size());
     }
@@ -154,33 +144,4 @@ public final class MainFrame extends JFrame {
         JOptionPane.showMessageDialog(this, scroll, "Match Log", JOptionPane.PLAIN_MESSAGE);
     }
 
-    private void appendBase(LogMessageInterface message) {
-        textArea.append("[%s] #%d %-6s %s%n".formatted(
-                TIME.format(message.getTimestamp()),
-                message.getSequence(),
-                message.getCategory(),
-                message.getDisplayText()));
-        textArea.setCaretPosition(textArea.getDocument().getLength());
-    }
-
-    private void appendEnrichment(LogMessageInterface message, ModelObject model, Throwable error) {
-        if (error != null) {
-            textArea.append("           ↳ enrichment failed: " + error.getMessage() + "\n");
-            return;
-        }
-        if (!(model instanceof InformationBundle bundle) || bundle.getCards().isEmpty()) {
-            return;
-        }
-        bundle.getCards().forEach((id, card) -> textArea.append(
-                "           ↳ %d = %s | %s | %s%n".formatted(
-                        id,
-                        card.getName(),
-                        nullToEmpty(card.getManaCost()),
-                        nullToEmpty(card.getTypeLine()))));
-        textArea.setCaretPosition(textArea.getDocument().getLength());
-    }
-
-    private String nullToEmpty(String value) {
-        return value == null ? "" : value;
-    }
 }

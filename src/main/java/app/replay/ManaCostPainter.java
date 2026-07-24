@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 public final class ManaCostPainter {
     private static final Pattern TOKEN = Pattern.compile("\\{([^}]+)}");
     private final SvgAssetRenderer svgAssets;
+    private static final int SYMBOL_GAP = 2;
     private final int symbolSize;
 
     public ManaCostPainter(SvgAssetRenderer svgAssets, int symbolSize) {
@@ -28,7 +29,7 @@ public final class ManaCostPainter {
         if (parts.isEmpty()) return 0;
         int symbols = parts.stream().mapToInt(part -> tokens(part).size()).sum();
         int separators = Math.max(0, parts.size() - 1);
-        return symbols * symbolSize + Math.max(0, symbols - parts.size())
+        return symbols * symbolSize + Math.max(0, symbols - parts.size()) * SYMBOL_GAP
                 + separators * (symbolSize - 1);
     }
 
@@ -48,7 +49,7 @@ public final class ManaCostPainter {
             for (int tokenIndex = 0; tokenIndex < partTokens.size(); tokenIndex++) {
                 paintSymbol(graphics, partTokens.get(tokenIndex), currentX, y, cardColor);
                 currentX += symbolSize;
-                if (tokenIndex + 1 < partTokens.size()) currentX++;
+                if (tokenIndex + 1 < partTokens.size()) currentX += SYMBOL_GAP;
             }
         }
     }

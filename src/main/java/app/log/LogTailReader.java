@@ -30,6 +30,7 @@ public final class LogTailReader implements Runnable, AutoCloseable {
     private final boolean startAtEnd;
     private final Consumer<Throwable> errorHandler;
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private final AtomicBoolean rescanRequested = new AtomicBoolean(false);
     private final AtomicLong sequence = new AtomicLong();
 
     private long position;
@@ -61,6 +62,11 @@ public final class LogTailReader implements Runnable, AutoCloseable {
     }
 
     private void pollOnce() throws IOException, InterruptedException {
+        if (rescanRequested.getAndSet(false)) {
+            position = 0L;
+            initialized = true;
+            recordFramer.reset();
+        }
         if (!Files.exists(path)) {
             return;
         }
@@ -96,6 +102,10 @@ public final class LogTailReader implements Runnable, AutoCloseable {
             Thread.currentThread().interrupt();
             running.set(false);
         }
+    }
+
+    public void requestRescanFromBeginning() {
+        rescanRequested.set(true);
     }
 
     @Override

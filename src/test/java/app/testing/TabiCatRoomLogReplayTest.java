@@ -85,7 +85,7 @@ final class TabiCatRoomLogReplayTest {
         int firstDeathcapEntry = indexOf(events,
                 "Deathcap Marionette resolves and enters the battlefield");
         int firstDeathcapAbility = indexOf(events,
-                "puts an ability from Deathcap Marionette");
+                "triggers ability of Deathcap Marionette");
 
         assertTrue(firstDeathcapEntry >= 0, "Expected Deathcap Marionette battlefield entry");
         assertTrue(firstDeathcapAbility >= 0, "Expected Deathcap Marionette ETB ability");

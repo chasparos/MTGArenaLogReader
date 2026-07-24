@@ -1074,8 +1074,8 @@ public final class GameEventProjector {
 
     private String abilityVerb(GameObjectState ability) {
         if (state.getActivatedAbilityInstances().contains(ability.getInstanceId())) return "activates";
-        if (state.getTriggeredAbilityInstances().contains(ability.getInstanceId())) return "triggers";
-        return "puts an ability from";
+        if (state.getTriggeredAbilityInstances().contains(ability.getInstanceId())) return "triggers ability of";
+        return "uses ability of";
     }
 
     private boolean isAbility(GameObjectState object) {
@@ -1103,7 +1103,7 @@ public final class GameEventProjector {
                     state.getTriggeredAbilityInstances().contains(object.getInstanceId()) ? "triggered" : "unknown";
             String inferred = AbilityHeuristics.infer(cards.get(object.getObjectSourceGrpId()), kind);
             String label = !learned.isBlank() ? learned : inferred;
-            return label.isBlank() ? source + "'s ability" : source + " — " + label;
+            return label.isBlank() ? source : source + " — " + label;
         }
         if (object.getCard() != null && object.getCard().getName() != null && !object.getCard().getName().isBlank()) {
             return object.getCard().getName();

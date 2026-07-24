@@ -65,13 +65,14 @@ public final class GameView extends JPanel implements Scrollable {
     private final CardImageCache imageCache = new CardImageCache(
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
     private final SvgAssetRenderer svgAssets = new SvgAssetRenderer();
-    private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE);
-    private final ManaCostPainter miniManaCostPainter = new ManaCostPainter(svgAssets, 9);
+    private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE - 2);
+    private final ManaCostPainter miniManaCostPainter = new ManaCostPainter(svgAssets, 8);
     private JWindow previewWindow;
     private CardHitbox hovered;
     private CoachingActions coachingActions;
     private Integer selectionAnchorTurn;
     private GameEvent highlightedEvent;
+    private Runnable modelChangedListener = () -> { };
 
     public GameView(GameModel model) { this(model, new AbilityNameStore()); }
 
@@ -120,6 +121,10 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     public GameModel getModel() { return model; }
+
+    public void setModelChangedListener(Runnable listener) {
+        modelChangedListener = listener == null ? () -> { } : listener;
+    }
 
     /**
      * Enables the optional coaching interaction layer. Passing {@code null}
@@ -238,6 +243,7 @@ public final class GameView extends JPanel implements Scrollable {
                     projector.mulliganCount(), projector.openingHand());
             updatePreferredHeight();
             repaint();
+            modelChangedListener.run();
         }
     }
 
@@ -899,7 +905,7 @@ public final class GameView extends JPanel implements Scrollable {
         int manaWidth = manaCostPainter.width(card.getManaCost());
         if (manaWidth > 0) {
             int manaX = x + width - CHIP_X_PADDING - manaWidth;
-            int manaY = chipY + (chipHeight - SYMBOL_SIZE) / 2 + 1;
+            int manaY = chipY + (chipHeight - (SYMBOL_SIZE - 2)) / 2;
             manaCostPainter.paint(g, card.getManaCost(), manaX, manaY, base);
         }
         if (cardFragment.permanent() != null) {
@@ -967,15 +973,15 @@ public final class GameView extends JPanel implements Scrollable {
                                       int leftX, int topY, int lineHeight) {
         if (!Boolean.TRUE.equals(permanent.getTapped())) return;
 
-        int iconSize = 10;
-        int padding = 3;
+        int iconSize = 8;
+        int padding = 2;
         int width = iconSize + padding * 2;
         int height = iconSize + padding * 2;
-        int x = leftX - 5;
-        int y = topY + lineHeight - height + 3;
+        int x = leftX - 4;
+        int y = topY + lineHeight - height - 4;
 
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
-                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
+                new Color(0xC94F4F), .55f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
         g.setColor(base);
         g.fill(chip);
@@ -994,10 +1000,10 @@ public final class GameView extends JPanel implements Scrollable {
         if (badge == null) return;
 
         Font old = g.getFont();
-        Font compact = old.deriveFont(Font.PLAIN, Math.max(7f, old.getSize2D() - 4f));
+        Font compact = old.deriveFont(Font.PLAIN, Math.max(6f, old.getSize2D() - 5f));
         FontMetrics metrics = g.getFontMetrics(compact);
-        int tapSize = 9;
-        int padding = 3;
+        int tapSize = 8;
+        int padding = 2;
         int gap = 2;
         int contentWidth = 0;
         if (badge.tap()) contentWidth += tapSize;
@@ -1015,7 +1021,7 @@ public final class GameView extends JPanel implements Scrollable {
         if (contentWidth == 0) return;
 
         int width = padding * 2 + contentWidth;
-        int height = Math.max(14, tapSize + padding * 2);
+        int height = Math.max(12, tapSize + padding * 2);
         int x = leftX - 5;
         int y = topY;
 
@@ -1037,7 +1043,7 @@ public final class GameView extends JPanel implements Scrollable {
         if (!badge.manaCost().isBlank()) {
             if (cursor > x + padding) cursor += gap;
             miniManaCostPainter.paint(g, badge.manaCost(), cursor,
-                    y + (height - 9) / 2, base);
+                    y + (height - 8) / 2, base);
             cursor += miniManaCostPainter.width(badge.manaCost());
         }
         if (!badge.textCost().isBlank()) {
@@ -1080,7 +1086,7 @@ public final class GameView extends JPanel implements Scrollable {
         for (int i = 0; i < options.size(); i++) {
             String manaCost = "{" + options.get(i) + "}";
             miniManaCostPainter.paint(g, manaCost, cursor,
-                    y + (height - 9) / 2, base);
+                    y + (height - 8) / 2, base);
             cursor += miniManaCostPainter.width(manaCost);
 
             if (i + 1 < options.size()) {
@@ -1141,6 +1147,9 @@ public final class GameView extends JPanel implements Scrollable {
     private String compactNonManaAbilityCost(String cost) {
         String compact = MANA.matcher(cost == null ? "" : cost).replaceAll("")
                 .replace(",", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(":", "")
                 .replaceAll("\\s+", "")
                 .strip();
         return compact.length() <= 5 ? compact : "";
@@ -1157,7 +1166,7 @@ public final class GameView extends JPanel implements Scrollable {
         x -= overlap;
         int width = compactMetrics.stringWidth(value) + 7;
         int height = Math.max(11, compactMetrics.getHeight()) + 2;
-        int y = topY + lineHeight - height - 1;
+        int y = topY + lineHeight - height - 4;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 new Color(0x9D785A), .24f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, CHIP_ARC, CHIP_ARC);

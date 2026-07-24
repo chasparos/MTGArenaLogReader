@@ -109,7 +109,7 @@ public final class LogRecordFramer {
         }
     }
 
-    private void reset() {
+    public void reset() {
         buffer.setLength(0);
         collectingJson = false;
         inString = false;
