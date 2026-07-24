@@ -875,6 +875,7 @@ public final class GameView extends JPanel implements Scrollable {
                 textX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
             textX += SYMBOL_SIZE + 3;
         }
+        int cardNameX = textX;
         int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
         g.drawString(cardFragment.label(), textX, textBaseline);
         textX += chipMetrics.stringWidth(cardFragment.label());
@@ -918,7 +919,7 @@ public final class GameView extends JPanel implements Scrollable {
                         x + width, topY, lineHeight);
             }
             paintActivatedAbilityMiniChip(g, card, x, topY);
-            paintPermanentAbilityMiniChip(g, permanent, x + width, topY);
+            paintPermanentAbilityMiniChip(g, permanent, cardNameX, topY, lineHeight);
             paintTappedMiniChip(g, permanent, x, topY, lineHeight);
         }
         g.setFont(oldFont);
@@ -943,7 +944,7 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void paintPermanentAbilityMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
-                                               int rightX, int topY) {
+                                               int cardNameX, int topY, int lineHeight) {
         List<String> abilities = permanent.getEvergreenAbilities();
         if (abilities == null || abilities.isEmpty()) return;
         int visible = Math.min(4, abilities.size());
@@ -952,8 +953,8 @@ public final class GameView extends JPanel implements Scrollable {
         int gap = 2;
         int width = padding * 2 + visible * iconSize + Math.max(0, visible - 1) * gap;
         int height = iconSize + padding * 2;
-        int x = rightX - width + 5;
-        int y = topY;
+        int x = cardNameX;
+        int y = topY + lineHeight - height - 1;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);

@@ -1,6 +1,7 @@
 package app.testing;
 
 import app.model.game.GameKey;
+import app.model.card.CardInfo;
 import app.model.session.GameModel;
 import app.model.session.GameSession;
 import app.model.session.MatchSession;
@@ -41,6 +42,19 @@ public final class ArenaLogReplayHarness {
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
     private final AbilityNameStore abilityNames = new AbilityNameStore();
     private long sequence;
+    private final InformationBundle cardMetadata = new InformationBundle();
+
+    public ArenaLogReplayHarness withCardMetadata(CardInfo... cards) {
+        cardMetadata.getCards().clear();
+        if (cards != null) {
+            for (CardInfo card : cards) {
+                if (card != null && card.getArenaId() != null) {
+                    cardMetadata.getCards().put(card.getArenaId(), card);
+                }
+            }
+        }
+        return this;
+    }
 
     public ReplayResult replay(Path logPath) throws IOException {
         reset();
@@ -72,7 +86,10 @@ public final class ArenaLogReplayHarness {
     private void acceptRecord(String record) {
         LogMessageInterface message = parser.parse(
                 new RawLogEntry(++sequence, Instant.EPOCH.plusMillis(sequence), record));
-        message.getModelFuture().complete(new InformationBundle());
+        InformationBundle bundle = new InformationBundle();
+        bundle.getCards().putAll(cardMetadata.getCards());
+        bundle.getRelatedCards().putAll(cardMetadata.getRelatedCards());
+        message.getModelFuture().complete(bundle);
 
         router.route(message).ifPresent(key -> {
             GameSession session = sessions.computeIfAbsent(key, ignored -> createSession(key));

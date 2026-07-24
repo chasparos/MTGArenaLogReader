@@ -1,5 +1,7 @@
 package app.testing;
 
+import app.model.card.CardFaceInfo;
+import app.model.card.CardInfo;
 import app.model.event.GameEvent;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.session.GameModel;
@@ -17,7 +19,7 @@ final class TabiCatRoomLogReplayTest {
 
     @Test
     void roomFacetsDoNotBecomeIndependentPermanentsOrEvents() throws Exception {
-        GameModel game = new ArenaLogReplayHarness()
+        GameModel game = replayHarness()
                 .replay(fixture("logs/tabi-cat-room.log"))
                 .requireGame(MATCH_ID, 1);
 
@@ -77,7 +79,7 @@ final class TabiCatRoomLogReplayTest {
 
     @Test
     void sourceEntersBattlefieldBeforeItsEtbAbilityIsProjected() throws Exception {
-        List<GameEvent> events = new ArenaLogReplayHarness()
+        List<GameEvent> events = replayHarness()
                 .replay(fixture("logs/tabi-cat-room.log"))
                 .requireGame(MATCH_ID, 1)
                 .snapshot();
@@ -91,6 +93,34 @@ final class TabiCatRoomLogReplayTest {
         assertTrue(firstDeathcapAbility >= 0, "Expected Deathcap Marionette ETB ability");
         assertTrue(firstDeathcapEntry < firstDeathcapAbility,
                 "A permanent must enter the battlefield before its ETB ability is put on the stack");
+    }
+
+    private ArenaLogReplayHarness replayHarness() {
+        return new ArenaLogReplayHarness().withCardMetadata(
+                roomCard(92135L, "Mirror Room // Fractured Realm",
+                        "Mirror Room", "Fractured Realm"),
+                roomCard(92131L, "Meat Locker // Drowned Diner",
+                        "Meat Locker", "Drowned Diner"),
+                roomCard(92333L, "Smoky Lounge // Misty Salon",
+                        "Smoky Lounge", "Misty Salon"),
+                card(87244L, "Deathcap Marionette"));
+    }
+
+    private CardInfo roomCard(long arenaId, String name, String left, String right) {
+        CardInfo card = card(arenaId, name);
+        CardFaceInfo leftFace = new CardFaceInfo();
+        leftFace.setName(left);
+        CardFaceInfo rightFace = new CardFaceInfo();
+        rightFace.setName(right);
+        card.setCardFaces(List.of(leftFace, rightFace));
+        return card;
+    }
+
+    private CardInfo card(long arenaId, String name) {
+        CardInfo card = new CardInfo();
+        card.setArenaId(arenaId);
+        card.setName(name);
+        return card;
     }
 
     private int indexOf(List<GameEvent> events, String text) {
