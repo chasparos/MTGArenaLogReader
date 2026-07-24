@@ -85,9 +85,11 @@ public final class MatchAiExporter {
         compactBody = compactZones(compactBody);
 
         StringBuilder out = new StringBuilder(compactBody.length() + 1024);
-        out.append("MTGA_MATCH_V4\n");
+        out.append("MTGA_MATCH_V5\n");
         out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision L=life D=permanent-damage GR=result MS=score MR=match-result\n");
         out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
+        out.append("STATE knownH/knownG/knownX list identities known in hand/graveyard/exile;"
+                + " permanent attributes include P/T,tap,unlocked,abilities,counters,attachments,control\n");
         out.append("match=").append(value(match.matchState().getMatchId(), "?")).append('\n');
         if (!match.matchState().playerSnapshot().isEmpty()) {
             StringJoiner players = new StringJoiner("|");
@@ -125,7 +127,20 @@ public final class MatchAiExporter {
                     event.getDecision().alternatives().forEach(reference -> addReferenceCard(cards, reference));
                 }
                 for (PlayerTurnSnapshot player : event.getTurnSnapshot()) {
-                    for (BoardPermanentSnapshot permanent : player.getBattlefield()) addCard(cards, permanent.getName(), null);
+                    for (BoardPermanentSnapshot permanent : player.getBattlefield()) {
+                        CardInfo card = permanent.getCard();
+                        addCard(cards, permanent.getName(),
+                                card == null ? null : card.getArenaId());
+                    }
+                    player.getKnownHand().forEach(card ->
+                            addCard(cards, card == null ? null : card.getName(),
+                                    card == null ? null : card.getArenaId()));
+                    player.getKnownGraveyard().forEach(card ->
+                            addCard(cards, card == null ? null : card.getName(),
+                                    card == null ? null : card.getArenaId()));
+                    player.getKnownExile().forEach(card ->
+                            addCard(cards, card == null ? null : card.getName(),
+                                    card == null ? null : card.getArenaId()));
                 }
                 if (event.getGameResult() != null) addCard(cards, event.getGameResult().getFinishingCard(), null);
             }
@@ -279,8 +294,49 @@ public final class MatchAiExporter {
                 }
                 out.append(board);
             }
+            appendKnownZone(out, "knownH", player.getKnownHand());
+            appendKnownZone(out, "knownG", player.getKnownGraveyard());
+            appendKnownZone(out, "knownX", player.getKnownExile());
             out.append('\n');
         }
+    }
+
+    private void appendKnownZone(StringBuilder out, String label, List<CardInfo> cards) {
+        if (cards == null || cards.isEmpty()) return;
+        out.append(' ').append(label).append('=');
+        StringJoiner identities = new StringJoiner("|");
+        cards.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator
+                        .comparingInt(this::cardTypeOrder)
+                        .thenComparing(card -> compact(value(card.getName(), "?")),
+                                String.CASE_INSENSITIVE_ORDER)
+                        .thenComparingLong(card -> card.getArenaId() == null ? 0L : card.getArenaId()))
+                .forEach(card -> identities.add(cardIdentity(card)));
+        String value = identities.toString();
+        out.append(value.isEmpty() ? "-" : value);
+    }
+
+    private int cardTypeOrder(CardInfo card) {
+        String typeLine = card == null || card.getEffectiveTypeLine() == null
+                ? "" : card.getEffectiveTypeLine().toLowerCase(java.util.Locale.ROOT);
+        if (typeLine.contains("land")) return 0;
+        if (typeLine.contains("creature")) return 1;
+        if (typeLine.contains("enchantment")) return 2;
+        if (typeLine.contains("artifact")) return 3;
+        if (typeLine.contains("planeswalker")) return 4;
+        if (typeLine.contains("battle")) return 5;
+        if (typeLine.contains("instant")) return 6;
+        if (typeLine.contains("sorcery")) return 7;
+        return 8;
+    }
+
+    private String cardIdentity(CardInfo card) {
+        StringBuilder identity = new StringBuilder(compact(value(card.getName(), "?")));
+        if (card.getArenaId() != null && card.getArenaId() > 0) {
+            identity.append('@').append(card.getArenaId());
+        }
+        return identity.toString();
     }
 
     private String permanent(BoardPermanentSnapshot permanent) {
@@ -294,6 +350,12 @@ public final class MatchAiExporter {
         if (!permanent.getUnlockedRoomHalves().isEmpty()) {
             attributes.add("unlocked="
                     + permanent.getUnlockedRoomHalves().stream()
+                            .map(this::compact)
+                            .collect(java.util.stream.Collectors.joining("|")));
+        }
+        if (!permanent.getEvergreenAbilities().isEmpty()) {
+            attributes.add("abilities="
+                    + permanent.getEvergreenAbilities().stream()
                             .map(this::compact)
                             .collect(java.util.stream.Collectors.joining("|")));
         }

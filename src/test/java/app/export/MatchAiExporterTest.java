@@ -7,6 +7,7 @@ import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
 import app.model.game.BoardPermanentSnapshot;
+import app.model.game.CounterState;
 import app.model.game.GameResult;
 import app.model.game.PlayerTurnSnapshot;
 import app.model.match.MatchScore;
@@ -65,7 +66,7 @@ class MatchAiExporterTest {
 
         String report = new MatchAiExporter().export(match);
 
-        assertTrue(report.startsWith("MTGA_MATCH_V4\n"));
+        assertTrue(report.startsWith("MTGA_MATCH_V5\n"));
         assertTrue(report.contains("PLAYERS p1=Me|p2=Opponent"));
         assertTrue(report.indexOf("\nG1") < report.indexOf("\nG2"));
         assertTrue(report.contains("S#1 p1 life=18 poison=0 hand=5 board=c1#10[2/2,tap]"));
@@ -162,6 +163,81 @@ class MatchAiExporterTest {
                 "C#1 kind=TARGET confidence=EXPLICIT source=c1#40@9001"
                         + " chosen=c2#41@9002"
                         + " alternatives=c3#42@9003 min=1 max=1"));
+    }
+
+
+    @Test
+    void exportsKnownZonesAndObservedPermanentInstanceState() {
+        MatchSession match = new MatchSession("match-state", new AbilityNameStore());
+        match.matchState().observePlayers(Map.of(1, "Me"));
+        GameModel game = match.game(1).model();
+
+        PlayerTurnSnapshot player = new PlayerTurnSnapshot();
+        player.setSeatId(1);
+        player.setPlayerName("Me");
+        player.setLifeTotal(17);
+        player.setPoisonCounters(2);
+        player.setHandSize(3);
+
+        CardInfo roomCard = card("Mirror Room // Fractured Realm");
+        roomCard.setArenaId(92135L);
+        roomCard.setTypeLine("Enchantment — Room");
+
+        BoardPermanentSnapshot room = new BoardPermanentSnapshot();
+        room.setLogicalObjectId(261);
+        room.setOwnerSeatId(1);
+        room.setControllerSeatId(1);
+        room.setName(roomCard.getName());
+        room.setCard(roomCard);
+        room.getUnlockedRoomHalves().add("Mirror Room");
+        player.getBattlefield().add(room);
+
+        CardInfo creatureCard = card("Fynn, the Fangbearer");
+        creatureCard.setArenaId(94065L);
+        creatureCard.setTypeLine("Legendary Creature — Human Warrior");
+
+        BoardPermanentSnapshot creature = new BoardPermanentSnapshot();
+        creature.setLogicalObjectId(192);
+        creature.setOwnerSeatId(1);
+        creature.setControllerSeatId(1);
+        creature.setName(creatureCard.getName());
+        creature.setCard(creatureCard);
+        creature.setPower(1);
+        creature.setToughness(3);
+        creature.getEvergreenAbilities().add("Deathtouch");
+
+        CounterState shield = new CounterState();
+        shield.setArenaType(999);
+        shield.setType("Shield");
+        shield.setCount(1);
+        creature.getCounters().add(shield);
+        player.getBattlefield().add(creature);
+
+        CardInfo knownLand = card("Island");
+        knownLand.setArenaId(92375L);
+        knownLand.setTypeLine("Basic Land — Island");
+        CardInfo knownCreature = card("Engine Rat");
+        knownCreature.setArenaId(94886L);
+        knownCreature.setTypeLine("Artifact Creature — Rat");
+        CardInfo knownSpell = card("Corrupted Conviction");
+        knownSpell.setArenaId(84366L);
+        knownSpell.setTypeLine("Instant");
+        player.getKnownHand().add(knownCreature);
+        player.getKnownHand().add(knownLand);
+        player.getKnownGraveyard().add(knownSpell);
+
+        GameEvent snapshot = new GameEvent();
+        snapshot.setTurnNumber(4);
+        snapshot.getTurnSnapshot().add(player);
+        game.addEvents(List.of(snapshot));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains("STATE knownH/knownG/knownX"));
+        assertTrue(report.contains("c1#261[unlocked=Mirror Room]"));
+        assertTrue(report.contains("c2#192[1/3,abilities=Deathtouch,Shield=1]"));
+        assertTrue(report.contains("knownH=c4@92375|c3@94886"));
+        assertTrue(report.contains("knownG=c5@84366"));
     }
 
     private CardInfo card(String name) {
