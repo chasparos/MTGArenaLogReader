@@ -35,21 +35,27 @@ public final class CardImageCache {
     }
 
     public CompletableFuture<Optional<BufferedImage>> get(CardInfo card) {
-        String url = card == null ? null : card.previewImageUrl();
+        return get(card, 0);
+    }
+
+    public CompletableFuture<Optional<BufferedImage>> get(CardInfo card, int imageIndex) {
         if (card == null) {
             System.out.println(PREFIX + "card is null");
             return CompletableFuture.completedFuture(Optional.empty());
         }
-        if (url == null || url.isBlank()) {
+        var urls = card.previewImageUrls();
+        if (imageIndex < 0 || imageIndex >= urls.size()) {
             System.out.println(PREFIX + "no URL: name=" + card.getName()
+                    + " imageIndex=" + imageIndex
                     + " scryfallId=" + card.getId() + " arenaId=" + card.getArenaId());
             return CompletableFuture.completedFuture(Optional.empty());
         }
-
-        String id = card.getId() != null && !card.getId().isBlank()
+        String url = urls.get(imageIndex);
+        String rootId = card.getId() != null && !card.getId().isBlank()
                 ? card.getId()
                 : card.getArenaId() != null ? String.valueOf(card.getArenaId())
                 : Integer.toHexString(url.hashCode());
+        String id = imageIndex == 0 ? rootId : rootId + "-face-" + imageIndex;
 
         return memory.computeIfAbsent(id, ignored -> CompletableFuture.supplyAsync(() -> load(id, url)))
                 .whenComplete((image, error) -> {

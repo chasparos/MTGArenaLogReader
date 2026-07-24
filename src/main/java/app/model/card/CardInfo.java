@@ -102,6 +102,19 @@ public class CardInfo implements ModelObject {
     @SerializedName("purchase_uris") private Map<String, String> purchaseUris = new LinkedHashMap<>();
     @SerializedName("all_parts") private List<CardRelatedPart> allParts = new ArrayList<>();
 
+    public List<String> previewImageUrls() {
+        if (cardFaces != null && cardFaces.size() > 1) {
+            List<String> urls = cardFaces.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(CardFaceInfo::previewImageUrl)
+                    .filter(url -> url != null && !url.isBlank())
+                    .toList();
+            if (urls.size() > 1) return urls;
+        }
+        String preview = previewImageUrl();
+        return preview == null || preview.isBlank() ? List.of() : List.of(preview);
+    }
+
     public String previewImageUrl() {
         if (imageUris != null) {
             String url = imageUris.preferredPreviewUrl();

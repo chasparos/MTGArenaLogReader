@@ -38,6 +38,8 @@ public final class GameView extends JPanel implements Scrollable {
     private static final int CONTEXT_WIDTH = 190;
     private static final int CHIP_X_PADDING = 12;
     private static final int CHIP_Y_PADDING = 2;
+    private static final int RICH_LINE_HEIGHT = 38;
+    private static final int SNAPSHOT_LINE_HEIGHT = 36;
     private static final int CHIP_ARC = 14;
     private static final int SYMBOL_SIZE = 11;
     private static final int CARD_MANA_GAP = 14;
@@ -308,7 +310,7 @@ public final class GameView extends JPanel implements Scrollable {
         List<List<SnapshotRow>> columns = players.stream()
                 .map(player -> snapshotRows(g, player, columnWidth))
                 .toList();
-        int lineHeight = Math.max(g.getFontMetrics().getHeight() + 5, 24);
+        int lineHeight = Math.max(g.getFontMetrics().getHeight() + 5, SNAPSHOT_LINE_HEIGHT);
         int contentRows = columns.stream().mapToInt(List::size).max().orElse(1);
         int titleHeight = g.getFontMetrics(getFont().deriveFont(Font.BOLD)).getHeight() + 8;
         int boxHeight = CARD_PADDING * 2 + titleHeight + contentRows * lineHeight;
@@ -641,7 +643,7 @@ public final class GameView extends JPanel implements Scrollable {
     private RichLayout layoutEvent(Graphics2D g, GameEvent event, int startX, int maxX, int topY, boolean draw) {
         List<Fragment> fragments = fragments(event);
         FontMetrics fm = g.getFontMetrics(getFont());
-        int lineHeight = Math.max(fm.getHeight(), SYMBOL_SIZE + 4);
+        int lineHeight = Math.max(RICH_LINE_HEIGHT, fm.getHeight());
         int x = startX;
         int y = topY;
         for (Fragment fragment : fragments) {
@@ -903,10 +905,11 @@ public final class GameView extends JPanel implements Scrollable {
                                 String.valueOf(permanent.getToughness())),
                         x + width, topY, lineHeight);
             }
-            paintPermanentAbilityMiniChip(g, permanent, x + width, chipY);
+            paintActivatedAbilityMiniChip(g, card, x, topY);
+            paintPermanentAbilityMiniChip(g, permanent, x + width, topY);
         }
         g.setFont(oldFont);
-        cardHitboxes.add(new CardHitbox(bounds, card, event));
+        cardHitboxes.add(new CardHitbox(bounds, card, event, cardFragment.permanent()));
     }
 
     private boolean[] roomUnlockSides(CardFragment fragment) {
@@ -925,7 +928,7 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void paintPermanentAbilityMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
-                                               int rightX, int chipY) {
+                                               int rightX, int topY) {
         List<String> abilities = permanent.getEvergreenAbilities();
         if (abilities == null || abilities.isEmpty()) return;
         int visible = Math.min(4, abilities.size());
@@ -935,7 +938,7 @@ public final class GameView extends JPanel implements Scrollable {
         int width = padding * 2 + visible * iconSize + Math.max(0, visible - 1) * gap;
         int height = iconSize + padding * 2;
         int x = rightX - width + 5;
-        int y = chipY - height / 2;
+        int y = topY;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
@@ -950,17 +953,81 @@ public final class GameView extends JPanel implements Scrollable {
         }
     }
 
+
+    private void paintActivatedAbilityMiniChip(Graphics2D g, CardInfo card, int leftX, int topY) {
+        ActivatedAbilityBadge badge = activatedAbilityBadge(card);
+        if (badge == null) return;
+
+        Font old = g.getFont();
+        Font compact = old.deriveFont(Font.PLAIN, Math.max(7f, old.getSize2D() - 4f));
+        FontMetrics metrics = g.getFontMetrics(compact);
+        int iconSize = 10;
+        int padding = 3;
+        int gap = badge.label().isBlank() ? 0 : 3;
+        int width = padding * 2 + iconSize + gap + metrics.stringWidth(badge.label());
+        int height = Math.max(14, iconSize + padding * 2);
+        int x = leftX - 5;
+        int y = topY;
+
+        Color base = blend(colorOr("TextArea.background", Color.WHITE),
+                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
+        Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
+        g.setColor(base);
+        g.fill(chip);
+        g.setColor(blend(base, Color.BLACK, .28f));
+        g.draw(chip);
+
+        String resource = badge.tapForMana() ? "/svg/land.svg" : "/svg/ability-activated.svg";
+        svgAssets.paint(g, resource, x + padding, y + padding, iconSize, iconSize);
+        if (!badge.label().isBlank()) {
+            g.setColor(contrast(base));
+            g.setFont(compact);
+            g.drawString(badge.label(), x + padding + iconSize + gap,
+                    y + (height - metrics.getHeight()) / 2 + metrics.getAscent());
+            g.setFont(old);
+        }
+    }
+
+    private ActivatedAbilityBadge activatedAbilityBadge(CardInfo card) {
+        if (card == null) return null;
+        String oracle = card.effectiveOracleText();
+        if (oracle == null || oracle.isBlank()) return null;
+
+        for (String line : oracle.split("\\R")) {
+            int colon = line.indexOf(':');
+            if (colon <= 0) continue;
+            String cost = line.substring(0, colon).strip();
+            if (cost.isBlank() || cost.startsWith("When ") || cost.startsWith("Whenever ")
+                    || cost.startsWith("At ")) continue;
+
+            boolean tap = cost.contains("{T}");
+            boolean mana = tap && line.substring(colon + 1).toLowerCase(Locale.ROOT)
+                    .matches(".*add\\s+(one|two|three|\\{).*");
+            String label = compactAbilityCost(cost);
+            if (mana) label = "";
+            return new ActivatedAbilityBadge(label, mana);
+        }
+        return null;
+    }
+
+    private String compactAbilityCost(String cost) {
+        String compact = cost.replace("{T}", "T")
+                .replace("{Q}", "Q")
+                .replaceAll("\\s+", "");
+        return compact.length() <= 8 ? compact : "";
+    }
+
     private void paintPowerToughnessChip(Graphics2D g, PowerToughnessFragment pt,
                                          int x, int topY, int lineHeight) {
         FontMetrics fm = g.getFontMetrics(getFont());
         String value = pt.power() + "/" + pt.toughness();
         Font old = g.getFont();
-        Font compact = old.deriveFont(Font.BOLD, Math.max(8f, old.getSize2D() - 3f));
+        Font compact = old.deriveFont(Font.PLAIN, Math.max(7f, old.getSize2D() - 5f));
         FontMetrics compactMetrics = g.getFontMetrics(compact);
         int overlap = 8;
         x -= overlap;
-        int width = compactMetrics.stringWidth(value) + 9;
-        int height = Math.max(13, compactMetrics.getHeight());
+        int width = compactMetrics.stringWidth(value) + 7;
+        int height = Math.max(11, compactMetrics.getHeight());
         int y = topY + lineHeight - height + 3;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 new Color(0x9D785A), .24f);
@@ -1171,51 +1238,124 @@ public final class GameView extends JPanel implements Scrollable {
         hidePreview();
         setCursor(hit == null ? Cursor.getDefaultCursor() : Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         repaint();
-        if (hit != null) showPreview(hit.card(), mouse);
+        if (hit != null) showPreview(hit, mouse);
     }
 
-    private void showPreview(CardInfo card, MouseEvent mouse) {
+    private void showPreview(CardHitbox hit, MouseEvent mouse) {
+        CardInfo card = hit.card();
         JWindow window = new JWindow(SwingUtilities.getWindowAncestor(this));
         JPanel panel = new JPanel(new BorderLayout(8, 8));
         panel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(colorOr("Separator.foreground", Color.GRAY)),
                 BorderFactory.createEmptyBorder(9, 9, 9, 9)));
-        JLabel image = new JLabel("Loading image…", SwingConstants.CENTER);
-        image.setPreferredSize(new Dimension(244, 340));
-        JTextArea details = new JTextArea(cardDetails(card));
-        details.setEditable(false); details.setOpaque(false);
-        details.setLineWrap(true); details.setWrapStyleWord(true);
-        details.setPreferredSize(new Dimension(270, 120));
-        panel.add(image, BorderLayout.CENTER); panel.add(details, BorderLayout.SOUTH);
-        window.setContentPane(panel); window.pack();
+
+        List<String> urls = card.previewImageUrls();
+        int imageCount = Math.max(1, urls.size());
+        JPanel images = new JPanel();
+        images.setOpaque(false);
+        images.setLayout(new BoxLayout(images, BoxLayout.X_AXIS));
+        List<JLabel> labels = new ArrayList<>();
+        for (int index = 0; index < imageCount; index++) {
+            JLabel image = new JLabel("Loading image…", SwingConstants.CENTER);
+            image.setPreferredSize(previewImageSize(card, imageCount));
+            labels.add(image);
+            images.add(image);
+            if (index + 1 < imageCount) images.add(Box.createHorizontalStrut(8));
+        }
+        panel.add(images, BorderLayout.CENTER);
+        if (hit.permanent() != null) {
+            panel.add(new InstancePreviewStrip(hit.card(), hit.permanent()), BorderLayout.SOUTH);
+        }
+
+        window.setContentPane(panel);
+        window.pack();
         Point screen = mouse.getLocationOnScreen();
         Rectangle screenBounds = getGraphicsConfiguration().getBounds();
         int px = Math.min(screen.x + 18, screenBounds.x + screenBounds.width - window.getWidth() - 8);
         int py = Math.min(screen.y + 18, screenBounds.y + screenBounds.height - window.getHeight() - 8);
-        window.setLocation(px, py); window.setVisible(true);
+        window.setLocation(px, py);
+        window.setVisible(true);
         previewWindow = window;
-        imageCache.get(card).thenAccept(optional -> SwingUtilities.invokeLater(() -> {
-            if (previewWindow != window || !window.isVisible()) return;
-            if (optional.isPresent()) {
-                BufferedImage raw = optional.get();
-                int w = 244, h = Math.max(1, raw.getHeight() * w / raw.getWidth());
-                image.setText("");
-                image.setIcon(new ImageIcon(raw.getScaledInstance(w, h, Image.SCALE_SMOOTH)));
-                window.pack();
-            } else image.setText("No image available");
-        }));
+
+        for (int index = 0; index < imageCount; index++) {
+            int imageIndex = index;
+            JLabel image = labels.get(index);
+            imageCache.get(card, imageIndex).thenAccept(optional -> SwingUtilities.invokeLater(() -> {
+                if (previewWindow != window || !window.isVisible()) return;
+                if (optional.isPresent()) {
+                    BufferedImage raw = optional.get();
+                    if (isSplitLayout(card) && imageCount == 1) raw = rotateClockwise(raw);
+                    Dimension target = previewImageSize(card, imageCount);
+                    int w = target.width;
+                    int h = Math.max(1, raw.getHeight() * w / raw.getWidth());
+                    if (h > target.height) {
+                        h = target.height;
+                        w = Math.max(1, raw.getWidth() * h / raw.getHeight());
+                    }
+                    image.setText("");
+                    image.setIcon(new ImageIcon(raw.getScaledInstance(w, h, Image.SCALE_SMOOTH)));
+                    window.pack();
+                } else {
+                    image.setText("No image available");
+                }
+            }));
+        }
     }
 
-    private String cardDetails(CardInfo card) {
-        StringBuilder out = new StringBuilder(card.getName() == null ? "Unknown card" : card.getName());
-        if (card.getManaCost() != null && !card.getManaCost().isBlank()) out.append("  ").append(card.getManaCost());
-        String typeLine = card.effectiveTypeLine();
-        if (typeLine != null && !typeLine.isBlank()) out.append("\n").append(typeLine);
-        String oracleText = card.effectiveOracleText();
-        if (oracleText != null && !oracleText.isBlank()) out.append("\n").append(oracleText);
-        if (card.getPower() != null || card.getToughness() != null)
-            out.append("\n").append(card.getPower()).append('/').append(card.getToughness());
-        return out.toString();
+    private Dimension previewImageSize(CardInfo card, int imageCount) {
+        if (isSplitLayout(card) && imageCount == 1) return new Dimension(340, 244);
+        return imageCount > 1 ? new Dimension(220, 307) : new Dimension(244, 340);
+    }
+
+    private boolean isSplitLayout(CardInfo card) {
+        String layout = card == null ? "" : nullToEmpty(card.getLayout()).toLowerCase(Locale.ROOT);
+        return layout.equals("split") || layout.equals("aftermath");
+    }
+
+    private BufferedImage rotateClockwise(BufferedImage source) {
+        BufferedImage rotated = new BufferedImage(
+                source.getHeight(), source.getWidth(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = rotated.createGraphics();
+        try {
+            configure(g);
+            g.translate(rotated.getWidth(), 0);
+            g.rotate(Math.PI / 2);
+            g.drawImage(source, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return rotated;
+    }
+
+    private final class InstancePreviewStrip extends JComponent {
+        private final CardInfo card;
+        private final BoardPermanentSnapshot permanent;
+
+        private InstancePreviewStrip(CardInfo card, BoardPermanentSnapshot permanent) {
+            this.card = card;
+            this.permanent = permanent;
+            setOpaque(false);
+            setPreferredSize(new Dimension(240, 34));
+        }
+
+        @Override protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                configure(g);
+                int lineHeight = getHeight();
+                paintActivatedAbilityMiniChip(g, card, 8, 0);
+                paintPermanentAbilityMiniChip(g, permanent, getWidth() - 40, 0);
+                if (permanent.getPower() != null && permanent.getToughness() != null) {
+                    paintPowerToughnessChip(g,
+                            new PowerToughnessFragment(
+                                    String.valueOf(permanent.getPower()),
+                                    String.valueOf(permanent.getToughness())),
+                            getWidth() - 8, 0, lineHeight);
+                }
+            } finally {
+                g.dispose();
+            }
+        }
     }
 
     private void hidePreview() {
@@ -1407,7 +1547,9 @@ public final class GameView extends JPanel implements Scrollable {
     private record Match(int start, int end, CardInfo card, String label) {}
     private record CardMatchCandidate(CardInfo card, String label) {}
     private record RichLayout(int height) {}
-    private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event) {}
+    private record ActivatedAbilityBadge(String label, boolean tapForMana) {}
+    private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event,
+                              BoardPermanentSnapshot permanent) {}
     private record EventHitbox(Rectangle bounds, GameEvent event) {}
     private record TurnHitbox(Rectangle bounds, int turnNumber) {}
 
