@@ -359,13 +359,72 @@ public final class GameView extends JPanel implements Scrollable {
         if (player.getBattlefield().isEmpty()) {
             rows.add(new SnapshotRow(null, "Empty", "", false));
         } else {
-            roots(player.getBattlefield()).stream()
+            List<BoardPermanentSnapshot> roots = roots(player.getBattlefield()).stream()
                     .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
                             Comparator.nullsLast(cardTypeComparator())))
-                    .forEach(permanent -> addPermanentRows(
-                            rows, player.getBattlefield(), permanent, 0));
+                    .toList();
+            addBattlefieldGroupRows(g, rows, width, "Lands", roots.stream()
+                    .filter(permanent -> permanentTypeGroup(permanent) == 0).toList());
+            addBattlefieldGroupRows(g, rows, width, "Creatures", roots.stream()
+                    .filter(permanent -> permanentTypeGroup(permanent) == 1).toList());
+            addBattlefieldGroupRows(g, rows, width, "Other permanents", roots.stream()
+                    .filter(permanent -> permanentTypeGroup(permanent) == 2).toList());
+
+            List<BoardPermanentSnapshot> attachments = player.getBattlefield().stream()
+                    .filter(permanent -> permanent.getAttachedToLogicalObjectId() != null)
+                    .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
+                            Comparator.nullsLast(cardTypeComparator())))
+                    .toList();
+            addBattlefieldGroupRows(g, rows, width, "Attachments", attachments);
         }
         return rows;
+    }
+
+    private void addBattlefieldGroupRows(Graphics2D g, List<SnapshotRow> rows, int width,
+                                         String group, List<BoardPermanentSnapshot> permanents) {
+        if (permanents.isEmpty()) return;
+        rows.add(new SnapshotRow(null, group + " (" + permanents.size() + ")", "", true));
+        int columns = inferPermanentColumns(g, permanents, width);
+        for (int offset = 0; offset < permanents.size(); offset += columns) {
+            rows.add(SnapshotRow.permanentGrid(
+                    permanents.subList(offset, Math.min(offset + columns, permanents.size())),
+                    columns));
+        }
+    }
+
+    private int inferPermanentColumns(Graphics2D g,
+                                      List<BoardPermanentSnapshot> permanents,
+                                      int width) {
+        int gap = 8;
+        int preferredCellWidth = permanents.stream()
+                .filter(permanent -> permanent.getCard() != null)
+                .map(permanent -> new CardFragment(
+                        permanent.getCard(),
+                        permanent.getCard().getName(),
+                        roomStateLabel(permanent),
+                        permanent))
+                .mapToInt(fragment -> fragmentWidth(g, fragment))
+                .max()
+                .orElse(0);
+        for (int columns = Math.min(3, permanents.size()); columns >= 2; columns--) {
+            int cellWidth = (width - gap * (columns - 1)) / columns;
+            if (cellWidth >= Math.min(preferredCellWidth, 205)) return columns;
+        }
+        return 1;
+    }
+
+    private int permanentTypeGroup(BoardPermanentSnapshot permanent) {
+        CardInfo card = permanent.getCard();
+        String typeLine = card == null ? "" : nullToEmpty(card.getTypeLine()).toLowerCase(Locale.ROOT);
+        if (typeLine.contains("land")) return 0;
+        if (typeLine.contains("creature")) return 1;
+        return 2;
+    }
+
+    private String roomStateLabel(BoardPermanentSnapshot permanent) {
+        return permanent.getUnlockedRoomHalves().isEmpty()
+                ? ""
+                : "unlocked: " + String.join(", ", permanent.getUnlockedRoomHalves());
     }
 
     private void addKnownZoneRows(Graphics2D g, List<SnapshotRow> rows, int width,
@@ -387,7 +446,7 @@ public final class GameView extends JPanel implements Scrollable {
     private int inferZoneColumns(Graphics2D g, List<CardInfo> cards, int width) {
         int gap = 8;
         int preferredCellWidth = cards.stream()
-                .map(card -> new CardFragment(card, card.getName(), ""))
+                .map(card -> new CardFragment(card, card.getName(), "", null))
                 .mapToInt(fragment -> fragmentWidth(g, fragment))
                 .max()
                 .orElse(0);
@@ -420,7 +479,8 @@ public final class GameView extends JPanel implements Scrollable {
     private void addPermanentRows(List<SnapshotRow> rows, List<BoardPermanentSnapshot> battlefield,
                                   BoardPermanentSnapshot permanent, int depth) {
         String suffix = boardPermanentSuffix(permanent);
-        rows.add(new SnapshotRow(null, "  ".repeat(depth), suffix, false, permanent.getCard()));
+        rows.add(new SnapshotRow(null, "  ".repeat(depth), suffix, false,
+                permanent.getCard(), permanent, List.of(), 1, List.of(), 1));
         attachmentsOf(battlefield, permanent.getLogicalObjectId()).stream()
                 .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
                         Comparator.nullsLast(cardTypeComparator())))
@@ -440,7 +500,29 @@ public final class GameView extends JPanel implements Scrollable {
                     textX += iconSize + 6;
                 }
             }
-            if (!row.cards().isEmpty()) {
+            if (!row.permanents().isEmpty()) {
+                int gap = 8;
+                int cellWidth = (width - gap * (row.permanentColumns() - 1))
+                        / row.permanentColumns();
+                for (int index = 0; index < row.permanents().size(); index++) {
+                    BoardPermanentSnapshot permanent = row.permanents().get(index);
+                    if (permanent.getCard() == null) continue;
+                    int cellX = x + index * (cellWidth + gap);
+                    Graphics2D cellGraphics = (Graphics2D) g.create();
+                    try {
+                        cellGraphics.clipRect(cellX, y - 10, cellWidth, lineHeight + 18);
+                        paintFragment(cellGraphics,
+                                new CardFragment(
+                                        permanent.getCard(),
+                                        permanent.getCard().getName(),
+                                        roomStateLabel(permanent),
+                                        permanent),
+                                cellX, y, lineHeight, event);
+                    } finally {
+                        cellGraphics.dispose();
+                    }
+                }
+            } else if (!row.cards().isEmpty()) {
                 int gap = 8;
                 int cellWidth = (width - gap * (row.cardColumns() - 1)) / row.cardColumns();
                 for (int index = 0; index < row.cards().size(); index++) {
@@ -450,7 +532,7 @@ public final class GameView extends JPanel implements Scrollable {
                     try {
                         cellGraphics.clipRect(cellX, y, cellWidth, lineHeight);
                         paintFragment(cellGraphics,
-                                new CardFragment(card, card.getName(), ""),
+                                new CardFragment(card, card.getName(), "", null),
                                 cellX, y, lineHeight, event);
                     } finally {
                         cellGraphics.dispose();
@@ -466,7 +548,7 @@ public final class GameView extends JPanel implements Scrollable {
                 }
                 String state = row.suffix().startsWith("unlocked:")
                         ? row.suffix() : "";
-                CardFragment fragment = new CardFragment(row.card(), row.card().getName(), state);
+                CardFragment fragment = new CardFragment(row.card(), row.card().getName(), state, row.permanent());
                 int chipWidth = Math.min(fragmentWidth(g, fragment), Math.max(80, width - (textX - x)));
                 if (chipWidth > 0) paintFragment(g, fragment, textX, y, lineHeight, event);
                 if (!row.suffix().isBlank() && state.isBlank()) {
@@ -601,7 +683,7 @@ public final class GameView extends JPanel implements Scrollable {
             }
             if (next.start() > pos) appendTextAndMana(result, text.substring(pos, next.start()));
             result.add(new CardFragment(next.card(), next.label(),
-                    roomStateLabel(event, next.card(), next.label())));
+                    roomStateLabel(event, next.card(), next.label()), null));
             pos = next.end();
         }
         if (text.isEmpty()) result.add(new TextFragment(""));
@@ -714,9 +796,10 @@ public final class GameView extends JPanel implements Scrollable {
         FontMetrics chipMetrics = g.getFontMetrics(chipFont);
         int mana = manaCostPainter.width(card.getManaCost());
         int typeIcon = cardTypeResource(card) == null ? 0 : CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
-        int stateWidth = cardFragment.stateLabel().isBlank() ? 0
-                : CARD_TYPE_GAP + chipMetrics.stringWidth(cardFragment.stateLabel()) + 12;
-        return typeIcon + chipMetrics.stringWidth(cardFragment.label()) + stateWidth
+        boolean[] unlocks = roomUnlockSides(cardFragment);
+        int lockWidth = (unlocks[0] ? SYMBOL_SIZE + 3 : 0)
+                + (unlocks[1] ? SYMBOL_SIZE + 3 : 0);
+        return typeIcon + chipMetrics.stringWidth(cardFragment.label()) + lockWidth
                 + CHIP_X_PADDING * 2 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
@@ -772,10 +855,23 @@ public final class GameView extends JPanel implements Scrollable {
                 textX += CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
             }
         }
+        boolean[] unlocks = roomUnlockSides(cardFragment);
+        int lockY = chipY + (chipHeight - SYMBOL_SIZE) / 2 + 1;
+        if (unlocks[0] && svgAssets.paint(g, "/svg/open-lock.svg",
+                textX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
+            textX += SYMBOL_SIZE + 3;
+        }
         int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
         g.drawString(cardFragment.label(), textX, textBaseline);
         textX += chipMetrics.stringWidth(cardFragment.label());
-        if (!cardFragment.stateLabel().isBlank()) {
+        if (unlocks[1]) {
+            int rightLockX = textX + 3;
+            if (svgAssets.paint(g, "/svg/open-lock.svg",
+                    rightLockX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
+                textX = rightLockX + SYMBOL_SIZE;
+            }
+        }
+        if (false) {
             int badgeX = textX + CARD_TYPE_GAP;
             int badgeWidth = chipMetrics.stringWidth(cardFragment.stateLabel()) + 10;
             int badgeY = chipY + 3;
@@ -798,8 +894,60 @@ public final class GameView extends JPanel implements Scrollable {
             int manaY = chipY + (chipHeight - SYMBOL_SIZE) / 2 + 1;
             manaCostPainter.paint(g, card.getManaCost(), manaX, manaY, base);
         }
+        if (cardFragment.permanent() != null) {
+            BoardPermanentSnapshot permanent = cardFragment.permanent();
+            if (permanent.getPower() != null && permanent.getToughness() != null) {
+                paintPowerToughnessChip(g,
+                        new PowerToughnessFragment(
+                                String.valueOf(permanent.getPower()),
+                                String.valueOf(permanent.getToughness())),
+                        x + width, topY, lineHeight);
+            }
+            paintPermanentAbilityMiniChip(g, permanent, x + width, chipY);
+        }
         g.setFont(oldFont);
         cardHitboxes.add(new CardHitbox(bounds, card, event));
+    }
+
+    private boolean[] roomUnlockSides(CardFragment fragment) {
+        boolean[] result = new boolean[2];
+        String name = fragment.card() == null ? "" : nullToEmpty(fragment.card().getName());
+        if (!name.contains(" // ") || fragment.stateLabel().isBlank()) return result;
+        String[] halves = name.split(" // ", 2);
+        String state = fragment.stateLabel().toLowerCase(Locale.ROOT);
+        if ("unlock".equals(state)) {
+            result[fragment.label().equalsIgnoreCase(halves[1]) ? 1 : 0] = true;
+            return result;
+        }
+        result[0] = state.contains(halves[0].toLowerCase(Locale.ROOT));
+        result[1] = state.contains(halves[1].toLowerCase(Locale.ROOT));
+        return result;
+    }
+
+    private void paintPermanentAbilityMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
+                                               int rightX, int chipY) {
+        List<String> abilities = permanent.getEvergreenAbilities();
+        if (abilities == null || abilities.isEmpty()) return;
+        int visible = Math.min(4, abilities.size());
+        int iconSize = 10;
+        int padding = 3;
+        int gap = 2;
+        int width = padding * 2 + visible * iconSize + Math.max(0, visible - 1) * gap;
+        int height = iconSize + padding * 2;
+        int x = rightX - width + 5;
+        int y = chipY - height / 2;
+        Color base = blend(colorOr("TextArea.background", Color.WHITE),
+                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
+        Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
+        g.setColor(base);
+        g.fill(chip);
+        g.setColor(blend(base, Color.BLACK, .28f));
+        g.draw(chip);
+        int iconX = x + padding;
+        for (int i = 0; i < visible; i++) {
+            paintKeyword(g, abilities.get(i), iconX, y + padding);
+            iconX += iconSize + gap;
+        }
     }
 
     private void paintPowerToughnessChip(Graphics2D g, PowerToughnessFragment pt,
@@ -1221,26 +1369,37 @@ public final class GameView extends JPanel implements Scrollable {
             String suffix,
             boolean heading,
             CardInfo card,
+            BoardPermanentSnapshot permanent,
             List<CardInfo> cards,
-            int cardColumns) {
+            int cardColumns,
+            List<BoardPermanentSnapshot> permanents,
+            int permanentColumns) {
         private SnapshotRow(String iconResource, String text, String suffix, boolean heading) {
-            this(iconResource, text, suffix, heading, null, List.of(), 1);
+            this(iconResource, text, suffix, heading, null, null, List.of(), 1, List.of(), 1);
         }
 
         private SnapshotRow(String iconResource, String text, String suffix,
                             boolean heading, CardInfo card) {
-            this(iconResource, text, suffix, heading, card, List.of(), 1);
+            this(iconResource, text, suffix, heading, card, null, List.of(), 1, List.of(), 1);
         }
 
         private static SnapshotRow cardGrid(List<CardInfo> cards, int columns) {
-            return new SnapshotRow(null, "", "", false, null, List.copyOf(cards), columns);
+            return new SnapshotRow(null, "", "", false, null, null,
+                    List.copyOf(cards), columns, List.of(), 1);
+        }
+
+        private static SnapshotRow permanentGrid(List<BoardPermanentSnapshot> permanents,
+                                                 int columns) {
+            return new SnapshotRow(null, "", "", false, null, null,
+                    List.of(), 1, List.copyOf(permanents), columns);
         }
     }
 
     private sealed interface Fragment permits TextFragment, CardFragment, ManaFragment,
             PowerToughnessFragment, KeywordFragment {}
     private record TextFragment(String text) implements Fragment {}
-    private record CardFragment(CardInfo card, String label, String stateLabel) implements Fragment {}
+    private record CardFragment(CardInfo card, String label, String stateLabel,
+                                BoardPermanentSnapshot permanent) implements Fragment {}
     private record ManaFragment(String symbol) implements Fragment {}
     private record PowerToughnessFragment(String power, String toughness) implements Fragment {}
     private record KeywordFragment(String keyword, String label) implements Fragment {}

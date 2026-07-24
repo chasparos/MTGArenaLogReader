@@ -31,4 +31,6 @@ public class BoardPermanentSnapshot {
     private final List<CounterState> counters = new ArrayList<>();
     /** Human-readable Room halves known to be unlocked on this permanent. */
     private final List<String> unlockedRoomHalves = new ArrayList<>();
+    /** Evergreen abilities explicitly known for this permanent instance. */
+    private final List<String> evergreenAbilities = new ArrayList<>();
 }

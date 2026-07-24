@@ -24,15 +24,32 @@ public final class ManaCostPainter {
     }
 
     public int width(String manaCost) {
-        int count = tokens(manaCost).size();
-        return count == 0 ? 0 : count * symbolSize + Math.max(0, count - 1);
+        List<String> parts = costParts(manaCost);
+        if (parts.isEmpty()) return 0;
+        int symbols = parts.stream().mapToInt(part -> tokens(part).size()).sum();
+        int separators = Math.max(0, parts.size() - 1);
+        return symbols * symbolSize + Math.max(0, symbols - parts.size())
+                + separators * (symbolSize - 1);
     }
 
     public void paint(Graphics2D graphics, String manaCost, int x, int y, Color cardColor) {
         int currentX = x;
-        for (String token : tokens(manaCost)) {
-            paintSymbol(graphics, token, currentX, y, cardColor);
-            currentX += symbolSize + 1;
+        List<String> parts = costParts(manaCost);
+        for (int partIndex = 0; partIndex < parts.size(); partIndex++) {
+            if (partIndex > 0) {
+                Font old = graphics.getFont();
+                graphics.setFont(old.deriveFont(Font.BOLD, 10f));
+                graphics.setColor(blend(cardColor, Color.BLACK, .55f));
+                graphics.drawString("/", currentX + 2, y + symbolSize - 1);
+                graphics.setFont(old);
+                currentX += symbolSize - 1;
+            }
+            List<String> partTokens = tokens(parts.get(partIndex));
+            for (int tokenIndex = 0; tokenIndex < partTokens.size(); tokenIndex++) {
+                paintSymbol(graphics, partTokens.get(tokenIndex), currentX, y, cardColor);
+                currentX += symbolSize;
+                if (tokenIndex + 1 < partTokens.size()) currentX++;
+            }
         }
     }
 
@@ -60,6 +77,16 @@ public final class ManaCostPainter {
         graphics.drawString(text, x + (symbolSize - metrics.stringWidth(text)) / 2,
                 y + (symbolSize - metrics.getHeight()) / 2 + metrics.getAscent());
         graphics.setFont(old);
+    }
+
+    private List<String> costParts(String manaCost) {
+        if (manaCost == null || manaCost.isBlank()) return List.of();
+        String[] raw = manaCost.split("\\s*//\\s*");
+        List<String> result = new ArrayList<>();
+        for (String part : raw) {
+            if (!tokens(part).isEmpty()) result.add(part);
+        }
+        return result;
     }
 
     private List<String> tokens(String manaCost) {

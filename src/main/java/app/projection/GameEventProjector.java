@@ -1318,9 +1318,39 @@ public final class GameEventProjector {
                             permanent.getCounters().add(counter.copy()));
                     roomUnlockedHalfNames(object, knownCards)
                             .forEach(permanent.getUnlockedRoomHalves()::add);
+                    observedEvergreenAbilities(object)
+                            .forEach(permanent.getEvergreenAbilities()::add);
                     return permanent;
                 })
                 .toList();
+    }
+
+    private List<String> observedEvergreenAbilities(GameObjectState object) {
+        java.util.LinkedHashSet<String> abilities = new java.util.LinkedHashSet<>();
+        if (object.getCard() != null && object.getCard().getKeywords() != null) {
+            object.getCard().getKeywords().stream()
+                    .map(keyword -> keyword == null ? "" : keyword.trim().toLowerCase(java.util.Locale.ROOT))
+                    .filter(this::isBattleRelevantEvergreen)
+                    .forEach(abilities::add);
+        }
+        object.getCounters().stream()
+                .map(counter -> counter.getType() == null ? "" : counter.getType())
+                .map(type -> type.toLowerCase(java.util.Locale.ROOT)
+                        .replace("countertype_", "")
+                        .replace("counter_", "")
+                        .replace(" counter", "")
+                        .replace('_', ' ')
+                        .trim())
+                .filter(type -> isBattleRelevantEvergreen(type) || "shield".equals(type))
+                .forEach(abilities::add);
+        return List.copyOf(abilities);
+    }
+
+    private boolean isBattleRelevantEvergreen(String ability) {
+        return java.util.Set.of(
+                "deathtouch", "defender", "double strike", "first strike", "flying",
+                "haste", "hexproof", "indestructible", "lifelink", "menace",
+                "reach", "trample", "vigilance", "ward").contains(ability);
     }
 
     private boolean isPostUntapBoundary() {
