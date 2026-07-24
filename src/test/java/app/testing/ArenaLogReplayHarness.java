@@ -11,6 +11,7 @@ import app.model.log.LogMessageInterface;
 import app.model.log.RawLogEntry;
 import app.projection.GameEventProjector;
 import app.routing.GameMessageRouter;
+import app.snapshot.BoardStateMonitor;
 import app.log.LogMessageParser;
 import app.log.LogRecordFramer;
 import com.google.gson.GsonBuilder;
@@ -41,6 +42,7 @@ public final class ArenaLogReplayHarness {
     private final Map<GameKey, GameSession> sessions = new LinkedHashMap<>();
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
     private final AbilityNameStore abilityNames = new AbilityNameStore();
+    private final Map<GameKey, BoardStateMonitor> boardStateMonitors = new LinkedHashMap<>();
     private long sequence;
     private final InformationBundle cardMetadata = new InformationBundle();
 
@@ -80,6 +82,7 @@ public final class ArenaLogReplayHarness {
         router = new GameMessageRouter();
         sessions.clear();
         matches.clear();
+        boardStateMonitors.clear();
         sequence = 0;
     }
 
@@ -94,8 +97,12 @@ public final class ArenaLogReplayHarness {
         router.route(message).ifPresent(key -> {
             GameSession session = sessions.computeIfAbsent(key, ignored -> createSession(key));
             session.model().addRawRecord(message.getRawText());
-            session.model().addEvents(
-                    session.project(message, message.getModelFuture().join()));
+            List<app.model.event.GameEvent> events =
+                    session.project(message, message.getModelFuture().join());
+            boardStateMonitors
+                    .computeIfAbsent(key, ignored -> new BoardStateMonitor())
+                    .accept(events);
+            session.model().addEvents(events);
             session.model().setOpeningHand(
                     session.projector().openingHandPlayer(),
                     session.projector().mulliganCount(),

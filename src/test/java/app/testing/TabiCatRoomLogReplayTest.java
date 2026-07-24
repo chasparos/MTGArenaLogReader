@@ -86,8 +86,7 @@ final class TabiCatRoomLogReplayTest {
 
         int firstDeathcapEntry = indexOf(events,
                 "Deathcap Marionette resolves and enters the battlefield");
-        int firstDeathcapAbility = indexOf(events,
-                "triggers ability of Deathcap Marionette");
+        int firstDeathcapAbility = indexOfAbilitySourcedBy(events, 87244L);
 
         assertTrue(firstDeathcapEntry >= 0, "Expected Deathcap Marionette battlefield entry");
         assertTrue(firstDeathcapAbility >= 0, "Expected Deathcap Marionette ETB ability");
@@ -127,6 +126,16 @@ final class TabiCatRoomLogReplayTest {
         for (int i = 0; i < events.size(); i++) {
             String eventText = events.get(i).getText();
             if (eventText != null && eventText.contains(text)) return i;
+        }
+        return -1;
+    }
+
+    private int indexOfAbilitySourcedBy(List<GameEvent> events, long sourceGrpId) {
+        for (int i = 0; i < events.size(); i++) {
+            if (events.get(i).getAbility() != null
+                    && events.get(i).getAbility().getSourceGrpId() == sourceGrpId) {
+                return i;
+            }
         }
         return -1;
     }
