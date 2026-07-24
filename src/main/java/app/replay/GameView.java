@@ -907,6 +907,7 @@ public final class GameView extends JPanel implements Scrollable {
             }
             paintActivatedAbilityMiniChip(g, card, x, topY);
             paintPermanentAbilityMiniChip(g, permanent, x + width, topY);
+            paintTappedMiniChip(g, permanent, x, topY, lineHeight);
         }
         g.setFont(oldFont);
         cardHitboxes.add(new CardHitbox(bounds, card, event, cardFragment.permanent()));
@@ -950,6 +951,32 @@ public final class GameView extends JPanel implements Scrollable {
         for (int i = 0; i < visible; i++) {
             paintKeyword(g, abilities.get(i), iconX, y + padding);
             iconX += iconSize + gap;
+        }
+    }
+
+
+    private void paintTappedMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
+                                      int leftX, int topY, int lineHeight) {
+        if (!Boolean.TRUE.equals(permanent.getTapped())) return;
+
+        int iconSize = 10;
+        int padding = 3;
+        int width = iconSize + padding * 2;
+        int height = iconSize + padding * 2;
+        int x = leftX - 5;
+        int y = topY + lineHeight - height + 3;
+
+        Color base = blend(colorOr("TextArea.background", Color.WHITE),
+                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
+        Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
+        g.setColor(base);
+        g.fill(chip);
+        g.setColor(blend(base, Color.BLACK, .28f));
+        g.draw(chip);
+
+        if (!svgAssets.paint(g, "/svg/tap.svg",
+                x + padding, y + padding, iconSize, iconSize)) {
+            paintFallbackSymbol(g, "T", x + padding, y + padding, iconSize);
         }
     }
 
