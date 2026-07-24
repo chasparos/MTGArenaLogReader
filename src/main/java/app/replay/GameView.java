@@ -67,6 +67,7 @@ public final class GameView extends JPanel implements Scrollable {
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
     private final SvgAssetRenderer svgAssets = new SvgAssetRenderer();
     private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE);
+    private final ManaCostPainter miniManaCostPainter = new ManaCostPainter(svgAssets, 9);
     private JWindow previewWindow;
     private CardHitbox hovered;
     private CoachingActions coachingActions;
@@ -512,7 +513,7 @@ public final class GameView extends JPanel implements Scrollable {
                     int cellX = x + index * (cellWidth + gap);
                     Graphics2D cellGraphics = (Graphics2D) g.create();
                     try {
-                        cellGraphics.clipRect(cellX, y - 10, cellWidth, lineHeight + 18);
+                        cellGraphics.clipRect(cellX - 7, y - 10, cellWidth + 14, lineHeight + 20);
                         paintFragment(cellGraphics,
                                 new CardFragment(
                                         permanent.getCard(),
@@ -532,7 +533,7 @@ public final class GameView extends JPanel implements Scrollable {
                     int cellX = x + index * (cellWidth + gap);
                     Graphics2D cellGraphics = (Graphics2D) g.create();
                     try {
-                        cellGraphics.clipRect(cellX, y, cellWidth, lineHeight);
+                        cellGraphics.clipRect(cellX - 7, y - 4, cellWidth + 14, lineHeight + 8);
                         paintFragment(cellGraphics,
                                 new CardFragment(card, card.getName(), "", null),
                                 cellX, y, lineHeight, event);
@@ -805,7 +806,13 @@ public final class GameView extends JPanel implements Scrollable {
                 + CHIP_X_PADDING * 2 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
-    private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY, int lineHeight, GameEvent event) {
+    private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY,
+                               int lineHeight, GameEvent event) {
+        paintFragment(g, fragment, x, topY, lineHeight, event, true);
+    }
+
+    private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY,
+                               int lineHeight, GameEvent event, boolean registerHitbox) {
         FontMetrics fm = g.getFontMetrics(getFont());
         int baseline = topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
         if (fragment instanceof TextFragment t) {
@@ -910,7 +917,9 @@ public final class GameView extends JPanel implements Scrollable {
             paintTappedMiniChip(g, permanent, x, topY, lineHeight);
         }
         g.setFont(oldFont);
-        cardHitboxes.add(new CardHitbox(bounds, card, event, cardFragment.permanent()));
+        if (registerHitbox) {
+            cardHitboxes.add(new CardHitbox(bounds, card, event, cardFragment.permanent()));
+        }
     }
 
     private boolean[] roomUnlockSides(CardFragment fragment) {
@@ -988,11 +997,27 @@ public final class GameView extends JPanel implements Scrollable {
         Font old = g.getFont();
         Font compact = old.deriveFont(Font.PLAIN, Math.max(7f, old.getSize2D() - 4f));
         FontMetrics metrics = g.getFontMetrics(compact);
-        int iconSize = 10;
+        int tapSize = 9;
         int padding = 3;
-        int gap = badge.label().isBlank() ? 0 : 3;
-        int width = padding * 2 + iconSize + gap + metrics.stringWidth(badge.label());
-        int height = Math.max(14, iconSize + padding * 2);
+        int gap = 2;
+        int contentWidth = 0;
+        if (badge.tap()) contentWidth += tapSize;
+        if (!badge.manaCost().isBlank()) {
+            if (contentWidth > 0) contentWidth += gap;
+            contentWidth += miniManaCostPainter.width(badge.manaCost());
+        }
+        if (!badge.textCost().isBlank()) {
+            if (contentWidth > 0) contentWidth += gap;
+            contentWidth += metrics.stringWidth(badge.textCost());
+        }
+        if (!badge.manaOptions().isEmpty()) {
+            if (contentWidth > 0) contentWidth += gap;
+            contentWidth += manaOptionsWidth(g, badge.manaOptions(), compact);
+        }
+        if (contentWidth == 0) return;
+
+        int width = padding * 2 + contentWidth;
+        int height = Math.max(14, tapSize + padding * 2);
         int x = leftX - 5;
         int y = topY;
 
@@ -1004,15 +1029,66 @@ public final class GameView extends JPanel implements Scrollable {
         g.setColor(blend(base, Color.BLACK, .28f));
         g.draw(chip);
 
-        String resource = badge.tapForMana() ? "/svg/land.svg" : "/svg/ability-activated.svg";
-        svgAssets.paint(g, resource, x + padding, y + padding, iconSize, iconSize);
-        if (!badge.label().isBlank()) {
+        int cursor = x + padding;
+        if (badge.tap()) {
+            if (!svgAssets.paint(g, "/svg/tap.svg", cursor, y + padding, tapSize, tapSize)) {
+                paintFallbackSymbol(g, "T", cursor, y + padding, tapSize);
+            }
+            cursor += tapSize;
+        }
+        if (!badge.manaCost().isBlank()) {
+            if (cursor > x + padding) cursor += gap;
+            miniManaCostPainter.paint(g, badge.manaCost(), cursor,
+                    y + (height - 9) / 2, base);
+            cursor += miniManaCostPainter.width(badge.manaCost());
+        }
+        if (!badge.textCost().isBlank()) {
+            if (cursor > x + padding) cursor += gap;
             g.setColor(contrast(base));
             g.setFont(compact);
-            g.drawString(badge.label(), x + padding + iconSize + gap,
+            g.drawString(badge.textCost(), cursor,
                     y + (height - metrics.getHeight()) / 2 + metrics.getAscent());
-            g.setFont(old);
+            cursor += metrics.stringWidth(badge.textCost());
         }
+        if (!badge.manaOptions().isEmpty()) {
+            if (cursor > x + padding) cursor += gap;
+            paintManaOptions(g, badge.manaOptions(), cursor, y, height, compact, base);
+        }
+        g.setFont(old);
+    }
+
+    private int manaOptionsWidth(Graphics2D g, List<String> options, Font font) {
+        FontMetrics metrics = g.getFontMetrics(font);
+        int width = metrics.stringWidth("(") + metrics.stringWidth(")");
+        for (int i = 0; i < options.size(); i++) {
+            width += miniManaCostPainter.width("{" + options.get(i) + "}");
+            if (i + 1 < options.size()) width += metrics.stringWidth("|") + 2;
+        }
+        return width;
+    }
+
+    private void paintManaOptions(Graphics2D g, List<String> options, int x, int y,
+                                  int height, Font font, Color base) {
+        Font old = g.getFont();
+        g.setFont(font);
+        FontMetrics metrics = g.getFontMetrics();
+        int baseline = y + (height - metrics.getHeight()) / 2 + metrics.getAscent();
+        g.setColor(contrast(base));
+        g.drawString("(", x, baseline);
+        int cursor = x + metrics.stringWidth("(");
+        for (int i = 0; i < options.size(); i++) {
+            String cost = "{" + options.get(i) + "}";
+            miniManaCostPainter.paint(g, cost, cursor, y + (height - 9) / 2, base);
+            cursor += miniManaCostPainter.width(cost);
+            if (i + 1 < options.size()) {
+                g.setColor(contrast(base));
+                g.drawString("|", cursor + 1, baseline);
+                cursor += metrics.stringWidth("|") + 2;
+            }
+        }
+        g.setColor(contrast(base));
+        g.drawString(")", cursor, baseline);
+        g.setFont(old);
     }
 
     private ActivatedAbilityBadge activatedAbilityBadge(CardInfo card) {
@@ -1028,20 +1104,45 @@ public final class GameView extends JPanel implements Scrollable {
                     || cost.startsWith("At ")) continue;
 
             boolean tap = cost.contains("{T}");
-            boolean mana = tap && line.substring(colon + 1).toLowerCase(Locale.ROOT)
-                    .matches(".*add\\s+(one|two|three|\\{).*");
-            String label = compactAbilityCost(cost);
-            if (mana) label = "";
-            return new ActivatedAbilityBadge(label, mana);
+            String effect = line.substring(colon + 1);
+            boolean manaAbility = tap && effect.toLowerCase(Locale.ROOT)
+                    .matches(".*\\badd\\b.*");
+            String manaCost = manaSymbols(cost, false);
+            String textCost = compactNonManaAbilityCost(cost);
+            List<String> manaOptions = manaAbility ? producedManaOptions(effect) : List.of();
+            return new ActivatedAbilityBadge(manaCost, textCost, tap, manaOptions);
         }
         return null;
     }
 
-    private String compactAbilityCost(String cost) {
-        String compact = cost.replace("{T}", "T")
-                .replace("{Q}", "Q")
-                .replaceAll("\\s+", "");
-        return compact.length() <= 8 ? compact : "";
+    private String manaSymbols(String text, boolean colorsOnly) {
+        Matcher matcher = MANA.matcher(text == null ? "" : text);
+        StringBuilder result = new StringBuilder();
+        while (matcher.find()) {
+            String symbol = matcher.group(1).toUpperCase(Locale.ROOT);
+            if ("T".equals(symbol) || "Q".equals(symbol)) continue;
+            if (colorsOnly && !symbol.matches("[WUBRGC]")) continue;
+            result.append('{').append(symbol).append('}');
+        }
+        return result.toString();
+    }
+
+    private List<String> producedManaOptions(String effect) {
+        Matcher matcher = MANA.matcher(effect == null ? "" : effect);
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        while (matcher.find()) {
+            String symbol = matcher.group(1).toUpperCase(Locale.ROOT);
+            if (symbol.matches("[WUBRGC]")) result.add(symbol);
+        }
+        return List.copyOf(result);
+    }
+
+    private String compactNonManaAbilityCost(String cost) {
+        String compact = MANA.matcher(cost == null ? "" : cost).replaceAll("")
+                .replace(",", "")
+                .replaceAll("\\s+", "")
+                .strip();
+        return compact.length() <= 5 ? compact : "";
     }
 
     private void paintPowerToughnessChip(Graphics2D g, PowerToughnessFragment pt,
@@ -1054,8 +1155,8 @@ public final class GameView extends JPanel implements Scrollable {
         int overlap = 8;
         x -= overlap;
         int width = compactMetrics.stringWidth(value) + 7;
-        int height = Math.max(11, compactMetrics.getHeight());
-        int y = topY + lineHeight - height + 3;
+        int height = Math.max(11, compactMetrics.getHeight()) + 2;
+        int y = topY + lineHeight - height - 1;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 new Color(0x9D785A), .24f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, CHIP_ARC, CHIP_ARC);
@@ -1289,10 +1390,8 @@ public final class GameView extends JPanel implements Scrollable {
             images.add(image);
             if (index + 1 < imageCount) images.add(Box.createHorizontalStrut(8));
         }
+        panel.add(new PreviewCardChip(hit.card(), hit.permanent()), BorderLayout.NORTH);
         panel.add(images, BorderLayout.CENTER);
-        if (hit.permanent() != null) {
-            panel.add(new InstancePreviewStrip(hit.card(), hit.permanent()), BorderLayout.SOUTH);
-        }
 
         window.setContentPane(panel);
         window.pack();
@@ -1354,31 +1453,29 @@ public final class GameView extends JPanel implements Scrollable {
         return rotated;
     }
 
-    private final class InstancePreviewStrip extends JComponent {
+    private final class PreviewCardChip extends JComponent {
         private final CardInfo card;
         private final BoardPermanentSnapshot permanent;
 
-        private InstancePreviewStrip(CardInfo card, BoardPermanentSnapshot permanent) {
+        private PreviewCardChip(CardInfo card, BoardPermanentSnapshot permanent) {
             this.card = card;
             this.permanent = permanent;
             setOpaque(false);
-            setPreferredSize(new Dimension(240, 34));
+            setPreferredSize(new Dimension(320, 42));
         }
 
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D) graphics.create();
             try {
                 configure(g);
-                int lineHeight = getHeight();
-                paintActivatedAbilityMiniChip(g, card, 8, 0);
-                paintPermanentAbilityMiniChip(g, permanent, getWidth() - 40, 0);
-                if (permanent.getPower() != null && permanent.getToughness() != null) {
-                    paintPowerToughnessChip(g,
-                            new PowerToughnessFragment(
-                                    String.valueOf(permanent.getPower()),
-                                    String.valueOf(permanent.getToughness())),
-                            getWidth() - 8, 0, lineHeight);
-                }
+                CardFragment fragment = new CardFragment(
+                        card,
+                        card == null ? "Unknown card" : nullToEmpty(card.getName()),
+                        permanent == null ? "" : roomStateLabel(permanent),
+                        permanent);
+                int width = fragmentWidth(g, fragment);
+                int x = Math.max(7, (getWidth() - width) / 2);
+                paintFragment(g, fragment, x, 2, getHeight() - 4, null, false);
             } finally {
                 g.dispose();
             }
@@ -1574,7 +1671,8 @@ public final class GameView extends JPanel implements Scrollable {
     private record Match(int start, int end, CardInfo card, String label) {}
     private record CardMatchCandidate(CardInfo card, String label) {}
     private record RichLayout(int height) {}
-    private record ActivatedAbilityBadge(String label, boolean tapForMana) {}
+    private record ActivatedAbilityBadge(String manaCost, String textCost,
+                                         boolean tap, List<String> manaOptions) {}
     private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event,
                               BoardPermanentSnapshot permanent) {}
     private record EventHitbox(Rectangle bounds, GameEvent event) {}

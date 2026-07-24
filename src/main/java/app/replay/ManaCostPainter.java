@@ -55,13 +55,21 @@ public final class ManaCostPainter {
 
     private void paintSymbol(Graphics2D graphics, String token, int x, int y, Color cardColor) {
         int surroundPadding = 1;
-        Color surround = blend(cardColor, Color.WHITE, .34f);
-        graphics.setColor(surround);
-        graphics.fillOval(x - surroundPadding, y - surroundPadding,
-                symbolSize + surroundPadding * 2, symbolSize + surroundPadding * 2);
-        graphics.setColor(blend(surround, Color.BLACK, .38f));
-        graphics.drawOval(x - surroundPadding, y - surroundPadding,
-                symbolSize + surroundPadding * 2, symbolSize + surroundPadding * 2);
+        int diameter = symbolSize + surroundPadding * 2;
+        List<Color> colors = symbolColors(token);
+        if (colors.size() <= 1) {
+            graphics.setColor(colors.isEmpty() ? new Color(0xB9B9B9) : colors.get(0));
+            graphics.fillOval(x - surroundPadding, y - surroundPadding, diameter, diameter);
+        } else {
+            int arc = Math.max(1, 360 / colors.size());
+            for (int i = 0; i < colors.size(); i++) {
+                graphics.setColor(colors.get(i));
+                graphics.fillArc(x - surroundPadding, y - surroundPadding,
+                        diameter, diameter, 90 - i * arc, -arc);
+            }
+        }
+        graphics.setColor(new Color(0x3A3A3A));
+        graphics.drawOval(x - surroundPadding, y - surroundPadding, diameter, diameter);
 
         String resource = normalize(token).replace("/", "_");
         if (svgAssets.paint(graphics, "/mana-svg/" + resource + ".svg",
@@ -79,6 +87,25 @@ public final class ManaCostPainter {
         graphics.setFont(old);
     }
 
+
+
+    private List<Color> symbolColors(String token) {
+        String normalized = normalize(token);
+        List<Color> result = new ArrayList<>();
+        for (String part : normalized.split("/")) {
+            Color color = switch (part) {
+                case "W" -> new Color(0xF4E7B2);
+                case "U" -> new Color(0x2F9BD8);
+                case "B" -> new Color(0x6A5A70);
+                case "R" -> new Color(0xE34B36);
+                case "G" -> new Color(0x3FA45B);
+                case "C" -> new Color(0xA9B7B8);
+                default -> null;
+            };
+            if (color != null && !result.contains(color)) result.add(color);
+        }
+        return result;
+    }
     private List<String> costParts(String manaCost) {
         if (manaCost == null || manaCost.isBlank()) return List.of();
         String[] raw = manaCost.split("\\s*//\\s*");
