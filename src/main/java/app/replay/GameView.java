@@ -305,7 +305,9 @@ public final class GameView extends JPanel implements Scrollable {
         int innerWidth = width - CARD_PADDING * 2;
         int gap = 14;
         int columnWidth = players.size() <= 1 ? innerWidth : (innerWidth - gap) / 2;
-        List<List<SnapshotRow>> columns = players.stream().map(this::snapshotRows).toList();
+        List<List<SnapshotRow>> columns = players.stream()
+                .map(player -> snapshotRows(g, player, columnWidth))
+                .toList();
         int lineHeight = Math.max(g.getFontMetrics().getHeight() + 5, 24);
         int contentRows = columns.stream().mapToInt(List::size).max().orElse(1);
         int titleHeight = g.getFontMetrics(getFont().deriveFont(Font.BOLD)).getHeight() + 8;
@@ -336,7 +338,7 @@ public final class GameView extends JPanel implements Scrollable {
         return y + boxHeight + EVENT_GAP;
     }
 
-    private List<SnapshotRow> snapshotRows(PlayerTurnSnapshot player) {
+    private List<SnapshotRow> snapshotRows(Graphics2D g, PlayerTurnSnapshot player, int width) {
         List<SnapshotRow> rows = new ArrayList<>();
         rows.add(new SnapshotRow(null, nullToEmpty(player.getPlayerName()), "", true));
         rows.add(new SnapshotRow("/svg/ability-lifelink.svg",
@@ -349,36 +351,81 @@ public final class GameView extends JPanel implements Scrollable {
                 player.getHandSize() == null ? "Hand ?" : player.getHandSize() + " cards in hand",
                 "", false));
 
-        addKnownZoneRows(rows, "/svg/multiple.svg", "Known hand", player.getKnownHand());
-        addKnownZoneRows(rows, "/svg/counter-skull.svg", "Graveyard", player.getKnownGraveyard());
-        addKnownZoneRows(rows, "/svg/ability-foretell.svg", "Exile", player.getKnownExile());
+        addKnownZoneRows(g, rows, width, "/svg/multiple.svg", "Known hand", player.getKnownHand());
+        addKnownZoneRows(g, rows, width, "/svg/counter-skull.svg", "Graveyard", player.getKnownGraveyard());
+        addKnownZoneRows(g, rows, width, "/svg/ability-foretell.svg", "Exile", player.getKnownExile());
 
         rows.add(new SnapshotRow("/svg/land.svg", "Battlefield", "", true));
         if (player.getBattlefield().isEmpty()) {
             rows.add(new SnapshotRow(null, "Empty", "", false));
         } else {
-            for (BoardPermanentSnapshot permanent : roots(player.getBattlefield())) {
-                addPermanentRows(rows, player.getBattlefield(), permanent, 0);
-            }
+            roots(player.getBattlefield()).stream()
+                    .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
+                            Comparator.nullsLast(cardTypeComparator())))
+                    .forEach(permanent -> addPermanentRows(
+                            rows, player.getBattlefield(), permanent, 0));
         }
         return rows;
     }
 
-    private void addKnownZoneRows(List<SnapshotRow> rows, String icon, String zone,
-                                  List<CardInfo> cards) {
+    private void addKnownZoneRows(Graphics2D g, List<SnapshotRow> rows, int width,
+                                  String icon, String zone, List<CardInfo> cards) {
         if (cards.isEmpty()) return;
+        List<CardInfo> ordered = cards.stream()
+                .filter(Objects::nonNull)
+                .sorted(cardTypeComparator())
+                .toList();
         rows.add(new SnapshotRow(icon, zone + " (" + cards.size() + " known)", "", true));
-        for (CardInfo card : cards) rows.add(new SnapshotRow(null, "", "", false, card));
+        int columns = inferZoneColumns(g, ordered, width);
+        for (int offset = 0; offset < ordered.size(); offset += columns) {
+            rows.add(SnapshotRow.cardGrid(
+                    ordered.subList(offset, Math.min(offset + columns, ordered.size())),
+                    columns));
+        }
+    }
+
+    private int inferZoneColumns(Graphics2D g, List<CardInfo> cards, int width) {
+        int gap = 8;
+        int preferredCellWidth = cards.stream()
+                .map(card -> new CardFragment(card, card.getName(), ""))
+                .mapToInt(fragment -> fragmentWidth(g, fragment))
+                .max()
+                .orElse(0);
+        for (int columns = Math.min(3, cards.size()); columns >= 2; columns--) {
+            int cellWidth = (width - gap * (columns - 1)) / columns;
+            if (cellWidth >= Math.min(preferredCellWidth, 190)) return columns;
+        }
+        return 1;
+    }
+
+    private Comparator<CardInfo> cardTypeComparator() {
+        return Comparator.comparingInt(this::cardTypeRank)
+                .thenComparing(card -> nullToEmpty(card.getTypeLine()), String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(card -> nullToEmpty(card.getName()), String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private int cardTypeRank(CardInfo card) {
+        String typeLine = nullToEmpty(card.getTypeLine()).toLowerCase(Locale.ROOT);
+        if (typeLine.contains("land")) return 0;
+        if (typeLine.contains("creature")) return 1;
+        if (typeLine.contains("enchantment")) return 2;
+        if (typeLine.contains("artifact")) return 3;
+        if (typeLine.contains("planeswalker")) return 4;
+        if (typeLine.contains("battle")) return 5;
+        if (typeLine.contains("instant")) return 6;
+        if (typeLine.contains("sorcery")) return 7;
+        return 8;
     }
 
     private void addPermanentRows(List<SnapshotRow> rows, List<BoardPermanentSnapshot> battlefield,
                                   BoardPermanentSnapshot permanent, int depth) {
         String suffix = boardPermanentSuffix(permanent);
         rows.add(new SnapshotRow(null, "  ".repeat(depth), suffix, false, permanent.getCard()));
-        for (BoardPermanentSnapshot attached : attachmentsOf(
-                battlefield, permanent.getLogicalObjectId())) {
-            addPermanentRows(rows, battlefield, attached, depth + 1);
-        }
+        attachmentsOf(battlefield, permanent.getLogicalObjectId()).stream()
+                .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
+                        Comparator.nullsLast(cardTypeComparator())))
+                .forEach(attached -> addPermanentRows(
+                        rows, battlefield, attached, depth + 1));
     }
 
     private void paintSnapshotColumn(Graphics2D g, GameEvent event, List<SnapshotRow> rows,
@@ -393,7 +440,23 @@ public final class GameView extends JPanel implements Scrollable {
                     textX += iconSize + 6;
                 }
             }
-            if (row.card() != null) {
+            if (!row.cards().isEmpty()) {
+                int gap = 8;
+                int cellWidth = (width - gap * (row.cardColumns() - 1)) / row.cardColumns();
+                for (int index = 0; index < row.cards().size(); index++) {
+                    CardInfo card = row.cards().get(index);
+                    int cellX = x + index * (cellWidth + gap);
+                    Graphics2D cellGraphics = (Graphics2D) g.create();
+                    try {
+                        cellGraphics.clipRect(cellX, y, cellWidth, lineHeight);
+                        paintFragment(cellGraphics,
+                                new CardFragment(card, card.getName(), ""),
+                                cellX, y, lineHeight, event);
+                    } finally {
+                        cellGraphics.dispose();
+                    }
+                }
+            } else if (row.card() != null) {
                 if (!row.text().isBlank()) {
                     g.setColor(colorOr("TextArea.foreground", getForeground()));
                     g.drawString(row.text(), textX,
@@ -1157,9 +1220,20 @@ public final class GameView extends JPanel implements Scrollable {
             String text,
             String suffix,
             boolean heading,
-            CardInfo card) {
+            CardInfo card,
+            List<CardInfo> cards,
+            int cardColumns) {
         private SnapshotRow(String iconResource, String text, String suffix, boolean heading) {
-            this(iconResource, text, suffix, heading, null);
+            this(iconResource, text, suffix, heading, null, List.of(), 1);
+        }
+
+        private SnapshotRow(String iconResource, String text, String suffix,
+                            boolean heading, CardInfo card) {
+            this(iconResource, text, suffix, heading, card, List.of(), 1);
+        }
+
+        private static SnapshotRow cardGrid(List<CardInfo> cards, int columns) {
+            return new SnapshotRow(null, "", "", false, null, List.copyOf(cards), columns);
         }
     }
 
