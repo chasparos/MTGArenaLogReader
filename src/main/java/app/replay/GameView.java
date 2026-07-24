@@ -9,7 +9,6 @@ import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
 import app.model.session.GameModel;
 import app.model.session.GameSession;
-import app.model.*;
 import app.snapshot.BoardStateMonitor;
 import app.enrichment.CardImageCache;
 import app.projection.AbilityNameStore;
@@ -1011,7 +1010,6 @@ public final class GameView extends JPanel implements Scrollable {
             contentWidth += metrics.stringWidth(badge.textCost());
         }
         if (!badge.manaOptions().isEmpty()) {
-            if (contentWidth > 0) contentWidth += gap;
             contentWidth += manaOptionsWidth(g, badge.manaOptions(), compact);
         }
         if (contentWidth == 0) return;
@@ -1051,7 +1049,6 @@ public final class GameView extends JPanel implements Scrollable {
             cursor += metrics.stringWidth(badge.textCost());
         }
         if (!badge.manaOptions().isEmpty()) {
-            if (cursor > x + padding) cursor += gap;
             paintManaOptions(g, badge.manaOptions(), cursor, y, height, compact, base);
         }
         g.setFont(old);
@@ -1059,10 +1056,12 @@ public final class GameView extends JPanel implements Scrollable {
 
     private int manaOptionsWidth(Graphics2D g, List<String> options, Font font) {
         FontMetrics metrics = g.getFontMetrics(font);
-        int width = metrics.stringWidth("(") + metrics.stringWidth(")");
+        int width = metrics.stringWidth(": ");
         for (int i = 0; i < options.size(); i++) {
             width += miniManaCostPainter.width("{" + options.get(i) + "}");
-            if (i + 1 < options.size()) width += metrics.stringWidth("|") + 2;
+            if (i + 1 < options.size()) {
+                width += metrics.stringWidth(" | ");
+            }
         }
         return width;
     }
@@ -1073,21 +1072,23 @@ public final class GameView extends JPanel implements Scrollable {
         g.setFont(font);
         FontMetrics metrics = g.getFontMetrics();
         int baseline = y + (height - metrics.getHeight()) / 2 + metrics.getAscent();
+
         g.setColor(contrast(base));
-        g.drawString("(", x, baseline);
-        int cursor = x + metrics.stringWidth("(");
+        g.drawString(": ", x, baseline);
+        int cursor = x + metrics.stringWidth(": ");
+
         for (int i = 0; i < options.size(); i++) {
-            String cost = "{" + options.get(i) + "}";
-            miniManaCostPainter.paint(g, cost, cursor, y + (height - 9) / 2, base);
-            cursor += miniManaCostPainter.width(cost);
+            String manaCost = "{" + options.get(i) + "}";
+            miniManaCostPainter.paint(g, manaCost, cursor,
+                    y + (height - 9) / 2, base);
+            cursor += miniManaCostPainter.width(manaCost);
+
             if (i + 1 < options.size()) {
                 g.setColor(contrast(base));
-                g.drawString("|", cursor + 1, baseline);
-                cursor += metrics.stringWidth("|") + 2;
+                g.drawString(" | ", cursor, baseline);
+                cursor += metrics.stringWidth(" | ");
             }
         }
-        g.setColor(contrast(base));
-        g.drawString(")", cursor, baseline);
         g.setFont(old);
     }
 

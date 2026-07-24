@@ -73,7 +73,7 @@ public final class ManaCostPainter {
 
         String resource = normalize(token).replace("/", "_");
         if (svgAssets.paint(graphics, "/mana-svg/" + resource + ".svg",
-                x, y + 1, symbolSize, symbolSize)) {
+                x+1, y+1, symbolSize-1, symbolSize-1)) {
             return;
         }
 
@@ -96,7 +96,7 @@ public final class ManaCostPainter {
             Color color = switch (part) {
                 case "W" -> new Color(0xF4E7B2);
                 case "U" -> new Color(0x2F9BD8);
-                case "B" -> new Color(0x6A5A70);
+                case "B" -> (new Color(0x6A5A70)).brighter().brighter();
                 case "R" -> new Color(0xE34B36);
                 case "G" -> new Color(0x3FA45B);
                 case "C" -> new Color(0xA9B7B8);
