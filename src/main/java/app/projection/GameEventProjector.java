@@ -25,6 +25,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static app.projection.ArenaJson.*;
+
 /** Projects Arena GRE state and annotations into human-readable events.
  * <p><strong>Architectural role:</strong> This type belongs to the projection boundary between ordered Arena observations, canonical game state, and immutable semantic events.</p>
  */
@@ -1498,11 +1500,6 @@ public final class GameEventProjector {
         return object.getObjectType() != null && object.getObjectType().contains("Token");
     }
 
-    private Integer nullableInt(JsonObject object, String key) {
-        JsonElement value = object.get(key);
-        return value != null && value.isJsonPrimitive() ? value.getAsInt() : null;
-    }
-
     private void projectOpeningHand(LogMessageInterface source, List<GameEvent> result) {
         if (openingHandEventEmitted || !state.isOpeningHandFinalized()) {
             return;
@@ -1588,41 +1585,6 @@ public final class GameEventProjector {
         return id < 0 || state.getEmittedAnnotationIds().add(id);
     }
 
-    private boolean hasType(JsonObject annotation, String expected) {
-        for (JsonElement type : arrayAt(annotation, "type")) if (expected.equals(type.getAsString())) return true;
-        return false;
-    }
-
-    private long detailLong(JsonObject annotation, String key, long fallback) {
-        for (JsonElement element : arrayAt(annotation, "details")) {
-            if (!element.isJsonObject()) continue;
-            JsonObject detail = element.getAsJsonObject();
-            if (!key.equals(stringAt(detail, "key"))) continue;
-            JsonArray values = arrayAt(detail, "valueInt32");
-            if (!values.isEmpty()) return values.get(0).getAsLong();
-            values = arrayAt(detail, "valueUint32");
-            if (!values.isEmpty()) return values.get(0).getAsLong();
-        }
-        return fallback;
-    }
-
-    private String detailString(JsonObject annotation, String key) {
-        for (JsonElement element : arrayAt(annotation, "details")) {
-            if (!element.isJsonObject()) continue;
-            JsonObject detail = element.getAsJsonObject();
-            if (!key.equals(stringAt(detail, "key"))) continue;
-            JsonArray values = arrayAt(detail, "valueString");
-            if (!values.isEmpty()) return values.get(0).getAsString();
-        }
-        return "";
-    }
-
-    private List<Long> longArray(JsonObject root, String key) {
-        List<Long> result = new ArrayList<>();
-        for (JsonElement value : arrayAt(root, key)) if (value.isJsonPrimitive()) result.add(value.getAsLong());
-        return result;
-    }
-
     private boolean isTransientZone(int zoneId) {
         String type = zoneType(zoneId);
         return "Limbo".equals(type) || "Pending".equals(type) || "Suppressed".equals(type);
@@ -1663,36 +1625,4 @@ public final class GameEventProjector {
         return underscore >= 0 ? value.substring(underscore + 1) : value;
     }
 
-    private JsonObject objectAt(JsonObject root, String... path) {
-        JsonElement current = root;
-        for (String key : path) {
-            if (current == null || !current.isJsonObject()) return new JsonObject();
-            current = current.getAsJsonObject().get(key);
-        }
-        return current != null && current.isJsonObject() ? current.getAsJsonObject() : new JsonObject();
-    }
-
-    private JsonArray arrayAt(JsonObject root, String key) {
-        JsonElement value = root.get(key);
-        return value != null && value.isJsonArray() ? value.getAsJsonArray() : new JsonArray();
-    }
-
-    private String stringAt(JsonObject root, String... path) {
-        JsonElement current = root;
-        for (String key : path) {
-            if (current == null || !current.isJsonObject()) return "";
-            current = current.getAsJsonObject().get(key);
-        }
-        return current == null || current.isJsonNull() ? "" : current.getAsString();
-    }
-
-    private int intAt(JsonObject root, String key, int fallback) {
-        JsonElement value = root.get(key);
-        return value != null && value.isJsonPrimitive() ? value.getAsInt() : fallback;
-    }
-
-    private long longAt(JsonObject root, String key, long fallback) {
-        JsonElement value = root.get(key);
-        return value != null && value.isJsonPrimitive() ? value.getAsLong() : fallback;
-    }
 }

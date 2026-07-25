@@ -20,6 +20,8 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import static app.projection.ArenaJson.*;
+
 /**
  * Projects strategically relevant damage and life changes.
  *
@@ -177,49 +179,6 @@ final class DamageProjector {
         return object != null && object.getCardTypes().stream()
                 .anyMatch(type -> "Planeswalker".equalsIgnoreCase(type)
                         || type.endsWith("_Planeswalker"));
-    }
-
-    private boolean hasType(JsonObject annotation, String expected) {
-        for (JsonElement type : arrayAt(annotation, "type")) {
-            if (expected.equals(type.getAsString())) return true;
-        }
-        return false;
-    }
-
-    private long detailLong(JsonObject annotation, String key, long fallback) {
-        for (JsonElement element : arrayAt(annotation, "details")) {
-            if (!element.isJsonObject()) continue;
-            JsonObject detail = element.getAsJsonObject();
-            if (!key.equals(stringAt(detail, "key"))) continue;
-            JsonArray values = arrayAt(detail, "valueInt32");
-            if (!values.isEmpty()) return values.get(0).getAsLong();
-            values = arrayAt(detail, "valueUint32");
-            if (!values.isEmpty()) return values.get(0).getAsLong();
-        }
-        return fallback;
-    }
-
-    private List<Long> longArray(JsonObject root, String key) {
-        List<Long> result = new ArrayList<>();
-        for (JsonElement value : arrayAt(root, key)) {
-            if (value.isJsonPrimitive()) result.add(value.getAsLong());
-        }
-        return result;
-    }
-
-    private JsonArray arrayAt(JsonObject root, String key) {
-        JsonElement value = root.get(key);
-        return value != null && value.isJsonArray() ? value.getAsJsonArray() : new JsonArray();
-    }
-
-    private String stringAt(JsonObject root, String key) {
-        JsonElement value = root.get(key);
-        return value == null || value.isJsonNull() ? "" : value.getAsString();
-    }
-
-    private long longAt(JsonObject root, String key, long fallback) {
-        JsonElement value = root.get(key);
-        return value != null && value.isJsonPrimitive() ? value.getAsLong() : fallback;
     }
 
     private static final class DamageSummary {

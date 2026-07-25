@@ -67,6 +67,7 @@ public final class GameView extends JPanel implements Scrollable {
     private final SvgAssetRenderer svgAssets = new SvgAssetRenderer();
     private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE - 2);
     private final ManaCostPainter miniManaCostPainter = new ManaCostPainter(svgAssets, 8);
+    private final ActivatedAbilityParser activatedAbilityParser = new ActivatedAbilityParser();
     private JWindow previewWindow;
     private CardHitbox hovered;
     private CoachingActions coachingActions;
@@ -998,7 +999,7 @@ public final class GameView extends JPanel implements Scrollable {
 
     private void paintActivatedAbilityMiniChip(Graphics2D g, CardInfo card,
                                                  int cardNameX, int topY, int lineHeight) {
-        ActivatedAbilityBadge badge = activatedAbilityBadge(card);
+        ActivatedAbilityParser.Badge badge = activatedAbilityParser.parse(card);
         if (badge == null) return;
 
         Font old = g.getFont();
@@ -1098,63 +1099,6 @@ public final class GameView extends JPanel implements Scrollable {
             }
         }
         g.setFont(old);
-    }
-
-    private ActivatedAbilityBadge activatedAbilityBadge(CardInfo card) {
-        if (card == null) return null;
-        String oracle = card.effectiveOracleText();
-        if (oracle == null || oracle.isBlank()) return null;
-
-        for (String line : oracle.split("\\R")) {
-            int colon = line.indexOf(':');
-            if (colon <= 0) continue;
-            String cost = line.substring(0, colon).strip();
-            if (cost.isBlank() || cost.startsWith("When ") || cost.startsWith("Whenever ")
-                    || cost.startsWith("At ")) continue;
-
-            boolean tap = cost.contains("{T}");
-            String effect = line.substring(colon + 1);
-            boolean manaAbility = tap && effect.toLowerCase(Locale.ROOT)
-                    .matches(".*\\badd\\b.*");
-            String manaCost = manaSymbols(cost, false);
-            String textCost = compactNonManaAbilityCost(cost);
-            List<String> manaOptions = manaAbility ? producedManaOptions(effect) : List.of();
-            return new ActivatedAbilityBadge(manaCost, textCost, tap, manaOptions);
-        }
-        return null;
-    }
-
-    private String manaSymbols(String text, boolean colorsOnly) {
-        Matcher matcher = MANA.matcher(text == null ? "" : text);
-        StringBuilder result = new StringBuilder();
-        while (matcher.find()) {
-            String symbol = matcher.group(1).toUpperCase(Locale.ROOT);
-            if ("T".equals(symbol) || "Q".equals(symbol)) continue;
-            if (colorsOnly && !symbol.matches("[WUBRGC]")) continue;
-            result.append('{').append(symbol).append('}');
-        }
-        return result.toString();
-    }
-
-    private List<String> producedManaOptions(String effect) {
-        Matcher matcher = MANA.matcher(effect == null ? "" : effect);
-        LinkedHashSet<String> result = new LinkedHashSet<>();
-        while (matcher.find()) {
-            String symbol = matcher.group(1).toUpperCase(Locale.ROOT);
-            if (symbol.matches("[WUBRGC]")) result.add(symbol);
-        }
-        return List.copyOf(result);
-    }
-
-    private String compactNonManaAbilityCost(String cost) {
-        String compact = MANA.matcher(cost == null ? "" : cost).replaceAll("")
-                .replace(",", "")
-                .replace("(", "")
-                .replace(")", "")
-                .replace(":", "")
-                .replaceAll("\\s+", "")
-                .strip();
-        return compact.length() <= 5 ? compact : "";
     }
 
     private void paintPowerToughnessChip(Graphics2D g, PowerToughnessFragment pt,
@@ -1683,8 +1627,6 @@ public final class GameView extends JPanel implements Scrollable {
     private record Match(int start, int end, CardInfo card, String label) {}
     private record CardMatchCandidate(CardInfo card, String label) {}
     private record RichLayout(int height) {}
-    private record ActivatedAbilityBadge(String manaCost, String textCost,
-                                         boolean tap, List<String> manaOptions) {}
     private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event,
                               BoardPermanentSnapshot permanent) {}
     private record EventHitbox(Rectangle bounds, GameEvent event) {}
