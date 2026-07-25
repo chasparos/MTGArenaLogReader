@@ -23,6 +23,8 @@ import app.enrichment.CardImageCache;
 import app.enrichment.InformationCollector;
 import app.enrichment.ScryfallClient;
 import app.replay.MainFrame;
+import app.settings.SettingsDialog;
+import app.settings.WindowsDpapiApiKeyStore;
 import app.log.LogMessageReader;
 import app.log.LogTailReader;
 import app.log.NamedThreadFactory;
@@ -148,6 +150,7 @@ public final class Application implements AutoCloseable {
         DraftTracker draftTracker = new DraftTracker(new DraftLogParser(), draftUiModel);
         DraftAssistantFrame draftFrame = new DraftAssistantFrame(draftUiModel, new DraftAiExporter());
 
+        WindowsDpapiApiKeyStore apiKeyStore = new WindowsDpapiApiKeyStore();
         MainFrame frame = new MainFrame(
                 uiQueue,
                 deckTracker,
@@ -157,6 +160,7 @@ public final class Application implements AutoCloseable {
                 coachingFrame::open,
                 this::rescanLog,
                 () -> replayDraftFixture(draftTracker, draftFrame),
+                owner -> new SettingsDialog(owner, apiKeyStore).open(),
                 ignored -> close());
         frame.setVisible(true);
     }

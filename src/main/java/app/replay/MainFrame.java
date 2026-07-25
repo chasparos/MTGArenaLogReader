@@ -34,6 +34,7 @@ public final class MainFrame extends JFrame {
     private final DraftTracker draftTracker;
     private final DraftAssistantFrame draftAssistantFrame;
     private final Runnable replayDraftFixtureAction;
+    private final Consumer<Window> settingsAction;
 
     public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker,
                      DeckTrackerFrame deckTrackerFrame,
@@ -42,6 +43,7 @@ public final class MainFrame extends JFrame {
                      Consumer<MatchSession> coachingAction,
                      Runnable rescanAction,
                      Runnable replayDraftFixtureAction,
+                     Consumer<Window> settingsAction,
                      Consumer<Void> closeAction) {
         super("MTG Arena Parallel Log");
         this.uiQueue = uiQueue;
@@ -52,6 +54,7 @@ public final class MainFrame extends JFrame {
         this.draftTracker = draftTracker;
         this.draftAssistantFrame = draftAssistantFrame;
         this.replayDraftFixtureAction = replayDraftFixtureAction;
+        this.settingsAction = settingsAction;
         this.gamesPanel = new GameSessionsPanel(coachingAction);
         initialize();
         gamesPanel.addGameSelectionListener(this::selectedGameChanged);
@@ -75,6 +78,9 @@ public final class MainFrame extends JFrame {
         replayDraftFixture.setToolTipText("Replays the bundled Premier Draft fixture through the production ingestion pipeline");
         replayDraftFixture.addActionListener(event -> replayDraftFixtureAction.run());
 
+        JButton settings = new JButton("Settings");
+        settings.addActionListener(event -> settingsAction.accept(this));
+
         JButton rescan = new JButton("Clear all and rescan log file");
         rescan.addActionListener(event -> {
             gamesPanel.clear();
@@ -92,6 +98,7 @@ public final class MainFrame extends JFrame {
         actions.add(showDraftAssistant);
         actions.add(replayDraftFixture);
         actions.add(showMatchLog);
+        actions.add(settings);
         actions.add(rescan);
         footer.add(actions, BorderLayout.EAST);
 
