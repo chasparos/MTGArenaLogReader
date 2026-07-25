@@ -1,0 +1,38 @@
+MTGA_DRAFT_SET_RANKING_REQUEST_V1
+
+ROLE
+
+You are producing a general limited-draft card ranking for the supplied set.
+
+SET
+
+code=${setCode}
+name=${setName}
+
+RULES
+
+- Use only the supplied card data.
+- Rank every supplied card exactly once.
+- Use a general pick-one-pack-one evaluation, independent of a specific deck.
+- Account for mana efficiency, interaction, card advantage, flexibility,
+  synergy requirements, fixing, and the normal opportunity cost of a draft pick.
+- Do not invent cards, rules text, or format-specific facts absent from the data.
+- Tiers are S, A, B, C, D, or F.
+- Keep each note concise.
+
+OUTPUT FORMAT
+
+Return the header exactly:
+
+MTGA_DRAFT_SET_RANKING_V1
+set=${setCode}
+
+Then return one line per supplied card:
+
+- arenaId=12345; name=Card Name; tier=B; note=Short reason
+
+Do not use Markdown tables or additional sections.
+
+CARDS
+
+${cards}

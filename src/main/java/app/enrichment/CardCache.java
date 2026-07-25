@@ -12,6 +12,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 /** Persistent positive and negative cache for Arena card ID lookups.
@@ -82,6 +84,58 @@ public final class CardCache implements AutoCloseable {
         }
     }
 
+    public synchronized Optional<List<CardInfo>> findSet(
+            String setCode,
+            Duration maximumAge) {
+        String sql = """
+                SELECT cards_json, updated_at
+                FROM arena_set_cache
+                WHERE set_code = ?
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, normalizeSetCode(setCode));
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return Optional.empty();
+                Instant updatedAt = result.getTimestamp("updated_at").toInstant();
+                if (updatedAt.isBefore(Instant.now().minus(maximumAge))) {
+                    return Optional.empty();
+                }
+                CardInfo[] cards = gson.fromJson(
+                        result.getString("cards_json"), CardInfo[].class);
+                return Optional.of(cards == null ? List.of() : List.of(cards));
+            }
+        } catch (SQLException error) {
+            throw new IllegalStateException(
+                    "Could not read card cache for set=" + setCode, error);
+        }
+    }
+
+    /**
+     * Persists the complete set response and feeds Arena-addressable cards into
+     * the same per-card cache used by log enrichment.
+     */
+    public synchronized void putSet(String setCode, List<CardInfo> cards) {
+        List<CardInfo> snapshot = List.copyOf(cards == null ? List.of() : cards);
+        String sql = """
+                MERGE INTO arena_set_cache (set_code, cards_json, updated_at)
+                KEY (set_code) VALUES (?, ?, CURRENT_TIMESTAMP)
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, normalizeSetCode(setCode));
+            statement.setString(2, gson.toJson(snapshot));
+            statement.executeUpdate();
+            for (CardInfo card : snapshot) {
+                if (card != null && card.getArenaId() != null
+                        && card.getArenaId() > 0) {
+                    put(card.getArenaId(), Optional.of(card));
+                }
+            }
+        } catch (SQLException error) {
+            throw new IllegalStateException(
+                    "Could not write card cache for set=" + setCode, error);
+        }
+    }
+
     private void initializeSchema() throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate("""
@@ -95,7 +149,21 @@ public final class CardCache implements AutoCloseable {
                     """);
             // Migrates databases created by revisions before full Scryfall Card objects were retained.
             statement.executeUpdate("ALTER TABLE arena_card_cache ADD COLUMN IF NOT EXISTS cache_version INTEGER NOT NULL DEFAULT 1");
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS arena_set_cache (
+                        set_code VARCHAR(16) PRIMARY KEY,
+                        cards_json CLOB NOT NULL,
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+                    )
+                    """);
         }
+    }
+
+    private String normalizeSetCode(String setCode) {
+        if (setCode == null || setCode.isBlank()) {
+            throw new IllegalArgumentException("setCode is empty");
+        }
+        return setCode.strip().toLowerCase();
     }
 
     @Override

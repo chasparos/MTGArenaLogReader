@@ -12,10 +12,10 @@ import java.util.regex.Pattern;
  * Converts the first displayable activated ability in Oracle text into the
  * compact data rendered by the replay's permanent chip.
  */
-final class ActivatedAbilityParser {
+public final class ActivatedAbilityParser {
     private static final Pattern MANA = Pattern.compile("\\{([^}]+)}");
 
-    Badge parse(CardInfo card) {
+    public Badge parse(CardInfo card) {
         if (card == null) return null;
         String oracle = card.effectiveOracleText();
         if (oracle == null || oracle.isBlank()) return null;
@@ -75,9 +75,9 @@ final class ActivatedAbilityParser {
         return compact.length() <= 5 ? compact : "";
     }
 
-    record Badge(String manaCost, String textCost, boolean tap,
-                 List<String> manaOptions) {
-        Badge {
+    public record Badge(String manaCost, String textCost, boolean tap,
+                        List<String> manaOptions) {
+        public Badge {
             manaOptions = List.copyOf(manaOptions);
         }
     }

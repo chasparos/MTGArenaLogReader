@@ -7,10 +7,14 @@ import app.deck.tracking.DeckTracker;
 import app.deck.tracking.DeckTrackerListener;
 import app.deck.ui.DeckTrackerFrame;
 import app.draft.export.DraftAiExporter;
+import app.draft.export.DraftSetRankingExporter;
+import app.draft.catalog.DraftSetCatalogService;
 import app.draft.model.DraftUiModel;
 import app.draft.parsing.DraftLogParser;
 import app.draft.tracking.DraftTracker;
 import app.draft.ui.DraftAssistantFrame;
+import app.draft.ranking.DraftRankingParser;
+import app.draft.ranking.DraftRankingRepository;
 import app.coaching.application.CoachingService;
 import app.coaching.persistence.CoachingRepository;
 import app.coaching.ui.CoachingFrame;
@@ -148,7 +152,19 @@ public final class Application implements AutoCloseable {
 
         DraftUiModel draftUiModel = new DraftUiModel();
         DraftTracker draftTracker = new DraftTracker(new DraftLogParser(), draftUiModel);
-        DraftAssistantFrame draftFrame = new DraftAssistantFrame(draftUiModel, new DraftAiExporter());
+        DraftSetCatalogService draftSetCatalog = new DraftSetCatalogService(
+                scryfallClient, cardCache, restExecutor);
+        DraftAssistantFrame draftFrame = new DraftAssistantFrame(
+                draftUiModel,
+                new DraftAiExporter(),
+                draftSetCatalog,
+                new DraftSetRankingExporter(),
+                new DraftRankingParser(),
+                new DraftRankingRepository(
+                        gson,
+                        Path.of(System.getProperty("user.home"),
+                                ".arena-log-viewer", "draft-rankings")),
+                cardImageCache);
 
         WindowsDpapiApiKeyStore apiKeyStore = new WindowsDpapiApiKeyStore();
         MainFrame frame = new MainFrame(

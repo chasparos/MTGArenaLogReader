@@ -1,12 +1,20 @@
 package app.enrichment;
 
+import app.draft.model.DraftSet;
 import app.model.card.CardInfo;
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import kong.unirest.core.HttpResponse;
 import kong.unirest.core.Unirest;
 import kong.unirest.core.UnirestInstance;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -107,6 +115,95 @@ public final class ScryfallClient implements AutoCloseable {
         }
 
         return parseCard(response, "scryfallId=" + scryfallId, null);
+    }
+
+    public List<DraftSet> listSets() {
+        HttpResponse<String> response = unirest
+                .get("https://api.scryfall.com/sets")
+                .asString();
+        requireSuccess(response, "set catalog");
+        JsonObject root = JsonParser.parseString(response.getBody()).getAsJsonObject();
+        List<DraftSet> result = new ArrayList<>();
+        for (JsonElement element : root.getAsJsonArray("data")) {
+            if (!element.isJsonObject()) continue;
+            JsonObject set = element.getAsJsonObject();
+            String code = string(set, "code");
+            String name = string(set, "name");
+            if (code.isBlank() || name.isBlank()) continue;
+            result.add(new DraftSet(
+                    code,
+                    name,
+                    date(set, "released_at"),
+                    string(set, "set_type"),
+                    bool(set, "digital")));
+        }
+        result.sort(Comparator
+                .comparing(DraftSet::releasedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(DraftSet::name));
+        return List.copyOf(result);
+    }
+
+    /**
+     * Returns every Arena printing in a set, following Scryfall pagination.
+     */
+    public List<CardInfo> findArenaCardsInSet(String setCode) {
+        if (setCode == null || setCode.isBlank()) return List.of();
+        String nextPage = null;
+        List<CardInfo> result = new ArrayList<>();
+        do {
+            HttpResponse<String> response = nextPage == null
+                    ? unirest.get("https://api.scryfall.com/cards/search")
+                    .queryString("q", "e:" + setCode.strip().toLowerCase() + " game:arena")
+                    .queryString("unique", "prints")
+                    .queryString("order", "set")
+                    .asString()
+                    : unirest.get(nextPage).asString();
+            requireSuccess(response, "cards for set=" + setCode);
+            JsonObject page = JsonParser.parseString(response.getBody()).getAsJsonObject();
+            for (JsonElement element : page.getAsJsonArray("data")) {
+                if (!element.isJsonObject()) continue;
+                CardInfo card = gson.fromJson(element, CardInfo.class);
+                if (card != null) result.add(card);
+            }
+            nextPage = bool(page, "has_more") ? string(page, "next_page") : null;
+            if (nextPage != null && !nextPage.isBlank()) {
+                pauseForScryfall();
+            }
+        } while (nextPage != null && !nextPage.isBlank());
+        return List.copyOf(result);
+    }
+
+    private void pauseForScryfall() {
+        try {
+            Thread.sleep(110);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Interrupted while paging Scryfall", interrupted);
+        }
+    }
+
+    private void requireSuccess(HttpResponse<String> response, String lookup) {
+        if (response.getStatus() < 200 || response.getStatus() >= 300) {
+            throw new IllegalStateException(
+                    "Scryfall HTTP " + response.getStatus() + " for " + lookup);
+        }
+    }
+
+    private String string(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        return value == null || value.isJsonNull() ? "" : value.getAsString();
+    }
+
+    private boolean bool(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        return value != null && !value.isJsonNull() && value.getAsBoolean();
+    }
+
+    private LocalDate date(JsonObject object, String key) {
+        String value = string(object, key);
+        return value.isBlank() ? null : LocalDate.parse(value);
     }
 
     private Optional<CardInfo> parseCard(
