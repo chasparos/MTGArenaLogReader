@@ -45,13 +45,6 @@ public final class GameView extends JPanel implements Scrollable {
     private static final int CARD_TYPE_ICON_SIZE = 11;
     private static final int CARD_TYPE_GAP = 6;
     private static final Pattern MANA = Pattern.compile("\\{([^}]+)}");
-    private static final Pattern POWER_TOUGHNESS = Pattern.compile(
-            "\\(?(-?\\d+|\\*)/(-?\\d+|\\*)\\)?");
-    private static final List<String> KEYWORDS = List.of(
-            "deathtouch", "defender", "double strike", "first strike", "flying",
-            "haste", "hexproof", "indestructible", "lifelink", "menace",
-            "reach", "trample", "vigilance", "ward");
-
     private final GameModel model;
     private final GameEventProjector projector;
     private final GameSession session;
@@ -68,6 +61,7 @@ public final class GameView extends JPanel implements Scrollable {
     private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE - 2);
     private final ManaCostPainter miniManaCostPainter = new ManaCostPainter(svgAssets, 8);
     private final ActivatedAbilityParser activatedAbilityParser = new ActivatedAbilityParser();
+    private final ReplayFragmentParser replayFragmentParser = new ReplayFragmentParser();
     private JWindow previewWindow;
     private CardHitbox hovered;
     private CoachingActions coachingActions;
@@ -648,12 +642,12 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private RichLayout layoutEvent(Graphics2D g, GameEvent event, int startX, int maxX, int topY, boolean draw) {
-        List<Fragment> fragments = fragments(event);
+        List<ReplayFragment> fragments = replayFragmentParser.parse(event);
         FontMetrics fm = g.getFontMetrics(getFont());
         int lineHeight = Math.max(RICH_LINE_HEIGHT, fm.getHeight());
         int x = startX;
         int y = topY;
-        for (Fragment fragment : fragments) {
+        for (ReplayFragment fragment : fragments) {
             int width = fragmentWidth(g, fragment);
             if (x > startX && x + width > maxX) {
                 x = startX;
@@ -665,131 +659,7 @@ public final class GameView extends JPanel implements Scrollable {
         return new RichLayout(y - topY + lineHeight);
     }
 
-    private List<Fragment> fragments(GameEvent event) {
-        String text = event.getText() == null ? "" : event.getText();
-        List<CardMatchCandidate> cards = event.getCards().stream()
-                .filter(Objects::nonNull)
-                .filter(c -> c.getName() != null && !c.getName().isBlank())
-                .flatMap(card -> {
-                    List<CardMatchCandidate> candidates = new ArrayList<>();
-                    candidates.add(new CardMatchCandidate(card, card.getName()));
-                    for (String face : card.getName().split("\\s+//\\s+")) {
-                        if (!face.isBlank() && !face.equals(card.getName())) {
-                            candidates.add(new CardMatchCandidate(card, face));
-                        }
-                    }
-                    return candidates.stream();
-                })
-                .sorted(Comparator.comparingInt((CardMatchCandidate c) -> c.label().length()).reversed())
-                .toList();
-        List<Fragment> result = new ArrayList<>();
-        int pos = 0;
-        while (pos < text.length()) {
-            Match next = nextMatch(text, pos, cards);
-            if (next == null) {
-                appendTextAndMana(result, text.substring(pos));
-                break;
-            }
-            if (next.start() > pos) appendTextAndMana(result, text.substring(pos, next.start()));
-            result.add(new CardFragment(next.card(), next.label(),
-                    roomStateLabel(event, next.card(), next.label()), null));
-            pos = next.end();
-        }
-        if (text.isEmpty()) result.add(new TextFragment(""));
-        return result;
-    }
-
-    private Match nextMatch(String text, int from, List<CardMatchCandidate> cards) {
-        Match best = null;
-        for (CardMatchCandidate candidate : cards) {
-            int at = text.indexOf(candidate.label(), from);
-            if (at < 0) continue;
-            Match match = new Match(at, at + candidate.label().length(),
-                    candidate.card(), candidate.label());
-            if (best == null || match.start() < best.start()
-                    || (match.start() == best.start() && match.end() > best.end())) best = match;
-        }
-        return best;
-    }
-
-    private String roomStateLabel(GameEvent event, CardInfo card, String renderedLabel) {
-        for (BoardPermanentSnapshot permanent : event.getBattlefieldObservation()) {
-            if (permanent.getCard() == null
-                    || !java.util.Objects.equals(permanent.getCard().getArenaId(), card.getArenaId())
-                    || permanent.getUnlockedRoomHalves().isEmpty()) continue;
-            return "unlocked: " + String.join(", ", permanent.getUnlockedRoomHalves());
-        }
-        if (card.getName() != null && card.getName().contains(" // ")
-                && !renderedLabel.equals(card.getName())
-                && event.getText() != null && event.getText().contains("casts " + renderedLabel)) {
-            return "unlock";
-        }
-        return "";
-    }
-
-    private void appendTextAndMana(List<Fragment> out, String text) {
-        Matcher matcher = MANA.matcher(text);
-        int pos = 0;
-        while (matcher.find()) {
-            appendWords(out, text.substring(pos, matcher.start()));
-            out.add(new ManaFragment(matcher.group(1)));
-            pos = matcher.end();
-        }
-        appendWords(out, text.substring(pos));
-    }
-
-    private void appendWords(List<Fragment> out, String text) {
-        int pos = 0;
-        while (pos < text.length()) {
-            MatchToken token = nextDecoratedToken(text, pos);
-            if (token == null) {
-                appendPlainWords(out, text.substring(pos));
-                return;
-            }
-            if (token.start() > pos) appendPlainWords(out, text.substring(pos, token.start()));
-            out.add(token.fragment());
-            pos = token.end();
-        }
-    }
-
-    private MatchToken nextDecoratedToken(String text, int from) {
-        MatchToken best = null;
-
-        Matcher pt = POWER_TOUGHNESS.matcher(text);
-        if (pt.find(from)) {
-            best = new MatchToken(pt.start(), pt.end(),
-                    new PowerToughnessFragment(pt.group(1), pt.group(2)));
-        }
-
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (String keyword : KEYWORDS) {
-            int at = lower.indexOf(keyword, from);
-            if (at < 0 || !wordBoundary(lower, at, at + keyword.length())) continue;
-            MatchToken candidate = new MatchToken(at, at + keyword.length(),
-                    new KeywordFragment(keyword, displayKeyword(keyword)));
-            if (best == null || candidate.start() < best.start()) best = candidate;
-        }
-        return best;
-    }
-
-    private void appendPlainWords(List<Fragment> out, String text) {
-        Matcher matcher = Pattern.compile("\\s+|\\S+").matcher(text);
-        while (matcher.find()) out.add(new TextFragment(matcher.group()));
-    }
-
-    private boolean wordBoundary(String text, int start, int end) {
-        boolean left = start == 0 || !Character.isLetterOrDigit(text.charAt(start - 1));
-        boolean right = end >= text.length() || !Character.isLetterOrDigit(text.charAt(end));
-        return left && right;
-    }
-
-    private String displayKeyword(String keyword) {
-        return Arrays.stream(keyword.split(" "))
-                .map(part -> Character.toUpperCase(part.charAt(0)) + part.substring(1))
-                .collect(java.util.stream.Collectors.joining(" "));
-    }
-
-    private int fragmentWidth(Graphics2D g, Fragment fragment) {
+    private int fragmentWidth(Graphics2D g, ReplayFragment fragment) {
         FontMetrics fm = g.getFontMetrics(getFont());
         if (fragment instanceof TextFragment t) return fm.stringWidth(t.text());
         if (fragment instanceof ManaFragment) return SYMBOL_SIZE + 2;
@@ -812,12 +682,12 @@ public final class GameView extends JPanel implements Scrollable {
                 + CHIP_X_PADDING * 2 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
-    private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY,
+    private void paintFragment(Graphics2D g, ReplayFragment fragment, int x, int topY,
                                int lineHeight, GameEvent event) {
         paintFragment(g, fragment, x, topY, lineHeight, event, true);
     }
 
-    private void paintFragment(Graphics2D g, Fragment fragment, int x, int topY,
+    private void paintFragment(Graphics2D g, ReplayFragment fragment, int x, int topY,
                                int lineHeight, GameEvent event, boolean registerHitbox) {
         FontMetrics fm = g.getFontMetrics(getFont());
         int baseline = topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
@@ -1615,17 +1485,6 @@ public final class GameView extends JPanel implements Scrollable {
         }
     }
 
-    private sealed interface Fragment permits TextFragment, CardFragment, ManaFragment,
-            PowerToughnessFragment, KeywordFragment {}
-    private record TextFragment(String text) implements Fragment {}
-    private record CardFragment(CardInfo card, String label, String stateLabel,
-                                BoardPermanentSnapshot permanent) implements Fragment {}
-    private record ManaFragment(String symbol) implements Fragment {}
-    private record PowerToughnessFragment(String power, String toughness) implements Fragment {}
-    private record KeywordFragment(String keyword, String label) implements Fragment {}
-    private record MatchToken(int start, int end, Fragment fragment) {}
-    private record Match(int start, int end, CardInfo card, String label) {}
-    private record CardMatchCandidate(CardInfo card, String label) {}
     private record RichLayout(int height) {}
     private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event,
                               BoardPermanentSnapshot permanent) {}
