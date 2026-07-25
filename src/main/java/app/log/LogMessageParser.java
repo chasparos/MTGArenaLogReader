@@ -47,6 +47,9 @@ public final class LogMessageParser {
 
     private String classify(String line) {
         if (line.contains("DETAILED LOGS")) return "SYSTEM";
+        if (line.contains("Draft.Notify")
+                || line.contains("EventPlayerDraftMakePick")
+                || line.contains("EventSetDeckV3")) return "DRAFT";
         if (line.contains("ResultReason_") || line.contains("MatchState_GameComplete")) return "RESULT";
         if (line.contains("Connecting to matchId") || line.contains("matchGameRoomStateChangedEvent")) return "MATCH";
         if (line.contains("GameStateMessage") || line.contains("greToClientEvent")) return "GAME";
@@ -82,14 +85,62 @@ public final class LogMessageParser {
     private Set<Long> extractCardIds(String line) {
         Set<Long> result = new LinkedHashSet<>();
         String trimmed = line.stripLeading();
-        if (!trimmed.startsWith("{")) return result;
-
-        try {
-            collectGrpIds(JsonParser.parseString(trimmed), result);
-        } catch (RuntimeException ignored) {
-            // Malformed records remain available as raw messages.
+        if (trimmed.startsWith("{")) {
+            try {
+                collectGrpIds(JsonParser.parseString(trimmed), result);
+            } catch (RuntimeException ignored) {
+                // Malformed records remain available as raw messages.
+            }
         }
+        collectDraftIds(line, result);
         return result;
+    }
+
+    private void collectDraftIds(String line, Set<Long> target) {
+        try {
+            if (line.contains("Draft.Notify")) {
+                int marker = line.indexOf("Draft.Notify");
+                int start = line.indexOf('{', marker);
+                JsonObject object = JsonParser.parseString(line.substring(start).strip()).getAsJsonObject();
+                String cards = stringAt(object, "PackCards");
+                for (String part : cards.split(",")) {
+                    if (!part.isBlank()) target.add(Long.parseLong(part.trim()));
+                }
+                return;
+            }
+            if (!line.contains("\"request\"")) return;
+            if (!line.contains("EventPlayerDraftMakePick") && !line.contains("EventSetDeckV3")) return;
+
+            int marker = line.indexOf("Event");
+            int start = line.indexOf('{', marker);
+            JsonObject envelope = JsonParser.parseString(line.substring(start).strip()).getAsJsonObject();
+            JsonObject request = JsonParser.parseString(stringAt(envelope, "request")).getAsJsonObject();
+            collectDraftRequestIds(request, target);
+        } catch (RuntimeException ignored) {
+            // Draft enrichment is best effort and must not block the observation.
+        }
+    }
+
+    private void collectDraftRequestIds(JsonElement element, Set<Long> target) {
+        if (element == null || element.isJsonNull()) return;
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) collectDraftRequestIds(child, target);
+            return;
+        }
+        if (!element.isJsonObject()) return;
+
+        JsonObject object = element.getAsJsonObject();
+        if (object.has("cardId") && object.get("cardId").isJsonPrimitive()) {
+            long id = object.get("cardId").getAsLong();
+            if (id > 0) target.add(id);
+        }
+        if (object.has("GrpIds") && object.get("GrpIds").isJsonArray()) {
+            for (JsonElement child : object.getAsJsonArray("GrpIds")) {
+                long id = child.getAsLong();
+                if (id > 0) target.add(id);
+            }
+        }
+        for (var entry : object.entrySet()) collectDraftRequestIds(entry.getValue(), target);
     }
 
     private void collectGrpIds(JsonElement element, Set<Long> target) {

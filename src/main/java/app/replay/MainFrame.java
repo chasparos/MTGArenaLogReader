@@ -2,6 +2,8 @@ package app.replay;
 
 import app.deck.tracking.DeckTracker;
 import app.deck.ui.DeckTrackerFrame;
+import app.draft.tracking.DraftTracker;
+import app.draft.ui.DraftAssistantFrame;
 import app.model.session.MatchSession;
 import app.model.log.LogMessageInterface;
 
@@ -29,11 +31,17 @@ public final class MainFrame extends JFrame {
     private final Consumer<Void> closeAction;
     private final DeckTracker deckTracker;
     private final DeckTrackerFrame deckTrackerFrame;
+    private final DraftTracker draftTracker;
+    private final DraftAssistantFrame draftAssistantFrame;
+    private final Runnable replayDraftFixtureAction;
 
     public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker,
                      DeckTrackerFrame deckTrackerFrame,
+                     DraftTracker draftTracker,
+                     DraftAssistantFrame draftAssistantFrame,
                      Consumer<MatchSession> coachingAction,
                      Runnable rescanAction,
+                     Runnable replayDraftFixtureAction,
                      Consumer<Void> closeAction) {
         super("MTG Arena Parallel Log");
         this.uiQueue = uiQueue;
@@ -41,6 +49,9 @@ public final class MainFrame extends JFrame {
         this.closeAction = closeAction;
         this.deckTracker = deckTracker;
         this.deckTrackerFrame = deckTrackerFrame;
+        this.draftTracker = draftTracker;
+        this.draftAssistantFrame = draftAssistantFrame;
+        this.replayDraftFixtureAction = replayDraftFixtureAction;
         this.gamesPanel = new GameSessionsPanel(coachingAction);
         initialize();
         gamesPanel.addGameSelectionListener(this::selectedGameChanged);
@@ -57,10 +68,18 @@ public final class MainFrame extends JFrame {
         JButton showMatchLog = new JButton("Show match log");
         showMatchLog.addActionListener(event -> showMatchLog());
 
+        JButton showDraftAssistant = new JButton("Show draft assistant");
+        showDraftAssistant.addActionListener(event -> draftAssistantFrame.open());
+
+        JButton replayDraftFixture = new JButton("Replay test draft");
+        replayDraftFixture.setToolTipText("Replays the bundled Premier Draft fixture through the production ingestion pipeline");
+        replayDraftFixture.addActionListener(event -> replayDraftFixtureAction.run());
+
         JButton rescan = new JButton("Clear all and rescan log file");
         rescan.addActionListener(event -> {
             gamesPanel.clear();
             deckTracker.reset();
+            draftTracker.reset();
             rescanAction.run();
             status.setText("Rescanning Player.log from the beginning");
         });
@@ -70,6 +89,8 @@ public final class MainFrame extends JFrame {
         footer.add(status, BorderLayout.WEST);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         actions.add(showDeckTracker);
+        actions.add(showDraftAssistant);
+        actions.add(replayDraftFixture);
         actions.add(showMatchLog);
         actions.add(rescan);
         footer.add(actions, BorderLayout.EAST);
@@ -94,6 +115,7 @@ public final class MainFrame extends JFrame {
         uiQueue.drainTo(batch, 256);
         for (LogMessageInterface message : batch) {
             deckTracker.accept(message);
+            draftTracker.accept(message);
             gamesPanel.accept(message);
         }
         status.setText("Queued UI messages: " + uiQueue.size());

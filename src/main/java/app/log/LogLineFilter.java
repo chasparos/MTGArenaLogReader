@@ -21,6 +21,9 @@ public final class LogLineFilter {
             "ClientMessageType_",
             "GameStateMessage",
             "MatchGameRoomStateType_",
+            "Draft.Notify",
+            "EventPlayerDraftMakePick",
+            "EventSetDeckV3",
             "ResultReason_"
     );
 

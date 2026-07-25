@@ -6,6 +6,11 @@ import app.deck.persistence.DeckCache;
 import app.deck.tracking.DeckTracker;
 import app.deck.tracking.DeckTrackerListener;
 import app.deck.ui.DeckTrackerFrame;
+import app.draft.export.DraftAiExporter;
+import app.draft.model.DraftUiModel;
+import app.draft.parsing.DraftLogParser;
+import app.draft.tracking.DraftTracker;
+import app.draft.ui.DraftAssistantFrame;
 import app.coaching.application.CoachingService;
 import app.coaching.persistence.CoachingRepository;
 import app.coaching.ui.CoachingFrame;
@@ -26,6 +31,11 @@ import com.google.gson.GsonBuilder;
 
 import javax.swing.*;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -134,16 +144,43 @@ public final class Application implements AutoCloseable {
                 new CoachingService(coachingRepository, new MatchAiExporter());
         CoachingFrame coachingFrame = new CoachingFrame(coachingService);
 
+        DraftUiModel draftUiModel = new DraftUiModel();
+        DraftTracker draftTracker = new DraftTracker(new DraftLogParser(), draftUiModel);
+        DraftAssistantFrame draftFrame = new DraftAssistantFrame(draftUiModel, new DraftAiExporter());
+
         MainFrame frame = new MainFrame(
                 uiQueue,
                 deckTracker,
                 deckFrame,
+                draftTracker,
+                draftFrame,
                 coachingFrame::open,
                 this::rescanLog,
+                () -> replayDraftFixture(draftTracker, draftFrame),
                 ignored -> close());
         frame.setVisible(true);
     }
 
+
+    private void replayDraftFixture(DraftTracker draftTracker, DraftAssistantFrame draftFrame) {
+        draftTracker.reset();
+        restExecutor.submit(() -> {
+            try (InputStream input = Application.class.getResourceAsStream("/logs/premier-draft.log")) {
+                if (input == null) throw new IllegalStateException("Missing /logs/premier-draft.log");
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                    long sequence = 9_000_000L;
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.isBlank()) continue;
+                        filteredLogQueue.put(new RawLogEntry(sequence++, Instant.now(), line));
+                    }
+                }
+                SwingUtilities.invokeLater(draftFrame::open);
+            } catch (Throwable error) {
+                reportError(error);
+            }
+        });
+    }
 
     private void rescanLog() {
         filteredLogQueue.clear();
