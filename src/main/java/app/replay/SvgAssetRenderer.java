@@ -5,6 +5,7 @@ import com.github.weisj.jsvg.parser.SVGLoader;
 import com.github.weisj.jsvg.view.ViewBox;
 
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,6 +33,26 @@ public final class SvgAssetRenderer {
         } finally {
             copy.dispose();
         }
+    }
+
+    public boolean paintTinted(
+            Graphics2D graphics, String resourcePath,
+            int x, int y, int width, int height, Color color) {
+        BufferedImage image = new BufferedImage(
+                width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D imageGraphics = image.createGraphics();
+        boolean painted;
+        try {
+            painted = paint(imageGraphics, resourcePath, 0, 0, width, height);
+            if (!painted) return false;
+            imageGraphics.setComposite(AlphaComposite.SrcIn);
+            imageGraphics.setColor(color);
+            imageGraphics.fillRect(0, 0, width, height);
+        } finally {
+            imageGraphics.dispose();
+        }
+        graphics.drawImage(image, x, y, null);
+        return true;
     }
 
     private Optional<SVGDocument> load(String resourcePath) {

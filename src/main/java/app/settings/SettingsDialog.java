@@ -10,12 +10,17 @@ import java.util.Arrays;
  */
 public final class SettingsDialog extends JDialog {
     private final ApiKeyStore apiKeyStore;
+    private final ThemeService themes;
     private final JPasswordField apiKey = new JPasswordField(34);
+    private final JComboBox<ThemeMode> theme =
+            new JComboBox<>(ThemeMode.values());
     private final JLabel status = new JLabel();
 
-    public SettingsDialog(Window owner, ApiKeyStore apiKeyStore) {
+    public SettingsDialog(
+            Window owner, ApiKeyStore apiKeyStore, ThemeService themes) {
         super(owner, "Settings", ModalityType.APPLICATION_MODAL);
         this.apiKeyStore = apiKeyStore;
+        this.themes = themes;
         initialize();
         refreshStatus();
     }
@@ -48,6 +53,25 @@ public final class SettingsDialog extends JDialog {
         field.add(new JLabel("OpenAI API key:"), BorderLayout.WEST);
         field.add(apiKey, BorderLayout.CENTER);
 
+        JPanel themeField = new JPanel(new BorderLayout(8, 0));
+        themeField.add(new JLabel("Theme:"), BorderLayout.WEST);
+        theme.setSelectedItem(themes.selected());
+        theme.addActionListener(event -> {
+            ThemeMode selected = (ThemeMode) theme.getSelectedItem();
+            try {
+                themes.select(selected);
+                pack();
+                setLocationRelativeTo(getOwner());
+            } catch (RuntimeException error) {
+                status.setText("Could not change theme: " + error.getMessage());
+            }
+        });
+        themeField.add(theme, BorderLayout.CENTER);
+
+        JPanel fields = new JPanel(new GridLayout(2, 1, 0, 8));
+        fields.add(themeField);
+        fields.add(field);
+
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         actions.add(remove);
         actions.add(cancel);
@@ -56,7 +80,7 @@ public final class SettingsDialog extends JDialog {
         JPanel root = new JPanel(new BorderLayout(0, 10));
         root.setBorder(new EmptyBorder(14, 14, 14, 14));
         root.add(explanation, BorderLayout.NORTH);
-        root.add(field, BorderLayout.CENTER);
+        root.add(fields, BorderLayout.CENTER);
 
         JPanel footer = new JPanel(new BorderLayout(8, 0));
         footer.add(status, BorderLayout.CENTER);

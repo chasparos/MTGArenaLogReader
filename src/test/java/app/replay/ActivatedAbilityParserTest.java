@@ -41,6 +41,27 @@ class ActivatedAbilityParserTest {
         assertNull(parser.parse(card("Whenever this attacks: draw a card.")));
     }
 
+    @Test
+    void equipReminderTextDoesNotDuplicateEquipCost() {
+        ActivatedAbilityParser.Badge badge = parser.parse(card(
+                "Equip {2} ({2}: Attach to target creature you control.)"));
+
+        assertNotNull(badge);
+        assertEquals("{2}", badge.manaCost());
+        assertEquals("Eq", badge.textCost());
+    }
+
+    @Test
+    void compactsCompoundNonManaCosts() {
+        ActivatedAbilityParser.Badge badge = parser.parse(card(
+                "{T}, Pay {2}, Remove a counter from this, Sacrifice this: Draw."));
+
+        assertNotNull(badge);
+        assertTrue(badge.tap());
+        assertEquals("{2}", badge.manaCost());
+        assertEquals("−ctr·Sac", badge.textCost());
+    }
+
     private CardInfo card(String oracleText) {
         CardInfo card = new CardInfo();
         card.setOracleText(oracleText);

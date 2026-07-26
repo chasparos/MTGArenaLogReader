@@ -16,6 +16,7 @@ import app.draft.ranking.DraftRankingParser;
 import app.draft.ranking.DraftRankingRepository;
 import app.enrichment.CardImageCache;
 import app.model.card.CardInfo;
+import app.ui.SvgIcon;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -57,8 +58,14 @@ public final class DraftAssistantFrame extends JFrame {
     private final JLabel deckMetrics = new JLabel("No deck observed");
     private final JLabel pipMetrics = new JLabel("Pips: —");
     private final ManaCurvePanel manaCurve = new ManaCurvePanel();
-    private final JButton previous = new JButton("Previous");
-    private final JButton next = new JButton("Next");
+    private final JButton previousPack = navigationButton(
+            "/ui/chevrons-left.svg", "Previous pack");
+    private final JButton previous = navigationButton(
+            "/ui/chevron-left.svg", "Previous pick");
+    private final JButton next = navigationButton(
+            "/ui/chevron-right.svg", "Next pick");
+    private final JButton nextPack = navigationButton(
+            "/ui/chevrons-right.svg", "Next pack");
     private final JButton copyRankingRequest =
             new JButton("Copy set ranking request");
     private final JButton importRanking =
@@ -155,33 +162,45 @@ public final class DraftAssistantFrame extends JFrame {
 
     private JPanel navigation() {
         JPanel navigation = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        previousPack.addActionListener(event -> model.previousPack());
         previous.addActionListener(event -> model.previous());
         next.addActionListener(event -> model.next());
+        nextPack.addActionListener(event -> model.nextPack());
         JButton copyPick = new JButton("Copy AI pick request");
         copyPick.addActionListener(event -> copyPickRequest());
+        navigation.add(previousPack);
         navigation.add(previous);
         navigation.add(next);
+        navigation.add(nextPack);
         navigation.add(copyPick);
         return navigation;
     }
 
+    private static JButton navigationButton(
+            String resource, String description) {
+        JButton button = new JButton(new SvgIcon(resource, 16));
+        button.setToolTipText(description);
+        button.getAccessibleContext().setAccessibleName(description);
+        button.setPreferredSize(new Dimension(36, 30));
+        return button;
+    }
+
     private JComponent analyzedWorkspace(
             JPanel cards, JLabel metrics, JLabel pips, ManaCurvePanel curve) {
-        JPanel analysis = new JPanel(new BorderLayout(8, 4));
-        analysis.setBorder(new EmptyBorder(6, 6, 6, 6));
+        JPanel analysis = new JPanel(new BorderLayout(18, 0));
+        analysis.setBorder(new EmptyBorder(7, 9, 7, 9));
+        analysis.setPreferredSize(new Dimension(100, 108));
         JPanel labels = new JPanel(new GridLayout(2, 1, 0, 2));
+        labels.setPreferredSize(new Dimension(290, 76));
         labels.add(metrics);
         labels.add(pips);
-        analysis.add(labels, BorderLayout.NORTH);
+        analysis.add(labels, BorderLayout.WEST);
         analysis.add(curve, BorderLayout.CENTER);
 
-        JSplitPane split = new JSplitPane(
-                JSplitPane.VERTICAL_SPLIT,
-                analysis,
-                cardScroll(cards));
-        split.setResizeWeight(0.25);
-        split.setDividerLocation(185);
-        return split;
+        JPanel workspace = new JPanel(new BorderLayout());
+        workspace.add(analysis, BorderLayout.NORTH);
+        workspace.add(cardScroll(cards), BorderLayout.CENTER);
+        return workspace;
     }
 
     private void refresh() {
@@ -190,6 +209,8 @@ public final class DraftAssistantFrame extends JFrame {
         int count = model.size();
         previous.setEnabled(index > 0);
         next.setEnabled(index >= 0 && index + 1 < count);
+        previousPack.setEnabled(model.hasPreviousPack());
+        nextPack.setEnabled(model.hasNextPack());
         clearCards();
         if (state == null) {
             position.setText("No draft loaded");

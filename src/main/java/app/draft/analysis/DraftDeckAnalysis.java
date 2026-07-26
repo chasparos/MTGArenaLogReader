@@ -13,10 +13,25 @@ import java.util.regex.Pattern;
 
 public final class DraftDeckAnalysis {
     private static final Pattern MANA_SYMBOL = Pattern.compile("\\{([^}]+)}");
-    private static final List<String> REMOVAL_PHRASES = List.of(
-            "destroy target", "exile target", "deals ", "damage to target",
-            "gets -", "counter target spell", "return target creature",
-            "fight target", "fights target");
+    private static final List<Pattern> REMOVAL_PATTERNS = List.of(
+            Pattern.compile("\\bdestroy (?:target|each|all|up to one target) "
+                    + "(?:artifact|battle|creature|enchantment|land|"
+                    + "nonland permanent|permanent|planeswalker)\\b"),
+            Pattern.compile("\\bexile (?:target|each|all|up to one target) "
+                    + "(?:artifact|battle|creature|enchantment|"
+                    + "nonland permanent|permanent|planeswalker)\\b"),
+            Pattern.compile("\\bdeal(?:s)?\\s+[^.\\n]{0,45}\\s+damage to "
+                    + "(?:any target|target (?:creature|planeswalker)|"
+                    + "each creature|all creatures)\\b"),
+            Pattern.compile("\\btarget creature gets -[^.\\n]{0,18}/-"),
+            Pattern.compile("\\benchanted creature gets -[^.\\n]{0,18}/-"),
+            Pattern.compile("\\breturn target (?:creature|nonland permanent|"
+                    + "permanent) to (?:its|their) owner's hand\\b"),
+            Pattern.compile("\\b(?:target creature you control )?"
+                    + "fights? target creature\\b"),
+            Pattern.compile("\\b(?:target player|each opponent) sacrifices? "
+                    + "(?:a|one|that many) (?:creature|permanent)\\b"),
+            Pattern.compile("\\b(?:destroy|exile) all creatures\\b"));
 
     public Summary analyze(
             List<DraftCardCount> counts,
@@ -55,7 +70,8 @@ public final class DraftDeckAnalysis {
         String rules = card.effectiveOracleText();
         if (rules == null) return false;
         String lower = rules.toLowerCase(Locale.ROOT);
-        return REMOVAL_PHRASES.stream().anyMatch(lower::contains);
+        return REMOVAL_PATTERNS.stream()
+                .anyMatch(pattern -> pattern.matcher(lower).find());
     }
 
     private void addPips(Map<String, Integer> pips, CardInfo card, int quantity) {

@@ -28,6 +28,7 @@ import app.enrichment.InformationCollector;
 import app.enrichment.ScryfallClient;
 import app.replay.MainFrame;
 import app.settings.SettingsDialog;
+import app.settings.ThemeService;
 import app.settings.WindowsDpapiApiKeyStore;
 import app.log.LogMessageReader;
 import app.log.LogTailReader;
@@ -57,6 +58,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * <p><strong>Architectural role:</strong> This type belongs to the composition and lifecycle boundary; it wires subsystems without taking ownership of domain interpretation.</p>
  */
 public final class Application implements AutoCloseable {
+    private final ThemeService themes;
     private final BlockingQueue<RawLogEntry> filteredLogQueue = new LinkedBlockingQueue<>(10_000);
     private final BlockingQueue<LogMessageInterface> enrichmentQueue = new LinkedBlockingQueue<>(5_000);
     private final BlockingQueue<LogMessageInterface> uiQueue = new LinkedBlockingQueue<>(5_000);
@@ -81,19 +83,16 @@ public final class Application implements AutoCloseable {
     private CoachingRepository coachingRepository;
 
     public static void main(String[] args) {
-        installSystemLookAndFeel();
+        ThemeService themes = new ThemeService();
+        themes.applySaved();
         SwingUtilities.invokeLater(() -> {
-            Application application = new Application();
+            Application application = new Application(themes);
             application.start(args);
         });
     }
 
-    private static void installSystemLookAndFeel() {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception error) {
-            System.err.println("Unable to apply the system look and feel: " + error.getMessage());
-        }
+    private Application(ThemeService themes) {
+        this.themes = themes;
     }
 
     private void start(String[] args) {
@@ -176,7 +175,8 @@ public final class Application implements AutoCloseable {
                 coachingFrame::open,
                 this::rescanLog,
                 () -> replayDraftFixture(draftTracker, draftFrame),
-                owner -> new SettingsDialog(owner, apiKeyStore).open(),
+                owner -> new SettingsDialog(
+                        owner, apiKeyStore, themes).open(),
                 ignored -> close());
         frame.setVisible(true);
     }

@@ -37,6 +37,37 @@ class DraftDeckAnalysisTest {
         assertEquals(0, summary.manaCurve().get(0));
     }
 
+    @Test
+    void removalRequiresInteractionWithARelevantPermanent() {
+        List<CardInfo> cards = List.of(
+                card(1, "Shock", "{R}", 1, "Instant",
+                        "Shock deals 2 damage to any target."),
+                card(2, "Murder", "{1}{B}{B}", 3, "Instant",
+                        "Destroy target creature."),
+                card(3, "Bounce", "{1}{U}", 2, "Instant",
+                        "Return target creature to its owner's hand."),
+                card(4, "Opponent ping", "{1}{R}", 2, "Enchantment",
+                        "Whenever a creature enters, this deals 1 damage "
+                                + "to each opponent."),
+                card(5, "Raise Dead", "{B}", 1, "Sorcery",
+                        "Return target creature card from your graveyard "
+                                + "to your hand."),
+                card(6, "Growth", "{G}", 1, "Instant",
+                        "Target creature gets +2/+2 until end of turn."));
+
+        Map<Long, CardInfo> byId = cards.stream().collect(
+                java.util.stream.Collectors.toMap(
+                        CardInfo::getArenaId, card -> card));
+        List<DraftCardCount> counts = cards.stream()
+                .map(card -> new DraftCardCount(card.getArenaId(), 1))
+                .toList();
+
+        DraftDeckAnalysis.Summary summary =
+                new DraftDeckAnalysis().analyze(counts, byId);
+
+        assertEquals(3, summary.removal());
+    }
+
     private CardInfo card(
             long id, String name, String manaCost, double cmc,
             String type, String oracle) {

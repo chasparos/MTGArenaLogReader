@@ -4,6 +4,7 @@ package app.replay;
 import app.model.card.CardInfo;
 import app.model.event.GameEvent;
 import app.model.game.BoardPermanentSnapshot;
+import app.model.game.CounterState;
 import app.model.game.PlayerTurnSnapshot;
 import app.model.log.LogMessageInterface;
 import app.model.log.ModelObject;
@@ -17,6 +18,7 @@ import app.projection.GameEventProjector;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
@@ -116,6 +118,15 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     public GameModel getModel() { return model; }
+
+    @Override
+    public void updateUI() {
+        super.updateUI();
+        setBackground(colorOr("Panel.background", new Color(0xF3F3F3)));
+        setForeground(colorOr("Label.foreground", Color.DARK_GRAY));
+        Font label = UIManager.getFont("Label.font");
+        if (label != null) setFont(label.deriveFont(13f));
+    }
 
     public void setModelChangedListener(Runnable listener) {
         modelChangedListener = listener == null ? () -> { } : listener;
@@ -671,7 +682,7 @@ public final class GameView extends JPanel implements Scrollable {
         }
         CardFragment cardFragment = (CardFragment) fragment;
         CardInfo card = cardFragment.card();
-        Font chipFont = getFont().deriveFont(Font.BOLD, Math.max(9f, getFont().getSize2D() - 1f));
+        Font chipFont = cardNameFont(cardFragment.label());
         FontMetrics chipMetrics = g.getFontMetrics(chipFont);
         int mana = manaCostPainter.width(card.getManaCost());
         int typeIcon = cardTypeResource(card) == null ? 0 : CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
@@ -720,15 +731,16 @@ public final class GameView extends JPanel implements Scrollable {
         Color base = cardColor(card);
         Color edge = blend(base, Color.BLACK, .28f);
         if (hot) base = blend(base, Color.WHITE, .18f);
+        Shape cardShape = cardChipShape(card, x, chipY, width, chipHeight);
         g.setColor(base);
-        g.fill(new RoundRectangle2D.Float(x, chipY, width, chipHeight, CHIP_ARC, CHIP_ARC));
+        g.fill(cardShape);
         g.setColor(edge);
-        g.draw(new RoundRectangle2D.Float(x, chipY, width, chipHeight, CHIP_ARC, CHIP_ARC));
+        g.draw(cardShape);
 
         Color textColor = contrast(base);
         g.setColor(textColor);
         Font oldFont = g.getFont();
-        Font chipFont = oldFont.deriveFont(Font.BOLD, Math.max(9f, oldFont.getSize2D() - 1f));
+        Font chipFont = cardNameFont(cardFragment.label());
         g.setFont(chipFont);
         FontMetrics chipMetrics = g.getFontMetrics();
         int textX = x + CHIP_X_PADDING;
@@ -746,7 +758,6 @@ public final class GameView extends JPanel implements Scrollable {
                 textX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
             textX += SYMBOL_SIZE + 3;
         }
-        int cardNameX = textX;
         int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
         g.drawString(cardFragment.label(), textX, textBaseline);
         textX += chipMetrics.stringWidth(cardFragment.label());
@@ -789,14 +800,152 @@ public final class GameView extends JPanel implements Scrollable {
                                 String.valueOf(permanent.getToughness())),
                         x + width, topY, lineHeight);
             }
-            paintActivatedAbilityMiniChip(g, card, cardNameX, topY, lineHeight);
-            paintPermanentAbilityMiniChip(g, permanent, x + width, topY);
-            paintTappedMiniChip(g, permanent, x, topY, lineHeight);
+            paintActivatedAbilityMiniChip(g, card, x - 3, topY, lineHeight);
+            paintPermanentAbilityMiniChip(
+                    g, permanent, x + width, topY, lineHeight);
+            paintRarityMiniChip(g, card, x, chipY);
+            paintTappedMiniChip(g, permanent, x + 10, chipY);
+            paintCounterMiniChip(g, permanent, x + width, chipY);
+        } else {
+            paintRarityMiniChip(g, card, x, chipY);
         }
         g.setFont(oldFont);
         if (registerHitbox) {
             cardHitboxes.add(new CardHitbox(bounds, card, event, cardFragment.permanent()));
         }
+    }
+
+    private Font cardNameFont(String name) {
+        String value = nullToEmpty(name);
+        float normal = Math.max(9f, getFont().getSize2D() - 1f);
+        float reduction = 0f;
+        if (value.contains(" // ")) reduction += 1f;
+        if (value.length() > 28) reduction += 1f;
+        if (value.length() > 42) reduction += 1f;
+        return getFont().deriveFont(
+                Font.BOLD, Math.max(8f, normal - reduction));
+    }
+
+    private Shape cardChipShape(
+            CardInfo card, int x, int y, int width, int height) {
+        String typeLine = card == null ? ""
+                : nullToEmpty(card.effectiveTypeLine()).toLowerCase(Locale.ROOT);
+        if (!typeLine.contains("legendary")) {
+            return new RoundRectangle2D.Float(
+                    x, y, width, height, CHIP_ARC, CHIP_ARC);
+        }
+        int shoulder = Math.min(7, Math.max(3, height / 4));
+        Path2D path = new Path2D.Float();
+        path.moveTo(x + 7, y);
+        path.lineTo(x + width * .17, y);
+        path.curveTo(x + width * .22, y,
+                x + width * .18, y - shoulder,
+                x + width * .26, y - shoulder);
+        path.curveTo(x + width * .23, y - shoulder - 3,
+                x + width * .31, y - shoulder - 3,
+                x + width * .35, y - shoulder);
+        path.lineTo(x + width * .65, y - shoulder);
+        path.curveTo(x + width * .69, y - shoulder - 3,
+                x + width * .77, y - shoulder - 3,
+                x + width * .74, y - shoulder);
+        path.curveTo(x + width * .82, y - shoulder,
+                x + width * .78, y,
+                x + width * .83, y);
+        path.lineTo(x + width - 7, y);
+        path.quadTo(x + width, y, x + width, y + 7);
+        path.lineTo(x + width, y + height - 7);
+        path.quadTo(x + width, y + height,
+                x + width - 7, y + height);
+        path.lineTo(x + 7, y + height);
+        path.quadTo(x, y + height, x, y + height - 7);
+        path.lineTo(x, y + 7);
+        path.quadTo(x, y, x + 7, y);
+        path.closePath();
+        return path;
+    }
+
+    private void paintRarityMiniChip(
+            Graphics2D g, CardInfo card, int leftX, int chipY) {
+        if (card == null || card.getRarity() == null) return;
+        Color rarity = switch (card.getRarity().toLowerCase(Locale.ROOT)) {
+            case "mythic" -> new Color(0xD95B27);
+            case "rare" -> new Color(0xC99B21);
+            case "uncommon" -> new Color(0x8B9DA8);
+            default -> new Color(0x404143);
+        };
+        int size = 9;
+        int x = leftX - 3;
+        int y = chipY - 5;
+        g.setColor(new Color(250, 250, 245, 235));
+        g.fillOval(x, y, size + 4, size + 4);
+        g.setColor(rarity);
+        g.drawOval(x, y, size + 4, size + 4);
+        if (!svgAssets.paintTinted(g, "/svg/rarity.svg",
+                x + 2, y + 2, size, size, rarity)) {
+            g.fillOval(x + 4, y + 4, size - 4, size - 4);
+        }
+    }
+
+    private void paintCounterMiniChip(
+            Graphics2D g, BoardPermanentSnapshot permanent,
+            int rightX, int chipY) {
+        List<CounterState> counters = permanent.getCounters().stream()
+                .filter(counter -> counter != null && counter.getCount() > 0)
+                .limit(3)
+                .toList();
+        if (counters.isEmpty()) return;
+        Font old = g.getFont();
+        Font compact = old.deriveFont(Font.BOLD, 8f);
+        FontMetrics metrics = g.getFontMetrics(compact);
+        int width = 5;
+        for (CounterState counter : counters) {
+            width += 9 + metrics.stringWidth(
+                    counter.getCount() > 1 ? String.valueOf(counter.getCount()) : "");
+        }
+        int x = rightX - width + 3;
+        int y = chipY - 5;
+        paintStateMiniChip(g, x, y, width, 14, new Color(0xE8E1F1));
+        int cursor = x + 3;
+        g.setFont(compact);
+        for (CounterState counter : counters) {
+            String resource = counterResource(counter);
+            if (!svgAssets.paint(g, resource, cursor, y + 3, 8, 8)) {
+                paintFallbackSymbol(g, "•", cursor, y + 3, 8);
+            }
+            cursor += 8;
+            if (counter.getCount() > 1) {
+                String count = String.valueOf(counter.getCount());
+                g.setColor(new Color(0x3D3547));
+                g.drawString(count, cursor,
+                        y + (14 - metrics.getHeight()) / 2 + metrics.getAscent());
+                cursor += metrics.stringWidth(count);
+            }
+            cursor += 1;
+        }
+        g.setFont(old);
+    }
+
+    private String counterResource(CounterState counter) {
+        String type = nullToEmpty(counter.getType()).toLowerCase(Locale.ROOT);
+        if (type.contains("+1/+1")) return "/svg/counter-plus.svg";
+        if (type.contains("-1/-1") || type.contains("−1/−1")) {
+            return "/svg/counter-minus.svg";
+        }
+        for (String known : List.of("charge", "doom", "flood", "fungus",
+                "gold", "lore", "loyalty", "shield", "stun", "time")) {
+            if (type.contains(known)) return "/svg/counter-" + known + ".svg";
+        }
+        return "/svg/counter-pin.svg";
+    }
+
+    private void paintStateMiniChip(
+            Graphics2D g, int x, int y, int width, int height, Color base) {
+        Shape chip = new RoundRectangle2D.Float(
+                x, y, width, height, height - 2, height - 2);
+        g.setColor(base);
+        g.fill(chip);
+        g.setColor(blend(base, Color.BLACK, .28f));
+        g.draw(chip);
     }
 
     private boolean[] roomUnlockSides(CardFragment fragment) {
@@ -815,17 +964,18 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void paintPermanentAbilityMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
-                                               int rightX, int topY) {
+                                               int rightX, int topY,
+                                               int lineHeight) {
         List<String> abilities = permanent.getEvergreenAbilities();
         if (abilities == null || abilities.isEmpty()) return;
         int visible = Math.min(4, abilities.size());
-        int iconSize = 10;
-        int padding = 3;
-        int gap = 2;
+        int iconSize = 8;
+        int padding = 2;
+        int gap = 1;
         int width = padding * 2 + visible * iconSize + Math.max(0, visible - 1) * gap;
         int height = iconSize + padding * 2;
-        int x = rightX - width + 5;
-        int y = topY;
+        int x = rightX - width - 4;
+        int y = topY + lineHeight - height - 1;
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
@@ -835,30 +985,29 @@ public final class GameView extends JPanel implements Scrollable {
         g.draw(chip);
         int iconX = x + padding;
         for (int i = 0; i < visible; i++) {
-            paintKeyword(g, abilities.get(i), iconX, y + padding);
+            paintKeyword(g, abilities.get(i), iconX, y + padding, iconSize);
             iconX += iconSize + gap;
         }
     }
 
 
-    private void paintTappedMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
-                                      int leftX, int topY, int lineHeight) {
+    private void paintTappedMiniChip(Graphics2D g,
+                                     BoardPermanentSnapshot permanent,
+                                     int leftX, int chipY) {
         if (!Boolean.TRUE.equals(permanent.getTapped())) return;
 
         int iconSize = 8;
         int padding = 2;
-        int width = iconSize + padding * 2;
-        int height = iconSize + padding * 2;
-        int x = leftX - 4;
-        int y = topY + lineHeight - height - 4;
+        int diameter = iconSize + padding * 2 + 1;
+        int x = leftX;
+        int y = chipY - 5;
 
         Color base = blend(colorOr("TextArea.background", Color.WHITE),
                 new Color(0xC94F4F), .55f);
-        Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
         g.setColor(base);
-        g.fill(chip);
+        g.fillOval(x, y, diameter, diameter);
         g.setColor(blend(base, Color.BLACK, .28f));
-        g.draw(chip);
+        g.drawOval(x, y, diameter, diameter);
 
         if (!svgAssets.paint(g, "/svg/tap.svg",
                 x + padding, y + padding, iconSize, iconSize)) {
@@ -1025,15 +1174,20 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void paintKeyword(Graphics2D g, String keyword, int x, int y) {
+        paintKeyword(g, keyword, x, y, SYMBOL_SIZE);
+    }
+
+    private void paintKeyword(
+            Graphics2D g, String keyword, int x, int y, int size) {
         String resource = switch (keyword.toLowerCase(Locale.ROOT)) {
             case "double strike" -> "doublestrike";
             case "first strike" -> "firststrike";
             default -> keyword.toLowerCase(Locale.ROOT).replace(' ', '-');
         };
         if (svgAssets.paint(g, "/keyword-svg/ability-" + resource + ".svg",
-                x, y, SYMBOL_SIZE, SYMBOL_SIZE)) return;
+                x, y, size, size)) return;
         paintFallbackSymbol(g, keyword.substring(0, 1).toUpperCase(Locale.ROOT),
-                x, y, SYMBOL_SIZE);
+                x, y, size);
     }
 
     private void paintFallbackSymbol(Graphics2D g, String text, int x, int y, int size) {
