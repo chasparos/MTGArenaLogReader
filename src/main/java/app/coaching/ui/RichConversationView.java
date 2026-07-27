@@ -251,7 +251,7 @@ public final class RichConversationView extends JScrollPane {
             case "C" -> "Decision";
             case "L" -> "Life change";
             case "GR" -> "Result";
-            case "S" -> "Start of turn";
+            case "S" -> "Start of first main";
             case "E" -> eventAction(details);
             default -> "Event";
         };

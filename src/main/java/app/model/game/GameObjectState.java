@@ -20,6 +20,8 @@ public class GameObjectState {
     private long instanceId;
     private long logicalObjectId;
     private long grpId;
+    /** Active face index for a multi-faced card, when reconstructed. */
+    private int activeFaceIndex;
     private String objectType = "";
     private long objectSourceGrpId;
     private long parentId = -1;
@@ -55,6 +57,7 @@ public class GameObjectState {
         copy.instanceId = instanceId;
         copy.logicalObjectId = logicalObjectId;
         copy.grpId = grpId;
+        copy.activeFaceIndex = activeFaceIndex;
         copy.objectType = objectType;
         copy.objectSourceGrpId = objectSourceGrpId;
         copy.parentId = parentId;

@@ -6,6 +6,7 @@ import app.draft.tracking.DraftTracker;
 import app.draft.ui.DraftAssistantFrame;
 import app.model.session.MatchSession;
 import app.model.log.LogMessageInterface;
+import app.log.PastedLogScanner;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -13,7 +14,9 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Implements MainFrame in the Swing replay presentation layer.
@@ -34,6 +37,7 @@ public final class MainFrame extends JFrame {
     private final DraftTracker draftTracker;
     private final DraftAssistantFrame draftAssistantFrame;
     private final Runnable replayDraftFixtureAction;
+    private final Function<String, CompletionStage<PastedLogScanner.ScanResult>> pastedLogScanAction;
     private final Consumer<Window> settingsAction;
 
     public MainFrame(BlockingQueue<LogMessageInterface> uiQueue, DeckTracker deckTracker,
@@ -42,6 +46,7 @@ public final class MainFrame extends JFrame {
                      DraftAssistantFrame draftAssistantFrame,
                      Consumer<MatchSession> coachingAction,
                      Runnable rescanAction,
+                     Function<String, CompletionStage<PastedLogScanner.ScanResult>> pastedLogScanAction,
                      Runnable replayDraftFixtureAction,
                      Consumer<Window> settingsAction,
                      Consumer<Void> closeAction) {
@@ -54,6 +59,7 @@ public final class MainFrame extends JFrame {
         this.draftTracker = draftTracker;
         this.draftAssistantFrame = draftAssistantFrame;
         this.replayDraftFixtureAction = replayDraftFixtureAction;
+        this.pastedLogScanAction = pastedLogScanAction;
         this.settingsAction = settingsAction;
         this.gamesPanel = new GameSessionsPanel(coachingAction);
         initialize();
@@ -78,6 +84,10 @@ public final class MainFrame extends JFrame {
         replayDraftFixture.setToolTipText("Replays the bundled Premier Draft fixture through the production ingestion pipeline");
         replayDraftFixture.addActionListener(event -> replayDraftFixtureAction.run());
 
+        JButton scanPastedLog = new JButton("Scan pasted raw log");
+        scanPastedLog.setToolTipText("Paste and scan a match excerpt without rescanning Player.log");
+        scanPastedLog.addActionListener(event -> openPastedLogDialog());
+
         JButton settings = new JButton("Settings");
         settings.addActionListener(event -> settingsAction.accept(this));
 
@@ -98,6 +108,7 @@ public final class MainFrame extends JFrame {
         actions.add(showDraftAssistant);
         actions.add(replayDraftFixture);
         actions.add(showMatchLog);
+        actions.add(scanPastedLog);
         actions.add(settings);
         actions.add(rescan);
         footer.add(actions, BorderLayout.EAST);
@@ -128,6 +139,22 @@ public final class MainFrame extends JFrame {
         status.setText("Queued UI messages: " + uiQueue.size());
     }
 
+
+
+    private void openPastedLogDialog() {
+        new PastedLogDialog(
+                this,
+                this::clearCurrentReplayState,
+                pastedLogScanAction).open();
+    }
+
+    private void clearCurrentReplayState() {
+        uiQueue.clear();
+        gamesPanel.clear();
+        deckTracker.reset();
+        draftTracker.reset();
+        status.setText("Scanning pasted raw log excerpt");
+    }
 
     private void showSelectedDeckTracker() {
         String matchId = gamesPanel.selectedMatchId();

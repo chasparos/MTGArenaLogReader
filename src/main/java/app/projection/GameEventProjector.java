@@ -152,7 +152,7 @@ public final class GameEventProjector {
                     return GameEventProjector.this.playerName(seatId);
                 }
             });
-    /** Delay turn snapshots until a post-untap state update for that turn. */
+    /** Delay turn snapshots until the first-main decision state for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
 
@@ -490,16 +490,13 @@ public final class GameEventProjector {
         boolean turnChanged = state.getTurnNumber() != null && state.getTurnNumber() != previousTurn;
         if (turnChanged && state.getLastSnapshotTurn() != state.getTurnNumber()) {
             pendingTurnSnapshot = state.getTurnNumber();
-            pendingTurnSnapshotNeedsNextMessage = true;
-        } else if (pendingTurnSnapshot != null
-                && pendingTurnSnapshot.equals(state.getTurnNumber())) {
-            if (pendingTurnSnapshotNeedsNextMessage) {
-                pendingTurnSnapshotNeedsNextMessage = false;
-            } else if (playerSnapshotProjector.isPostUntapBoundary()) {
-                result.add(messageStartIndex, turnSnapshotEvent(message));
-                state.setLastSnapshotTurn(state.getTurnNumber());
-                pendingTurnSnapshot = null;
-            }
+        }
+        if (pendingTurnSnapshot != null
+                && pendingTurnSnapshot.equals(state.getTurnNumber())
+                && playerSnapshotProjector.isFirstMainBoundary()) {
+            result.add(messageStartIndex, turnSnapshotEvent(message));
+            state.setLastSnapshotTurn(state.getTurnNumber());
+            pendingTurnSnapshot = null;
         }
 
         for (JsonElement deleted : arrayAt(incoming, "diffDeletedInstanceIds")) {
@@ -535,7 +532,17 @@ public final class GameEventProjector {
             String type = stringAt(json, "type");
             if (!type.isBlank()) zone.setType(type);
             if (json.has("ownerSeatId")) zone.setOwnerSeatId(intAt(json, "ownerSeatId", -1));
-            if (json.has("objectInstanceIds")) zone.setObjectCount(arrayAt(json, "objectInstanceIds").size());
+            if (json.has("objectInstanceIds")) {
+                JsonArray objects = arrayAt(json, "objectInstanceIds");
+                zone.setObjectCount(objects.size());
+                zone.getObjectInstanceIds().clear();
+                for (JsonElement objectId : objects) {
+                    if (objectId.isJsonPrimitive()) {
+                        zone.getObjectInstanceIds().add(objectId.getAsLong());
+                    }
+                }
+                zone.setObjectInstancesKnown(true);
+            }
         }
     }
 
@@ -606,9 +613,18 @@ public final class GameEventProjector {
          */
         if (rooms.isFacet(current)) return;
 
-        if (transferredIds.contains(instanceId)) return; // authoritative annotation handles it
-        if (previous == null) emitNewVisibleObject(source, current, cards, result);
-        else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
+        if (previous != null && previous.getGrpId() > 0 && current.getGrpId() > 0
+                && previous.getGrpId() != current.getGrpId()
+                && "Battlefield".equals(zoneType(current.getSemanticZoneId()))) {
+            result.add(objectEvent(source,
+                    playerName(current.getControllerSeatId()) + " transforms "
+                            + objectDisplayName(previous, cards) + " into "
+                            + objectDisplayName(current, cards), current));
+        } else if (transferredIds.contains(instanceId)) {
+            return; // authoritative annotation handles ordinary zone movement
+        } else if (previous == null) {
+            emitNewVisibleObject(source, current, cards, result);
+        } else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
                 && current.getSemanticZoneId() != previousSemanticZone) {
             result.add(objectEvent(source,
                     objectLifecycleEvents.transition(previous, current, cards, ""), current));

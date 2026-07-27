@@ -72,7 +72,7 @@ final class TurnSnapshotRenderer {
             graphics.setFont(host.font().deriveFont(Font.BOLD));
             graphics.setColor(host.colorOr(
                     "Label.foreground", host.foreground()));
-            graphics.drawString("Start of turn", x, titleBaseline);
+            graphics.drawString("Start of first main", x, titleBaseline);
             graphics.setFont(host.font());
 
             int top = y + CARD_PADDING + titleHeight;

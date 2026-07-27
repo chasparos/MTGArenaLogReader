@@ -114,12 +114,10 @@ final class PlayerSnapshotProjector {
         return localPlayer != null && localPlayer.equals(player.getValue());
     }
 
-    boolean isPostUntapBoundary() {
+    boolean isFirstMainBoundary() {
         GameState state = context.state();
         String phase = state.getPhase() == null ? "" : state.getPhase();
-        String step = state.getStep() == null ? "" : state.getStep();
-        if (!phase.contains("Beginning")) return true;
-        return step.contains("Upkeep") || step.contains("Draw");
+        return phase.contains("Main1") || phase.contains("PrecombatMain");
     }
 
     private PlayerTurnSnapshot playerSnapshot(
@@ -161,8 +159,8 @@ final class PlayerSnapshotProjector {
         permanent.setName(context.objectName(object, knownCards));
         permanent.setCard(object.getCard());
         permanent.setTapped(object.getTapped());
-        permanent.setPower(object.getPower());
-        permanent.setToughness(object.getToughness());
+        permanent.setPower(effectivePower(object));
+        permanent.setToughness(effectiveToughness(object));
         permanent.setAttachedToLogicalObjectId(
                 context.attachedHost(object.getLogicalObjectId()));
         object.getCounters().forEach(counter ->
@@ -172,6 +170,27 @@ final class PlayerSnapshotProjector {
         observedEvergreenAbilities(object)
                 .forEach(permanent.getEvergreenAbilities()::add);
         return permanent;
+    }
+
+    private Integer effectivePower(GameObjectState object) {
+        return adjustedStat(object, object.getPower());
+    }
+
+    private Integer effectiveToughness(GameObjectState object) {
+        return adjustedStat(object, object.getToughness());
+    }
+
+    private Integer adjustedStat(GameObjectState object, Integer base) {
+        if (base == null) return null;
+        int result = base;
+        for (app.model.game.CounterState counter : object.getCounters()) {
+            String type = counter.getType() == null ? "" : counter.getType();
+            if (type.contains("+1/+1")) result += counter.getCount();
+            else if (type.contains("-1/-1") || type.contains("−1/−1")) {
+                result -= counter.getCount();
+            }
+        }
+        return result;
     }
 
     private List<String> observedEvergreenAbilities(GameObjectState object) {
@@ -208,11 +227,22 @@ final class PlayerSnapshotProjector {
     }
 
     private List<CardInfo> knownCardsInZone(int seat, String zoneName) {
-        return context.state().getObjects().values().stream()
+        ZoneInfo authoritative = context.state().getZones().values().stream()
+                .filter(zone -> zone.getOwnerSeatId() != null
+                        && zone.getOwnerSeatId() == seat)
+                .filter(zone -> zoneName.equals(zone.displayName()))
+                .filter(ZoneInfo::isObjectInstancesKnown)
+                .findFirst().orElse(null);
+        Set<Long> authoritativeIds = authoritative == null
+                ? Set.of() : authoritative.getObjectInstanceIds();
+
+        List<CardInfo> cards = context.state().getObjects().values().stream()
                 .filter(context::isCurrent)
                 .filter(object -> object.getOwnerSeatId() == seat)
                 .filter(object -> zoneName.equals(
                         context.zoneType(object.getSemanticZoneId())))
+                .filter(object -> authoritative == null
+                        || authoritativeIds.contains(object.getInstanceId()))
                 .filter(object -> !context.isAbility(object)
                         && !context.isRoomFacet(object))
                 .map(GameObjectState::getCard)
@@ -221,6 +251,12 @@ final class PlayerSnapshotProjector {
                         CardInfo::getName,
                         Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .toList();
+
+        if (authoritative != null && authoritative.getObjectCount() >= 0
+                && cards.size() > authoritative.getObjectCount()) {
+            return cards.subList(0, authoritative.getObjectCount());
+        }
+        return cards;
     }
 
     private Integer poisonCount(JsonObject player) {

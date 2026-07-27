@@ -2,6 +2,9 @@ package app.model.game;
 
 import lombok.Data;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 @Data
 /**
  * Represents ZoneInfo within the canonical per-game state and snapshot model.
@@ -16,6 +19,9 @@ public class ZoneInfo {
     private String type;
     private Integer ownerSeatId;
     private int objectCount = -1;
+    /** Authoritative object instance ids when Arena supplied the zone contents. */
+    private final Set<Long> objectInstanceIds = new LinkedHashSet<>();
+    private boolean objectInstancesKnown;
 
     public String displayName() {
         if (type == null || type.isBlank()) {

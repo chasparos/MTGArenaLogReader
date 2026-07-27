@@ -50,9 +50,17 @@ final class GameObjectProjector {
         GameObjectState previous = state.getObjects().get(instanceId);
         GameObjectState current = identities.copyForObservation(instanceId);
 
+        long previousGrpId = previous == null ? current.getGrpId() : previous.getGrpId();
         if (json.has("grpId")) current.setGrpId(longAt(json, "grpId", current.getGrpId()));
-        if (current.getGrpId() > 0 && cards.containsKey(current.getGrpId())) {
+        if (previous != null && previousGrpId > 0
+                && current.getGrpId() > 0 && previousGrpId != current.getGrpId()
+                && previous.getCard() != null && previous.getCard().isMultiFaced()) {
+            int faceIndex = previous.getActiveFaceIndex() == 0 ? 1 : 0;
+            current.setActiveFaceIndex(faceIndex);
+            current.setCard(previous.getCard().faceView(faceIndex, current.getGrpId()));
+        } else if (current.getGrpId() > 0 && cards.containsKey(current.getGrpId())) {
             current.setCard(cards.get(current.getGrpId()));
+            current.setActiveFaceIndex(0);
         }
         if (json.has("type")) current.setObjectType(stringAt(json, "type"));
         if (json.has("objectSourceGrpId")) {

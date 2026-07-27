@@ -49,7 +49,7 @@ public final class GameTextExporter {
             }
 
             if (!event.getTurnSnapshot().isEmpty()) {
-                out.append("Start of turn\n");
+                out.append("Start of first main\n");
                 for (PlayerTurnSnapshot snapshot : event.getTurnSnapshot()) {
                     out.append(snapshot.getPlayerName()).append(" — ");
                     out.append(snapshot.getLifeTotal() == null ? "life ?" : snapshot.getLifeTotal() + " life");

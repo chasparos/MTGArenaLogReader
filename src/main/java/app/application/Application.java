@@ -33,6 +33,7 @@ import app.settings.WindowsDpapiApiKeyStore;
 import app.log.LogMessageReader;
 import app.log.LogTailReader;
 import app.log.NamedThreadFactory;
+import app.log.PastedLogScanner;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
@@ -45,6 +46,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -81,6 +84,7 @@ public final class Application implements AutoCloseable {
     private InformationCollector informationCollector;
     private DeckCache deckCache;
     private CoachingRepository coachingRepository;
+    private PastedLogScanner pastedLogScanner;
 
     public static void main(String[] args) {
         ThemeService themes = new ThemeService();
@@ -106,6 +110,8 @@ public final class Application implements AutoCloseable {
                 true,
                 this::reportError);
         pipelineExecutor.submit(logTailReader);
+
+        pastedLogScanner = new PastedLogScanner(filteredLogQueue);
 
         // 2. Convert filtered raw entries into LogMessageInterface instances.
         logMessageReader = new LogMessageReader(
@@ -174,6 +180,7 @@ public final class Application implements AutoCloseable {
                 draftFrame,
                 coachingFrame::open,
                 this::rescanLog,
+                this::scanPastedLog,
                 () -> replayDraftFixture(draftTracker, draftFrame),
                 owner -> new SettingsDialog(
                         owner, apiKeyStore, themes).open(),
@@ -181,6 +188,21 @@ public final class Application implements AutoCloseable {
         frame.setVisible(true);
     }
 
+
+
+    private CompletionStage<PastedLogScanner.ScanResult> scanPastedLog(String text) {
+        filteredLogQueue.clear();
+        enrichmentQueue.clear();
+        uiQueue.clear();
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return pastedLogScanner.scan(text);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Pasted log scan interrupted", interrupted);
+            }
+        }, restExecutor);
+    }
 
     private void replayDraftFixture(DraftTracker draftTracker, DraftAssistantFrame draftFrame) {
         draftTracker.reset();

@@ -151,6 +151,39 @@ public class CardInfo implements ModelObject {
         return out.isEmpty() ? null : out.toString();
     }
 
+    /**
+     * Creates a lightweight presentation view for one face of a multi-faced
+     * card while retaining the parent card's Arena/Scryfall identity.
+     */
+    public CardInfo faceView(int faceIndex, Long activeArenaId) {
+        if (cardFaces == null || faceIndex < 0 || faceIndex >= cardFaces.size()) return this;
+        CardFaceInfo face = cardFaces.get(faceIndex);
+        if (face == null) return this;
+        CardInfo view = new CardInfo();
+        view.arenaId = activeArenaId == null ? arenaId : activeArenaId;
+        view.id = id;
+        view.oracleId = oracleId;
+        view.name = face.getName() == null || face.getName().isBlank() ? name : face.getName();
+        view.layout = layout;
+        view.typeLine = face.getTypeLine();
+        view.oracleText = face.getOracleText();
+        view.manaCost = face.getManaCost();
+        view.power = face.getPower();
+        view.toughness = face.getToughness();
+        view.loyalty = face.getLoyalty();
+        view.defense = face.getDefense();
+        view.colors = face.getColors() == null ? new ArrayList<>() : new ArrayList<>(face.getColors());
+        view.colorIdentity = colorIdentity == null ? new ArrayList<>() : new ArrayList<>(colorIdentity);
+        view.keywords = keywords == null ? new ArrayList<>() : new ArrayList<>(keywords);
+        view.imageUris = face.getImageUris();
+        view.cardFaces = cardFaces;
+        return view;
+    }
+
+    public boolean isMultiFaced() {
+        return cardFaces != null && cardFaces.size() > 1;
+    }
+
     public String effectiveTypeLine() {
         if (typeLine != null && !typeLine.isBlank()) return typeLine;
         if (cardFaces == null || cardFaces.isEmpty()) return null;

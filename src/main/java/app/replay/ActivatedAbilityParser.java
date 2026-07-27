@@ -18,14 +18,21 @@ public final class ActivatedAbilityParser {
             "^Equip\\s+((?:\\{[^}]+})+)", Pattern.CASE_INSENSITIVE);
 
     public Badge parse(CardInfo card) {
-        if (card == null) return null;
+        List<Badge> badges = parseAll(card);
+        return badges.isEmpty() ? null : badges.get(0);
+    }
+
+    public List<Badge> parseAll(CardInfo card) {
+        if (card == null) return List.of();
         String oracle = card.effectiveOracleText();
-        if (oracle == null || oracle.isBlank()) return null;
+        if (oracle == null || oracle.isBlank()) return List.of();
+        List<Badge> badges = new java.util.ArrayList<>();
 
         for (String line : oracle.split("\\R")) {
             Matcher equip = EQUIP.matcher(line.strip());
             if (equip.find()) {
-                return new Badge(equip.group(1), "Eq", false, List.of());
+                badges.add(new Badge(equip.group(1), "Eq", false, List.of()));
+                continue;
             }
 
             int colon = abilityColon(line);
@@ -40,13 +47,13 @@ public final class ActivatedAbilityParser {
             String effect = line.substring(colon + 1);
             boolean manaAbility = tap
                     && effect.toLowerCase(Locale.ROOT).matches(".*\\badd\\b.*");
-            return new Badge(
+            badges.add(new Badge(
                     manaSymbols(cost),
                     compactNonManaCost(cost),
                     tap,
-                    manaAbility ? producedManaOptions(effect) : List.of());
+                    manaAbility ? producedManaOptions(effect) : List.of()));
         }
-        return null;
+        return List.copyOf(badges);
     }
 
     private int abilityColon(String line) {

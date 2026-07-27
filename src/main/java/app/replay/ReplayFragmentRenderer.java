@@ -45,7 +45,8 @@ final class ReplayFragmentRenderer {
 
     boolean paintSvg(Graphics2D graphics, String resource,
                      int x, int y, int width, int height) {
-        return svgAssets.paint(graphics, resource, x, y, width, height);
+        return svgAssets.paintTinted(graphics, resource, x, y, width, height,
+                host.colorOr("Label.foreground", host.foreground()));
     }
 
     int width(Graphics2D g, ReplayFragment fragment) {
@@ -64,10 +65,11 @@ final class ReplayFragmentRenderer {
         FontMetrics chipMetrics = g.getFontMetrics(chipFont);
         int mana = manaCostPainter.width(card.getManaCost());
         int typeIcon = cardTypeResource(card) == null ? 0 : CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
+        int flipIcon = card.isMultiFaced() ? CARD_TYPE_ICON_SIZE + 3 : 0;
         boolean[] unlocks = roomUnlockSides(cardFragment);
         int lockWidth = (unlocks[0] ? SYMBOL_SIZE + 3 : 0)
                 + (unlocks[1] ? SYMBOL_SIZE + 3 : 0);
-        return typeIcon + chipMetrics.stringWidth(cardFragment.label()) + lockWidth
+        return typeIcon + flipIcon + chipMetrics.stringWidth(cardFragment.label()) + lockWidth
                 + CHIP_X_PADDING * 2 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
@@ -125,15 +127,22 @@ final class ReplayFragmentRenderer {
         String typeResource = cardTypeResource(card);
         if (typeResource != null) {
             int iconY = chipY + (chipHeight - CARD_TYPE_ICON_SIZE) / 2 + 1;
-            if (svgAssets.paint(g, "/svg/" + typeResource + ".svg",
-                    textX, iconY, CARD_TYPE_ICON_SIZE, CARD_TYPE_ICON_SIZE)) {
+            if (svgAssets.paintTinted(g, "/svg/" + typeResource + ".svg",
+                    textX, iconY, CARD_TYPE_ICON_SIZE, CARD_TYPE_ICON_SIZE, textColor)) {
                 textX += CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
+            }
+        }
+        if (card.isMultiFaced()) {
+            int iconY = chipY + (chipHeight - CARD_TYPE_ICON_SIZE) / 2 + 1;
+            if (svgAssets.paintTinted(g, "/svg/ability-transform.svg",
+                    textX, iconY, CARD_TYPE_ICON_SIZE, CARD_TYPE_ICON_SIZE, textColor)) {
+                textX += CARD_TYPE_ICON_SIZE + 3;
             }
         }
         boolean[] unlocks = roomUnlockSides(cardFragment);
         int lockY = chipY + (chipHeight - SYMBOL_SIZE) / 2 + 1;
-        if (unlocks[0] && svgAssets.paint(g, "/svg/open-lock.svg",
-                textX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
+        if (unlocks[0] && svgAssets.paintTinted(g, "/svg/open-lock.svg",
+                textX, lockY, SYMBOL_SIZE, SYMBOL_SIZE, textColor)) {
             textX += SYMBOL_SIZE + 3;
         }
         int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
@@ -141,8 +150,8 @@ final class ReplayFragmentRenderer {
         textX += chipMetrics.stringWidth(cardFragment.label());
         if (unlocks[1]) {
             int rightLockX = textX + 3;
-            if (svgAssets.paint(g, "/svg/open-lock.svg",
-                    rightLockX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
+            if (svgAssets.paintTinted(g, "/svg/open-lock.svg",
+                    rightLockX, lockY, SYMBOL_SIZE, SYMBOL_SIZE, textColor)) {
                 textX = rightLockX + SYMBOL_SIZE;
             }
         }
@@ -287,7 +296,7 @@ final class ReplayFragmentRenderer {
         g.setFont(compact);
         for (CounterState counter : counters) {
             String resource = counterResource(counter);
-            if (!svgAssets.paint(g, resource, cursor, y + 3, 8, 8)) {
+            if (!svgAssets.paintTinted(g, resource, cursor, y + 3, 8, 8, contrast(base))) {
                 paintFallbackSymbol(g, "•", cursor, y + 3, 8);
             }
             cursor += 8;
@@ -387,8 +396,8 @@ final class ReplayFragmentRenderer {
         g.setColor(blend(base, Color.BLACK, .28f));
         g.drawOval(x, y, diameter, diameter);
 
-        if (!svgAssets.paint(g, "/svg/tap.svg",
-                x + padding, y + padding, iconSize, iconSize)) {
+        if (!svgAssets.paintTinted(g, "/svg/tap.svg",
+                x + padding, y + padding, iconSize, iconSize, contrast(base))) {
             paintFallbackSymbol(g, "T", x + padding, y + padding, iconSize);
         }
     }
@@ -396,9 +405,17 @@ final class ReplayFragmentRenderer {
 
     private void paintActivatedAbilityMiniChip(Graphics2D g, CardInfo card,
                                                  int cardNameX, int topY, int lineHeight) {
-        ActivatedAbilityParser.Badge badge = activatedAbilityParser.parse(card);
-        if (badge == null) return;
+        List<ActivatedAbilityParser.Badge> badges = activatedAbilityParser.parseAll(card);
+        if (badges.isEmpty()) return;
+        int cursor = cardNameX;
+        for (ActivatedAbilityParser.Badge badge : badges) {
+            int painted = paintActivatedAbilityBadge(g, badge, cursor, topY, lineHeight);
+            if (painted > 0) cursor += painted + 3;
+        }
+    }
 
+    private int paintActivatedAbilityBadge(Graphics2D g, ActivatedAbilityParser.Badge badge,
+                                            int x, int topY, int lineHeight) {
         Font old = g.getFont();
         Font compact = old.deriveFont(Font.PLAIN, Math.max(6f, old.getSize2D() - 5f));
         FontMetrics metrics = g.getFontMetrics(compact);
@@ -415,41 +432,34 @@ final class ReplayFragmentRenderer {
             if (contentWidth > 0) contentWidth += gap;
             contentWidth += metrics.stringWidth(badge.textCost());
         }
-        if (!badge.manaOptions().isEmpty()) {
-            contentWidth += manaOptionsWidth(g, badge.manaOptions(), compact);
-        }
-        if (contentWidth == 0) return;
+        if (!badge.manaOptions().isEmpty()) contentWidth += manaOptionsWidth(g, badge.manaOptions(), compact);
+        if (contentWidth == 0) return 0;
 
         int width = padding * 2 + contentWidth;
         int height = Math.max(12, tapSize + padding * 2);
-        int x = cardNameX;
         int y = topY + lineHeight - height - 1;
-
         Color base = blend(host.colorOr("TextArea.background", Color.WHITE),
                 host.colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
         Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
-        g.setColor(base);
-        g.fill(chip);
-        g.setColor(blend(base, Color.BLACK, .28f));
-        g.draw(chip);
+        g.setColor(base); g.fill(chip);
+        g.setColor(blend(base, Color.BLACK, .28f)); g.draw(chip);
 
         int cursor = x + padding;
         if (badge.tap()) {
-            if (!svgAssets.paint(g, "/svg/tap.svg", cursor, y + padding, tapSize, tapSize)) {
+            if (!svgAssets.paintTinted(g, "/svg/tap.svg", cursor, y + padding,
+                    tapSize, tapSize, contrast(base))) {
                 paintFallbackSymbol(g, "T", cursor, y + padding, tapSize);
             }
             cursor += tapSize;
         }
         if (!badge.manaCost().isBlank()) {
             if (cursor > x + padding) cursor += gap;
-            miniManaCostPainter.paint(g, badge.manaCost(), cursor,
-                    y + (height - 8) / 2, base);
+            miniManaCostPainter.paint(g, badge.manaCost(), cursor, y + (height - 8) / 2, base);
             cursor += miniManaCostPainter.width(badge.manaCost());
         }
         if (!badge.textCost().isBlank()) {
             if (cursor > x + padding) cursor += gap;
-            g.setColor(contrast(base));
-            g.setFont(compact);
+            g.setColor(contrast(base)); g.setFont(compact);
             g.drawString(badge.textCost(), cursor,
                     y + (height - metrics.getHeight()) / 2 + metrics.getAscent());
             cursor += metrics.stringWidth(badge.textCost());
@@ -458,6 +468,7 @@ final class ReplayFragmentRenderer {
             paintManaOptions(g, badge.manaOptions(), cursor, y, height, compact, base);
         }
         g.setFont(old);
+        return width;
     }
 
     private int manaOptionsWidth(Graphics2D g, List<String> options, Font font) {
@@ -562,8 +573,9 @@ final class ReplayFragmentRenderer {
             case "first strike" -> "firststrike";
             default -> keyword.toLowerCase(Locale.ROOT).replace(' ', '-');
         };
-        if (svgAssets.paint(g, "/keyword-svg/ability-" + resource + ".svg",
-                x, y, size, size)) return;
+        if (svgAssets.paintTinted(g, "/keyword-svg/ability-" + resource + ".svg",
+                x, y, size, size,
+                host.colorOr("Label.foreground", host.foreground()))) return;
         paintFallbackSymbol(g, keyword.substring(0, 1).toUpperCase(Locale.ROOT),
                 x, y, size);
     }
