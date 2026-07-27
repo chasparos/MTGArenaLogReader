@@ -328,12 +328,6 @@ class MatchAiExporterTest {
     }
 
 
-    private CardInfo card(String name) {
-        CardInfo card = new CardInfo();
-        card.setName(name);
-        return card;
-    }
-}
     @Test
     void exportsConservativeTargetToZoneOutcomeCausalLink() {
         MatchSession match = new MatchSession("match-causal");
@@ -383,4 +377,9 @@ class MatchAiExporterTest {
         assertFalse(report.contains("outcome=DESTROY confidence=CORRELATED"));
     }
 
-
+    private CardInfo card(String name) {
+        CardInfo card = new CardInfo();
+        card.setName(name);
+        return card;
+    }
+}

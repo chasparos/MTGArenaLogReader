@@ -23,6 +23,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
 - [x] Add conservative causal links for counter, bounce, destroy, exile, and damage outcomes.
   - [x] Remove obsolete per-message `GameSession` projection INFO logging from test output.
   - [x] Repair causal-link reason mappings to use the actual `ZoneTransitionReason` enum values.
+  - [x] Keep causal-link exporter tests inside `MatchAiExporterTest` without preview-language constructs.
 - [ ] Keep provenance/confidence explicit whenever semantics are enriched or inferred.
 
 ## Phase 3 — deterministic token reduction
