@@ -38,8 +38,10 @@ This document tracks the incremental work to improve the compact AI coaching rec
 
 ## Phase 4 — coaching-derived facts
 
-- [ ] Add deterministic per-turn metrics derived from canonical state.
-- [ ] Keep evaluative concepts such as tempo or board advantage outside the reconstruction layer.
+- [x] Add deterministic per-turn metrics derived from canonical state.
+  - [x] Export descriptive life, hand, battlefield, known-zone, and counter counts from structured turn deltas.
+- [x] Keep evaluative concepts such as tempo or board advantage outside the reconstruction layer.
+  - [x] Place coaching-ready metrics in the coaching analysis layer and keep them free of evaluative labels.
 
 ## Validation plan
 

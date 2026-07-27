@@ -421,7 +421,10 @@ class MatchAiExporterTest {
 
         String delta = "TD#2 p1 life=-3 hand=-1 board+=c2#11 board-=c1#10";
         assertTrue(report.contains(delta));
-        assertTrue(report.indexOf(delta) < report.indexOf("S#2 p1 life=17"));
+        String metrics = "TM#2 p1 life=-3 hand=-1 boardIn=1 boardOut=1";
+        assertTrue(report.contains(metrics));
+        assertTrue(report.indexOf(delta) < report.indexOf(metrics));
+        assertTrue(report.indexOf(metrics) < report.indexOf("S#2 p1 life=17"));
     }
 
 

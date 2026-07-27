@@ -1,5 +1,7 @@
 package app.export;
 
+import app.coaching.analysis.TurnCoachingMetrics;
+import app.coaching.analysis.TurnCoachingMetricsCalculator;
 import app.model.card.CardInfo;
 import app.model.event.AbilityReference;
 import app.model.event.DecisionObservation;
@@ -49,7 +51,7 @@ public final class MatchAiExporter {
         try {
             StringBuilder out = new StringBuilder(8192);
             out.append("MTGA_MATCH_V5\n");
-            out.append("K G=game H=opening T=turn P=phase S=state TD=turn-delta E=event A=ability C=decision MOVE=zone-transition L=life D=permanent-damage GR=result MS=score MR=match-result\n");
+            out.append("K G=game H=opening T=turn P=phase S=state TD=turn-delta TM=turn-metrics E=event A=ability C=decision MOVE=zone-transition L=life D=permanent-damage GR=result MS=score MR=match-result\n");
             out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
             out.append("Q quoted values escape backslash and quote with a preceding backslash; line breaks become spaces\n");
             out.append("STATE knownH/knownG/knownX list identities known in hand/graveyard/exile;"
@@ -174,7 +176,9 @@ public final class MatchAiExporter {
 
             if (!event.getTurnSnapshot().isEmpty()) {
                 if (previousTurnSnapshot != null) {
-                    appendTurnDeltas(out, eventId, new TurnStateDiffer().diff(previousTurnSnapshot, event.getTurnSnapshot()));
+                    List<PlayerTurnDelta> deltas = new TurnStateDiffer().diff(previousTurnSnapshot, event.getTurnSnapshot());
+                    appendTurnDeltas(out, eventId, deltas);
+                    appendTurnMetrics(out, eventId, new TurnCoachingMetricsCalculator().calculate(deltas));
                 }
                 appendTurnSnapshot(out, eventId, event.getTurnSnapshot());
                 previousTurnSnapshot = List.copyOf(event.getTurnSnapshot());
@@ -334,6 +338,28 @@ public final class MatchAiExporter {
             }
             out.append('\n');
         }
+    }
+
+    private void appendTurnMetrics(StringBuilder out, int eventId, List<TurnCoachingMetrics> metrics) {
+        for (TurnCoachingMetrics metric : metrics) {
+            out.append("TM#").append(eventId).append(' ')
+                    .append(player(value(metric.playerName(), "seat" + metric.seatId())));
+            if (metric.lifeChange() != null && metric.lifeChange() != 0) out.append(" life=").append(signed(metric.lifeChange()));
+            if (metric.handSizeChange() != null && metric.handSizeChange() != 0) out.append(" hand=").append(signed(metric.handSizeChange()));
+            appendCount(out, "boardIn", metric.permanentsEntered());
+            appendCount(out, "boardOut", metric.permanentsLeft());
+            appendCount(out, "knownHandIn", metric.knownCardsEnteredHand());
+            appendCount(out, "knownHandOut", metric.knownCardsLeftHand());
+            appendCount(out, "knownGraveIn", metric.knownCardsEnteredGraveyard());
+            appendCount(out, "knownExileIn", metric.knownCardsEnteredExile());
+            appendCount(out, "countersIn", metric.countersAdded());
+            appendCount(out, "countersOut", metric.countersRemoved());
+            out.append('\n');
+        }
+    }
+
+    private void appendCount(StringBuilder out, String label, int value) {
+        if (value != 0) out.append(' ').append(label).append('=').append(value);
     }
 
     private String permanentList(List<BoardPermanentSnapshot> permanents) {
