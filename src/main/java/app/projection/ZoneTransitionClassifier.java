@@ -1,5 +1,7 @@
 package app.projection;
 
+import app.model.event.ZoneTransitionReason;
+
 /**
  * Classifies an observed semantic zone transition without formatting a user-facing event.
  *
@@ -24,6 +26,26 @@ final class ZoneTransitionClassifier {
         GRAVEYARD_TO_BATTLEFIELD,
         GRAVEYARD_TO_HAND,
         GENERIC
+    }
+
+    ZoneTransitionReason reason(Kind kind) {
+        return switch (kind) {
+            case ABILITY_ON_STACK -> ZoneTransitionReason.ABILITY_ON_STACK;
+            case ABILITY_FINISHED -> ZoneTransitionReason.ABILITY_FINISHED;
+            case PLAY_LAND -> ZoneTransitionReason.PLAYED_LAND;
+            case CAST_SPELL -> ZoneTransitionReason.CAST;
+            case DRAW -> ZoneTransitionReason.DRAWN;
+            case RESOLVE_TO_BATTLEFIELD -> ZoneTransitionReason.RESOLVED_TO_BATTLEFIELD;
+            case RESOLVE_TO_GRAVEYARD -> ZoneTransitionReason.RESOLVED_TO_GRAVEYARD;
+            case COUNTERED -> ZoneTransitionReason.COUNTERED;
+            case LEGEND_RULE -> ZoneTransitionReason.LEGEND_RULE;
+            case BATTLEFIELD_TO_GRAVEYARD -> ZoneTransitionReason.PUT_INTO_GRAVEYARD;
+            case BATTLEFIELD_TO_EXILE -> ZoneTransitionReason.EXILED_FROM_BATTLEFIELD;
+            case GRAVEYARD_TO_EXILE -> ZoneTransitionReason.EXILED_FROM_GRAVEYARD;
+            case GRAVEYARD_TO_BATTLEFIELD -> ZoneTransitionReason.RETURNED_TO_BATTLEFIELD;
+            case GRAVEYARD_TO_HAND -> ZoneTransitionReason.RETURNED_TO_HAND;
+            case GENERIC -> ZoneTransitionReason.UNKNOWN;
+        };
     }
 
     Kind classify(String from, String to, String category, boolean ability, boolean land) {

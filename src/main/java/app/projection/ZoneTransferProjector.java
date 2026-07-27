@@ -28,9 +28,9 @@ final class ZoneTransferProjector {
                 LogMessageInterface source, PendingCastTracker.PendingCast pending);
         GameEvent objectEvent(
                 LogMessageInterface source, String text, GameObjectState object);
-        String transition(
-                GameObjectState before, GameObjectState object,
-                Map<Long, CardInfo> cards, String category);
+        GameEvent transitionEvent(
+                LogMessageInterface source, GameObjectState before,
+                GameObjectState object, Map<Long, CardInfo> cards, String category);
     }
 
     private final GameState state;
@@ -95,10 +95,7 @@ final class ZoneTransferProjector {
             projectRoomCast(source, cards, result, object);
             return;
         }
-        result.add(context.objectEvent(
-                source,
-                context.transition(before, object, cards, category),
-                object));
+        result.add(context.transitionEvent(source, before, object, cards, category));
     }
 
     private GameObjectState sourceFaceBeforeTransfer(

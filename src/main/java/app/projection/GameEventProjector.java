@@ -5,6 +5,7 @@ import app.model.card.CardInfo;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
+import app.model.event.ZoneTransitionObservation;
 import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.match.MatchState;
@@ -112,14 +113,14 @@ public final class GameEventProjector {
                         @Override public GameEvent objectEvent(
                                 LogMessageInterface source, String text,
                                 GameObjectState object) {
-                            return GameEventProjector.this.objectEvent(
-                                    source, text, object);
+                            return GameEventProjector.this.objectEvent(source, text, object);
                         }
-                        @Override public String transition(
-                                GameObjectState before, GameObjectState object,
-                                Map<Long, CardInfo> cards, String category) {
-                            return objectLifecycleEvents.transition(
-                                    before, object, cards, category);
+                        @Override public GameEvent transitionEvent(
+                                LogMessageInterface source, GameObjectState before,
+                                GameObjectState object, Map<Long, CardInfo> cards,
+                                String category) {
+                            return GameEventProjector.this.transitionEvent(
+                                    source, before, object, cards, category);
                         }
                     });
     private final PlayerSnapshotProjector playerSnapshotProjector =
@@ -434,6 +435,20 @@ public final class GameEventProjector {
         }
     }
 
+    private GameEvent transitionEvent(LogMessageInterface source,
+                                      GameObjectState previous,
+                                      GameObjectState current,
+                                      Map<Long, CardInfo> cards,
+                                      String category) {
+        ObjectLifecycleEvents.Transition transition =
+                objectLifecycleEvents.transition(previous, current, cards, category);
+        GameEvent event = objectEvent(source, transition.text(), current);
+        ObjectReference subject = objectReference(current.getInstanceId(), cards);
+        event.setZoneTransition(new ZoneTransitionObservation(
+                transition.fromZone(), transition.toZone(), transition.reason(), subject));
+        return event;
+    }
+
     private GameEvent objectEvent(LogMessageInterface source,
                                   String text,
                                   GameObjectState... objects) {
@@ -629,8 +644,7 @@ public final class GameEventProjector {
             emitNewVisibleObject(source, current, cards, result);
         } else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
                 && current.getSemanticZoneId() != previousSemanticZone) {
-            result.add(objectEvent(source,
-                    objectLifecycleEvents.transition(previous, current, cards, ""), current));
+            result.add(transitionEvent(source, previous, current, cards, ""));
         }
     }
 

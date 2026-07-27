@@ -1,5 +1,6 @@
 package app.projection;
 
+import app.model.event.ZoneTransitionReason;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,5 +37,15 @@ class ZoneTransitionClassifierTest {
         assertEquals(
                 ZoneTransitionClassifier.Kind.ABILITY_FINISHED,
                 classifier.classify("Stack", "Graveyard", "", true, false));
+    }
+
+    @Test
+    void exposesMachineReadableReasonsForClassifiedTransitions() {
+        assertEquals(
+                ZoneTransitionReason.COUNTERED,
+                classifier.reason(ZoneTransitionClassifier.Kind.COUNTERED));
+        assertEquals(
+                ZoneTransitionReason.UNKNOWN,
+                classifier.reason(ZoneTransitionClassifier.Kind.GENERIC));
     }
 }

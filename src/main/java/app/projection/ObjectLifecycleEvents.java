@@ -1,6 +1,7 @@
 package app.projection;
 
 import app.model.card.CardInfo;
+import app.model.event.ZoneTransitionReason;
 import app.model.game.GameObjectState;
 
 import java.util.Map;
@@ -17,6 +18,7 @@ final class ObjectLifecycleEvents {
     }
 
     record Description(String text, boolean ability) {}
+    record Transition(String text, String fromZone, String toZone, ZoneTransitionReason reason) {}
 
     private final Context context;
     private final ZoneTransitionClassifier classifier = new ZoneTransitionClassifier();
@@ -47,7 +49,7 @@ final class ObjectLifecycleEvents {
         return new Description(text, false);
     }
 
-    String transition(GameObjectState previous, GameObjectState current,
+    Transition transition(GameObjectState previous, GameObjectState current,
                       Map<Long, CardInfo> cards, String category) {
         String from = context.zoneType(previous.getSemanticZoneId());
         String to = context.zoneType(current.getSemanticZoneId());
@@ -61,7 +63,7 @@ final class ObjectLifecycleEvents {
                 category,
                 context.isAbility(current),
                 context.isLand(current, cards));
-        return descriptions.describe(
+        String text = descriptions.describe(
                 kind,
                 from,
                 to,
@@ -69,6 +71,7 @@ final class ObjectLifecycleEvents {
                 name,
                 context.abilityVerb(current),
                 tappedSuffix(current));
+        return new Transition(text, from, to, classifier.reason(kind));
     }
 
     private String tappedSuffix(GameObjectState object) {

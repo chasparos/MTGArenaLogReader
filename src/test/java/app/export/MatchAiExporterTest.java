@@ -6,6 +6,8 @@ import app.model.event.DecisionObservation;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
+import app.model.event.ZoneTransitionObservation;
+import app.model.event.ZoneTransitionReason;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.game.CounterState;
 import app.model.game.GameResult;
@@ -274,6 +276,28 @@ class MatchAiExporterTest {
         assertFalse(report.contains("c1able"));
         assertFalse(report.contains("MTGA_MATCH_V3"));
     }
+
+    @Test
+    void exportsStructuredZoneTransitionReasonAndSubject() {
+        MatchSession match = new MatchSession("match-zone-transition");
+        GameModel game = match.game(1).model();
+
+        ObjectReference subject = new ObjectReference(
+                51, 151, 7001, "Ral", null, null);
+        GameEvent event = new GameEvent();
+        event.setText("Ral is countered and put into the graveyard");
+        event.getObjects().add(subject);
+        event.setZoneTransition(new ZoneTransitionObservation(
+                "Stack", "Graveyard", ZoneTransitionReason.COUNTERED, subject));
+        game.addEvents(List.of(event));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains(
+                "MOVE#1 S>G reason=COUNTERED subject=c1#51@7001 "
+                        + "text=\"Ral is countered and put into the graveyard\""));
+    }
+
 
     private CardInfo card(String name) {
         CardInfo card = new CardInfo();

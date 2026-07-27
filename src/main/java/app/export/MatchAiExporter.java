@@ -6,6 +6,7 @@ import app.model.event.DecisionObservation;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
+import app.model.event.ZoneTransitionObservation;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.game.CounterState;
 import app.model.game.GameResult;
@@ -45,7 +46,7 @@ public final class MatchAiExporter {
         try {
             StringBuilder out = new StringBuilder(8192);
             out.append("MTGA_MATCH_V5\n");
-            out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision L=life D=permanent-damage GR=result MS=score MR=match-result\n");
+            out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision MOVE=zone-transition L=life D=permanent-damage GR=result MS=score MR=match-result\n");
             out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
             out.append("Q quoted values escape backslash and quote with a preceding backslash; line breaks become spaces\n");
             out.append("STATE knownH/knownG/knownX list identities known in hand/graveyard/exile;"
@@ -213,6 +214,8 @@ public final class MatchAiExporter {
             }
             if (event.getAbility() != null) {
                 appendAbility(out, eventId, event);
+            } else if (event.getZoneTransition() != null) {
+                appendZoneTransition(out, eventId, event);
             } else if (hasText(event.getText())) {
                 out.append("E#").append(eventId)
                         .append(" text=").append(quoted(event.getText()));
@@ -385,6 +388,37 @@ public final class MatchAiExporter {
                 .append(" min=").append(decision.minimumSelections())
                 .append(" max=").append(decision.maximumSelections())
                 .append('\n');
+    }
+
+
+    private void appendZoneTransition(StringBuilder out, int eventId, GameEvent event) {
+        ZoneTransitionObservation transition = event.getZoneTransition();
+        out.append("MOVE#").append(eventId)
+                .append(' ').append(zone(transition.fromZone()))
+                .append('>').append(zone(transition.toZone()))
+                .append(" reason=").append(transition.reason());
+        if (transition.subject() != null) {
+            out.append(" subject=").append(reference(transition.subject()));
+        }
+        if (hasText(event.getText())) {
+            out.append(" text=").append(quoted(event.getText()));
+        }
+        out.append('\n');
+    }
+
+    private String zone(String zone) {
+        if (zone == null) return "?";
+        return switch (zone) {
+            case "Library" -> "L";
+            case "Hand" -> "H";
+            case "Battlefield" -> "B";
+            case "Graveyard" -> "G";
+            case "Stack" -> "S";
+            case "Exile" -> "X";
+            case "Limbo" -> "M";
+            case "Command" -> "C";
+            default -> compact(zone);
+        };
     }
 
     private void appendAbility(StringBuilder out, int eventId, GameEvent event) {
