@@ -46,5 +46,9 @@ This document tracks the incremental work to improve the compact AI coaching rec
 ## Validation plan
 
 - [ ] Add golden fixtures for saga chapters, ETB triggers, counters, exile-on-counter, bounce, sacrifice, copies, and simultaneous triggers.
-- [ ] Add export-to-simplified-state round-trip tests.
+  - [x] Add the canonical compressed mega-game raw-log fixture and validate broad replay, export, target, ability, combat, damage, and zone-transition coverage.
+  - [ ] Add focused fixtures for semantic categories not conclusively isolated by the mega-game.
+- [x] Add export-to-simplified-state round-trip tests.
+  - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
 - [ ] Add assertions that every strategically relevant semantic field is represented in the AI export.
+  - [x] Assert canonical export presence for zone transitions, targets, turn deltas, turn metrics, and game result records.

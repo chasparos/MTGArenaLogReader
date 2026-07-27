@@ -17,8 +17,10 @@ import com.google.gson.GsonBuilder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.zip.GZIPInputStream;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -59,12 +61,25 @@ public final class ArenaLogReplayHarness {
     public ReplayResult replay(Path logPath) throws IOException {
         reset();
         try (BufferedReader reader = Files.newBufferedReader(logPath)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                for (String record : framer.accept(line)) acceptRecord(record);
-            }
+            replay(reader);
         }
         return snapshot();
+    }
+
+    public ReplayResult replayGzip(Path logPath) throws IOException {
+        reset();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new GZIPInputStream(Files.newInputStream(logPath))))) {
+            replay(reader);
+        }
+        return snapshot();
+    }
+
+    private void replay(BufferedReader reader) throws IOException {
+        String line;
+        while ((line = reader.readLine()) != null) {
+            for (String record : framer.accept(line)) acceptRecord(record);
+        }
     }
 
     public ReplayResult replayLines(List<String> lines) {
@@ -117,10 +132,16 @@ public final class ArenaLogReplayHarness {
     private ReplayResult snapshot() {
         Map<GameKey, GameModel> games = new LinkedHashMap<>();
         sessions.forEach((key, session) -> games.put(key, session.model()));
-        return new ReplayResult(Collections.unmodifiableMap(games));
+        return new ReplayResult(Collections.unmodifiableMap(games), Collections.unmodifiableMap(new LinkedHashMap<>(matches)));
     }
 
-    public record ReplayResult(Map<GameKey, GameModel> games) {
+    public record ReplayResult(Map<GameKey, GameModel> games, Map<String, MatchSession> matches) {
+        public MatchSession requireMatch(String matchId) {
+            MatchSession match = matches.get(matchId);
+            if (match == null) throw new AssertionError("Missing match " + matchId + "; available=" + matches.keySet());
+            return match;
+        }
+
         public GameModel requireGame(String matchId, int gameNumber) {
             GameModel game = games.get(new GameKey(matchId, gameNumber));
             if (game == null) {
