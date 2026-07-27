@@ -65,8 +65,16 @@ final class ArenaJson {
     }
 
     static boolean hasType(JsonObject annotation, String expected) {
-        for (JsonElement type : arrayAt(annotation, "type")) {
-            if (expected.equals(type.getAsString())) return true;
+        JsonElement type = annotation.get("type");
+        if (type == null || type.isJsonNull()) return false;
+        if (type.isJsonPrimitive()) {
+            return expected.equals(type.getAsString());
+        }
+        if (!type.isJsonArray()) return false;
+        for (JsonElement value : type.getAsJsonArray()) {
+            if (value.isJsonPrimitive() && expected.equals(value.getAsString())) {
+                return true;
+            }
         }
         return false;
     }
