@@ -68,6 +68,36 @@ class PlayerSnapshotProjectorTest {
         assertEquals(2, snapshot.players().get(0).getPoisonCounters());
     }
 
+
+    @Test
+    void putsPersistedLocalPlayerFirstWhenOpeningHandWasNotObserved() {
+        GameState state = new GameState();
+        state.getPlayers().put(1, "Opponent");
+        state.getPlayers().put(2, "Local");
+        state.setLocalPlayerName("Local");
+
+        PlayerSnapshotProjector.TurnSnapshot snapshot =
+                projector(state).snapshot(Map.of());
+
+        assertEquals(List.of("Local", "Opponent"), snapshot.players().stream()
+                .map(player -> player.getPlayerName()).toList());
+    }
+
+    @Test
+    void visibleOpeningHandSeatOverridesPersistedPlayerName() {
+        GameState state = new GameState();
+        state.getPlayers().put(1, "New Local");
+        state.getPlayers().put(2, "Old Local");
+        state.setLocalPlayerName("Old Local");
+        state.setOpeningHandSeat(1);
+
+        PlayerSnapshotProjector.TurnSnapshot snapshot =
+                projector(state).snapshot(Map.of());
+
+        assertEquals(List.of("New Local", "Old Local"), snapshot.players().stream()
+                .map(player -> player.getPlayerName()).toList());
+    }
+
     private PlayerSnapshotProjector projector(GameState state) {
         return new PlayerSnapshotProjector(new PlayerSnapshotProjector.Context() {
             @Override public GameState state() { return state; }

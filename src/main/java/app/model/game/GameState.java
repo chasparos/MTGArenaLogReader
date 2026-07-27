@@ -26,6 +26,8 @@ public class GameState {
     private String step = "";
     private boolean completionEmitted;
     private final Map<Integer, String> players = new HashMap<>();
+    /** Last known local Arena account name, persisted independently of a match. */
+    private String localPlayerName;
     private final Map<Integer, ZoneInfo> zones = new HashMap<>();
     private final Map<Long, GameObjectState> objects = new HashMap<>();
     private final Map<Long, Long> logicalIds = new HashMap<>();

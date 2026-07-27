@@ -10,6 +10,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 
 /**
  * Tracks the best Arena-observed candidate for the local player's opening hand.
@@ -25,25 +26,25 @@ import java.util.Map;
  */
 final class OpeningHandTracker {
 
-    void observe(GameState state, Map<Long, CardInfo> knownCards) {
+    OptionalInt observe(GameState state, Map<Long, CardInfo> knownCards) {
         if (state.isOpeningHandFinalized()) {
-            return;
+            return OptionalInt.empty();
         }
         if (state.getTurnNumber() != null && state.getTurnNumber() > 1) {
             state.setOpeningHandFinalized(true);
-            return;
+            return OptionalInt.empty();
         }
 
         Map<Integer, List<Long>> visibleByOwner = visibleKnownHands(state, knownCards);
         if (visibleByOwner.isEmpty()) {
-            return;
+            return OptionalInt.empty();
         }
 
         Map.Entry<Integer, List<Long>> bestCandidate = visibleByOwner.entrySet().stream()
                 .max(Comparator.comparingInt(entry -> entry.getValue().size()))
                 .orElse(null);
         if (bestCandidate == null) {
-            return;
+            return OptionalInt.empty();
         }
 
         List<Long> previous = state.getOpeningHandGrpIds().get(bestCandidate.getKey());
@@ -61,6 +62,7 @@ final class OpeningHandTracker {
         if (state.getTurnNumber() != null && state.getTurnNumber() >= 1) {
             state.setOpeningHandFinalized(true);
         }
+        return OptionalInt.of(bestCandidate.getKey());
     }
 
     private Map<Integer, List<Long>> visibleKnownHands(

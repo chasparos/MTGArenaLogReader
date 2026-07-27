@@ -101,7 +101,8 @@ public final class DeckTracker {
 
     public void accept(LogMessageInterface message) {
         String raw = message.getRawText();
-        for (CachedDeck deck : deckParser.parseDecks(raw)) {
+        List<CachedDeck> parsedDecks = deckParser.parseDecks(raw);
+        for (CachedDeck deck : parsedDecks) {
             deckCache.put(deck);
             if (currentMatchId != null && complete && matchDeckState != null
                     && matchDeckState.selectedDeck() != null
@@ -109,10 +110,16 @@ public final class DeckTracker {
                 pendingGameDeck = deck;
                 LOG.info("Observed complete deck snapshot between games: match={}, deck={}, main={}, sideboard={}",
                         currentMatchId, deck.deckId(), deck.mainDeckSize(), deck.sideboard().size());
-            } else {
-                selectedDeckId = deck.deckId();
             }
-            if (deck.eventName() != null && !deck.eventName().isBlank()) selectedEventName = deck.eventName();
+        }
+        // Bulk course/history responses contain many unrelated decks. They are useful cache
+        // refreshes, but their traversal order is not a deck-selection signal.
+        if (parsedDecks.size() == 1) {
+            CachedDeck observed = parsedDecks.getFirst();
+            selectedDeckId = observed.deckId();
+            if (observed.eventName() != null && !observed.eventName().isBlank()) {
+                selectedEventName = observed.eventName();
+            }
         }
 
         CachedDeck submissionBaseline = matchDeckState == null
@@ -170,8 +177,11 @@ public final class DeckTracker {
             }
             final String finalEventId = eventId;
 
-            CachedDeck selectedDeck = deckCache.find(selectedDeckId)
-                    .or(() -> deckCache.mostRecentForEvent(!finalEventId.isBlank() ? finalEventId : selectedEventName))
+            String authoritativeEvent = !finalEventId.isBlank() ? finalEventId : selectedEventName;
+            CachedDeck selectedDeck = deckCache.mostRecentForEvent(authoritativeEvent)
+                    .or(() -> deckCache.find(selectedDeckId)
+                            .filter(deck -> authoritativeEvent.isBlank()
+                                    || authoritativeEvent.equals(deck.eventName())))
                     .orElse(null);
             matchDeckState = new MatchDeckState(matchId, selectedDeck);
             LOG.info("Started deck tracking for match {} with selected deck {}", matchId,
@@ -252,6 +262,7 @@ public final class DeckTracker {
 
             readZones(gsm);
             readObjects(gsm);
+            validateDeckAgainstOpeningHand();
 
             if (!started && currentDeck != null && currentMatchId != null) {
                 started = true;
@@ -304,6 +315,49 @@ public final class DeckTracker {
             if (grp > 0) objectCards.put(instance, grp);
             if (zone >= 0) objectZones.put(instance, zone);
         }
+    }
+
+
+    private void validateDeckAgainstOpeningHand() {
+        if (started || currentDeck == null || currentMatchId == null || currentTurnNumber > 1) return;
+
+        Map<Long, Integer> visibleHand = visibleLocalHand();
+        if (visibleHand.size() < 3 || deckContains(currentDeck, visibleHand)) return;
+
+        String eventName = currentDeck.eventName();
+        Optional<CachedDeck> corrected = deckCache.mostRecentContainingCards(eventName, visibleHand);
+        if (corrected.isEmpty() || Objects.equals(corrected.get().deckId(), currentDeck.deckId())) return;
+
+        CachedDeck replacement = corrected.get();
+        LOG.warn("Corrected deck selection for match {} from {} to {} using {} visible opening-hand cards",
+                currentMatchId, currentDeck.deckId(), replacement.deckId(),
+                visibleHand.values().stream().mapToInt(Integer::intValue).sum());
+        recordMatchMessage("Corrected selected deck from " + currentDeck.name() + " to "
+                + replacement.name() + " using the visible opening hand");
+        matchDeckState = new MatchDeckState(currentMatchId, replacement);
+        currentDeck = replacement;
+        selectedDeckId = replacement.deckId();
+        rememberCurrentState();
+        enrichCurrentDeckAsync();
+    }
+
+    private Map<Long, Integer> visibleLocalHand() {
+        Map<Long, Integer> hand = new LinkedHashMap<>();
+        for (Map.Entry<Integer, Integer> entry : objectZones.entrySet()) {
+            int zoneId = entry.getValue();
+            if (zoneOwners.getOrDefault(zoneId, localSeat) != localSeat) continue;
+            if (!zoneTypes.getOrDefault(zoneId, "").contains("Hand")) continue;
+            Long cardId = objectCards.get(entry.getKey());
+            if (cardId != null && cardId > 0) hand.merge(cardId, 1, Integer::sum);
+        }
+        return hand;
+    }
+
+    private boolean deckContains(CachedDeck deck, Map<Long, Integer> requiredCards) {
+        Map<Long, Integer> quantities = new HashMap<>();
+        for (DeckEntry entry : deck.mainDeck()) quantities.put(entry.arenaId(), entry.quantity());
+        return requiredCards.entrySet().stream()
+                .allMatch(entry -> quantities.getOrDefault(entry.getKey(), 0) >= entry.getValue());
     }
 
     private DeckGameState snapshot() {

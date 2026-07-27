@@ -95,11 +95,23 @@ final class PlayerSnapshotProjector {
     }
 
     TurnSnapshot snapshot(Map<Long, CardInfo> knownCards) {
-        List<PlayerTurnSnapshot> players = context.state().getPlayers().entrySet()
-                .stream().sorted(Map.Entry.comparingByKey())
+        GameState state = context.state();
+        String localPlayer = state.getLocalPlayerName();
+        int openingHandSeat = state.getOpeningHandSeat();
+        List<PlayerTurnSnapshot> players = state.getPlayers().entrySet().stream()
+                .sorted(Comparator
+                        .comparingInt((Map.Entry<Integer, String> player) ->
+                                isLocalPlayer(player, localPlayer, openingHandSeat) ? 0 : 1)
+                        .thenComparingInt(Map.Entry::getKey))
                 .map(player -> playerSnapshot(player, knownCards))
                 .toList();
         return new TurnSnapshot(battlefield(knownCards), players);
+    }
+
+    private boolean isLocalPlayer(Map.Entry<Integer, String> player,
+                                  String localPlayer, int openingHandSeat) {
+        if (openingHandSeat >= 0) return player.getKey() == openingHandSeat;
+        return localPlayer != null && localPlayer.equals(player.getValue());
     }
 
     boolean isPostUntapBoundary() {

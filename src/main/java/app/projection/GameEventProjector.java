@@ -168,15 +168,23 @@ public final class GameEventProjector {
             new TargetDecisionTracker(this::objectReference, this::referenceDisplayName);
     private final ObjectNameResolver names;
     private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
+    private final LocalPlayerStore localPlayerStore;
     private boolean openingHandEventEmitted;
 
-    public GameEventProjector() { this(new AbilityNameStore(), null); }
+    public GameEventProjector() { this(new AbilityNameStore(), null, new LocalPlayerStore()); }
 
     public GameEventProjector(AbilityNameStore abilityNames) {
-        this(abilityNames, null);
+        this(abilityNames, null, new LocalPlayerStore());
     }
 
     public GameEventProjector(AbilityNameStore abilityNames, MatchState matchState) {
+        this(abilityNames, matchState, new LocalPlayerStore());
+    }
+
+    GameEventProjector(AbilityNameStore abilityNames, MatchState matchState,
+                       LocalPlayerStore localPlayerStore) {
+        this.localPlayerStore = java.util.Objects.requireNonNull(localPlayerStore, "localPlayerStore");
+        state.setLocalPlayerName(localPlayerStore.load().orElse(null));
         this.names = new ObjectNameResolver(
                 state,
                 objectIdentityTracker,
@@ -477,7 +485,7 @@ public final class GameEventProjector {
         projectZoneTransfers(message, annotations, cards, result);
         projectTargets(message, persistentAnnotations, cards, result);
         reorderBattlefieldEntryBeforeOwnAbilities(result, messageStartIndex);
-        openingHandTracker.observe(state, knownCards);
+        openingHandTracker.observe(state, knownCards).ifPresent(this::rememberLocalPlayer);
         projectOpeningHand(message, result);
         boolean turnChanged = state.getTurnNumber() != null && state.getTurnNumber() != previousTurn;
         if (turnChanged && state.getLastSnapshotTurn() != state.getTurnNumber()) {
@@ -923,6 +931,14 @@ public final class GameEventProjector {
     private String cardName(long grpId, Map<Long, CardInfo> cards) {
         if (grpId <= 0) return "unknown source";
         return names.cardName(grpId, cards);
+    }
+
+
+    private void rememberLocalPlayer(int seatId) {
+        String name = state.getPlayers().get(seatId);
+        if (name == null || name.isBlank()) return;
+        state.setLocalPlayerName(name);
+        localPlayerStore.save(name);
     }
 
     private String playerName(Integer seat) {

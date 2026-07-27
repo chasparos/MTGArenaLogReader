@@ -85,6 +85,33 @@ public final class DeckCache implements AutoCloseable {
         }
     }
 
+    public synchronized Optional<CachedDeck> mostRecentContainingCards(
+            String eventName, Map<Long, Integer> requiredCards) {
+        if (requiredCards == null || requiredCards.isEmpty()) return Optional.empty();
+
+        String sql = eventName == null || eventName.isBlank()
+                ? "SELECT deck_json FROM arena_deck_cache ORDER BY updated_at DESC"
+                : "SELECT deck_json FROM arena_deck_cache WHERE event_name=? ORDER BY updated_at DESC";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            if (sql.contains("WHERE")) statement.setString(1, eventName);
+            try (ResultSet results = statement.executeQuery()) {
+                while (results.next()) {
+                    CachedDeck deck = enrich(gson.fromJson(results.getString(1), CachedDeck.class));
+                    Map<Long, Integer> quantities = new HashMap<>();
+                    for (DeckEntry entry : deck.mainDeck()) {
+                        quantities.put(entry.arenaId(), entry.quantity());
+                    }
+                    boolean containsAll = requiredCards.entrySet().stream()
+                            .allMatch(entry -> quantities.getOrDefault(entry.getKey(), 0) >= entry.getValue());
+                    if (containsAll) return Optional.of(deck);
+                }
+                return Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not validate cached decks", e);
+        }
+    }
+
     private CachedDeck enrich(CachedDeck d) {
         return new CachedDeck(d.deckId(), d.name(), d.format(), d.eventName(), d.updatedAt(),
                 enrich(d.mainDeck()), enrich(d.sideboard()), enrich(d.commandZone()), enrich(d.companions()));

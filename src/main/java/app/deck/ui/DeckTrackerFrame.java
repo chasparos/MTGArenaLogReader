@@ -182,15 +182,11 @@ public final class DeckTrackerFrame extends JFrame {
         totals.setText("<html>Library " + state.libraryCount()
                 + " &nbsp; Graveyard " + state.graveyardCount()
                 + (state.exileCount() > 0 ? " &nbsp; Exile " + state.exileCount() : "")
-                + "<br>Next draw: land <b><span style='font-size:larger'>"
-                + String.format(Locale.ROOT, "%.1f%%", landChance)
-                + "</span></b> &nbsp; creature <b><span style='font-size:larger'>"
-                + String.format(Locale.ROOT, "%.1f%%", creatureChance)
-                + "</span></b></html>");
+                + "</html>");
         renderHandStrip(state);
 
         tabs.addTab("Main deck (" + deck.mainDeckSize() + ")",
-                deckPanel(deck.mainDeck(), state, true));
+                trackedDeckPanel(deck.mainDeck(), state, landChance, creatureChance));
         tabs.addTab("Sideboard (" + quantity(deck.sideboard()) + ")",
                 deckPanel(deck.sideboard(), state, false));
     }
@@ -222,26 +218,50 @@ public final class DeckTrackerFrame extends JFrame {
                 .orElse(null);
     }
 
+    private JComponent trackedDeckPanel(List<DeckEntry> entries, DeckGameState state,
+                                        double landChance, double creatureChance) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(drawOddsPanel(landChance, creatureChance), BorderLayout.NORTH);
+        panel.add(deckPanel(entries, state, true), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JComponent drawOddsPanel(double landChance, double creatureChance) {
+        JPanel panel = new JPanel(new GridLayout(1, 2, 12, 0));
+        panel.setBorder(new EmptyBorder(10, 12, 10, 12));
+        panel.add(drawOddsCard("LAND", landChance));
+        panel.add(drawOddsCard("CREATURE", creatureChance));
+        return panel;
+    }
+
+    private JComponent drawOddsCard(String label, double chance) {
+        JPanel card = new JPanel(new BorderLayout(4, 0));
+        card.setBorder(new CompoundBorder(
+                BorderFactory.createLineBorder(new Color(0, 0, 0, 55)),
+                new EmptyBorder(8, 12, 8, 12)));
+        JLabel heading = new JLabel(label);
+        heading.setFont(heading.getFont().deriveFont(Font.BOLD, 12f));
+        JLabel value = new JLabel(String.format(Locale.ROOT, "%.1f%%", chance),
+                SwingConstants.RIGHT);
+        value.setFont(value.getFont().deriveFont(Font.BOLD, 26f));
+        card.add(heading, BorderLayout.WEST);
+        card.add(value, BorderLayout.EAST);
+        return card;
+    }
+
     private JComponent deckPanel(List<DeckEntry> entries, DeckGameState state, boolean showTracking) {
         JPanel listPanel = new JPanel();
         listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
 
         List<DeckEntry> ordered = sorted(entries, state, showTracking);
         Boolean previousLand = null;
-        Boolean previousDepleted = null;
         for (DeckEntry entry : ordered) {
             boolean land = isType(entry.card(), "Land");
-            boolean depleted = showTracking
-                    && state.remainingCopies(entry.arenaId(), entry.quantity()) == 0;
-            if (previousLand != null && previousLand && !land) {
-                listPanel.add(sectionSpacer("Spells"));
-            }
-            if (previousDepleted != null && !previousDepleted && depleted) {
-                listPanel.add(sectionSpacer("No copies remaining"));
+            if (previousLand != null && !previousLand && land) {
+                listPanel.add(sectionSpacer("Lands"));
             }
             listPanel.add(showTracking ? trackedCardRow(entry, state) : sideboardCardRow(entry));
             previousLand = land;
-            previousDepleted = depleted;
         }
         listPanel.add(Box.createVerticalGlue());
 
@@ -256,21 +276,23 @@ public final class DeckTrackerFrame extends JFrame {
         double percent = state.drawPercent(entry.arenaId(), entry.quantity());
 
         JPanel row = baseRow(card);
+        row.add(cardThumbnail(entry), BorderLayout.WEST);
+
         JLabel name = new JLabel(entry.quantity() + "x " + entry.displayName());
-        name.setFont(name.getFont().deriveFont(Font.BOLD));
+        name.setFont(name.getFont().deriveFont(Font.BOLD, name.getFont().getSize2D() + 2f));
         row.add(name, BorderLayout.CENTER);
 
-        JPanel metrics = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel metrics = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         metrics.setOpaque(false);
+        JLabel chance = new JLabel("<html><b>"
+                + String.format(Locale.ROOT, "%.1f%%", percent)
+                + "</b>&nbsp;&nbsp;•&nbsp;&nbsp;" + remaining + " left</html>");
+        chance.setFont(chance.getFont().deriveFont(Font.BOLD, chance.getFont().getSize2D() + 3f));
+        metrics.add(chance);
         if (card != null && card.getManaCost() != null && !card.getManaCost().isBlank()) {
             metrics.add(new JLabel(new ManaCostIcon(card.getManaCost(), identityColor(card))));
         }
-        JLabel chance = new JLabel("<html><b>" + remaining + " left&nbsp;&nbsp;•&nbsp;&nbsp;"
-                + String.format(Locale.ROOT, "%.1f%%", percent) + "</b></html>");
-        chance.setFont(chance.getFont().deriveFont(Font.BOLD, chance.getFont().getSize2D() + 1f));
-        chance.setHorizontalAlignment(SwingConstants.RIGHT);
-        metrics.add(chance);
-        row.add(metrics, BorderLayout.EAST);
+        row.add(metrics, BorderLayout.NORTH);
 
         String type = card == null ? "" : card.effectiveTypeLine();
         row.setToolTipText((type == null || type.isBlank() ? "" : type + " — ")
@@ -287,8 +309,9 @@ public final class DeckTrackerFrame extends JFrame {
     private JComponent sideboardCardRow(DeckEntry entry) {
         CardInfo card = entry.card();
         JPanel row = baseRow(card);
+        row.add(cardThumbnail(entry), BorderLayout.WEST);
         JLabel name = new JLabel(entry.quantity() + "x " + entry.displayName());
-        name.setFont(name.getFont().deriveFont(Font.BOLD));
+        name.setFont(name.getFont().deriveFont(Font.BOLD, name.getFont().getSize2D() + 2f));
         row.add(name, BorderLayout.CENTER);
         if (card != null && card.getManaCost() != null && !card.getManaCost().isBlank()) {
             row.add(new JLabel(new ManaCostIcon(card.getManaCost(), identityColor(card))), BorderLayout.EAST);
@@ -297,9 +320,28 @@ public final class DeckTrackerFrame extends JFrame {
         return row;
     }
 
+    private JComponent cardThumbnail(DeckEntry entry) {
+        JLabel label = new JLabel(shortName(entry.displayName()), SwingConstants.CENTER);
+        label.setPreferredSize(new Dimension(42, 58));
+        label.setMinimumSize(new Dimension(42, 58));
+        label.setToolTipText(cardToolTip(entry));
+        label.setOpaque(true);
+        label.setBackground(identityColor(entry.card()));
+        CardInfo card = entry.card();
+        if (card != null) {
+            imageCache.get(card).thenAccept(image -> image.ifPresent(buffered ->
+                    SwingUtilities.invokeLater(() -> {
+                        label.setIcon(new ImageIcon(scaleThumbnail(buffered, 40, 56)));
+                        label.setText("");
+                    })));
+        }
+        return label;
+    }
+
     private JPanel baseRow(CardInfo card) {
         JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 70));
+        row.setPreferredSize(new Dimension(100, 70));
         row.setBorder(new CompoundBorder(
                 new MatteBorder(0, 0, 1, 0, new Color(0, 0, 0, 45)),
                 new EmptyBorder(7, 9, 7, 9)));
@@ -360,10 +402,11 @@ public final class DeckTrackerFrame extends JFrame {
                                    boolean moveDepletedToBottom) {
         List<DeckEntry> result = new ArrayList<>(entries == null ? List.of() : entries);
         result.sort(Comparator
-                .comparingInt((DeckEntry entry) -> moveDepletedToBottom
-                        && state.remainingCopies(entry.arenaId(), entry.quantity()) == 0 ? 1 : 0)
-                .thenComparingDouble(this::manaValue)
-                .thenComparingInt(this::colorOrder)
+                .comparingInt((DeckEntry entry) -> isType(entry.card(), "Land") ? 1 : 0)
+                .thenComparing(Comparator.comparingInt((DeckEntry entry) ->
+                        moveDepletedToBottom
+                                ? state.remainingCopies(entry.arenaId(), entry.quantity())
+                                : entry.quantity()).reversed())
                 .thenComparing(DeckEntry::displayName, String.CASE_INSENSITIVE_ORDER));
         return result;
     }
