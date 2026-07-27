@@ -18,6 +18,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
 - [x] Add structured zone-transition observations and reasons.
   - [x] Repair `ZoneTransferProjectorTest` for the new `transitionEvent(...)` context contract.
   - [x] Update `ObjectLifecycleEventsTest` to assert the structured transition fields instead of comparing the record to legacy text.
+  - [x] Import `ZoneTransitionReason` in the structured lifecycle assertion test.
 - [ ] Add stable target references to spells and abilities.
 - [ ] Add conservative causal links for counter, bounce, destroy, exile, and damage outcomes.
 - [ ] Keep provenance/confidence explicit whenever semantics are enriched or inferred.

@@ -2,6 +2,7 @@ package app.projection;
 
 import app.model.card.CardInfo;
 import app.model.game.GameObjectState;
+import app.model.event.ZoneTransitionReason;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
