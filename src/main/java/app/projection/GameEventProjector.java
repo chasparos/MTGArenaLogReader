@@ -584,8 +584,10 @@ public final class GameEventProjector {
         long instanceId = current.getInstanceId();
         int previousSemanticZone = observation.previousSemanticZone();
         int incomingZone = observation.incomingZone();
+        rooms.attachCanonicalParentCard(current, cards);
         rooms.repairCastEvents(current, cards);
-        if (current.getGrpId() > 0 && !isAbility(current)) {
+        if (current.getGrpId() > 0 && !isAbility(current)
+                && !rooms.isTransientHalfIdentity(current, cards)) {
             observedCardsByGrpId.put(current.getGrpId(), current.copy());
         }
 
@@ -615,6 +617,7 @@ public final class GameEventProjector {
 
         if (previous != null && previous.getGrpId() > 0 && current.getGrpId() > 0
                 && previous.getGrpId() != current.getGrpId()
+                && !rooms.isParent(current)
                 && "Battlefield".equals(zoneType(current.getSemanticZoneId()))) {
             result.add(objectEvent(source,
                     playerName(current.getControllerSeatId()) + " transforms "

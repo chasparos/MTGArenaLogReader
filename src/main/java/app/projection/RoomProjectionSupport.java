@@ -112,6 +112,24 @@ final class RoomProjectionSupport {
         return List.copyOf(names);
     }
 
+    long canonicalParentGrpId(GameObjectState room, Map<Long, CardInfo> cards) {
+        if (!isParent(room) || room.getGrpId() <= 0) return room == null ? -1 : room.getGrpId();
+        if (hasTwoFaces(cards.get(room.getGrpId()))) return room.getGrpId();
+        if (hasTwoFaces(cards.get(room.getGrpId() - 1))) return room.getGrpId() - 1;
+        if (hasTwoFaces(cards.get(room.getGrpId() - 2))) return room.getGrpId() - 2;
+        return room.getGrpId();
+    }
+
+    boolean isTransientHalfIdentity(GameObjectState room, Map<Long, CardInfo> cards) {
+        return isParent(room) && canonicalParentGrpId(room, cards) != room.getGrpId();
+    }
+
+    void attachCanonicalParentCard(GameObjectState room, Map<Long, CardInfo> cards) {
+        if (!isParent(room)) return;
+        CardInfo parent = cards.get(canonicalParentGrpId(room, cards));
+        if (hasTwoFaces(parent)) room.setCard(parent);
+    }
+
     void clear() {
         castEvents.clear();
     }
@@ -134,15 +152,7 @@ final class RoomProjectionSupport {
     private CardInfo parentCard(GameObjectState room, Map<Long, CardInfo> cards) {
         if (room == null) return null;
         if (hasTwoFaces(room.getCard())) return room.getCard();
-        CardInfo direct = cards.get(room.getGrpId());
-        if (hasTwoFaces(direct)) return direct;
-
-        /*
-         * Arena puts the selected half's grpId on the parent stack object.
-         * Room ids are allocated parent, left half, right half, so resolve
-         * the half id back to the canonical parent card before presentation.
-         */
-        CardInfo parent = cards.get(room.getGrpId() - 1);
+        CardInfo parent = cards.get(canonicalParentGrpId(room, cards));
         return hasTwoFaces(parent) ? parent : null;
     }
 
