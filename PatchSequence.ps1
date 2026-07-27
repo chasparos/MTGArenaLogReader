@@ -1,5 +1,5 @@
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
+    [Parameter(Mandatory = $false, Position = 0)]
     [string]$PatchFile,
 
     [Parameter(Mandatory = $true, Position = 1)]
@@ -10,16 +10,23 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
-$resolvedPatch = (Resolve-Path $PatchFile).Path
+
 $archive = Join-Path $repoRoot "latest snapshot.zip"
 $testLog = Join-Path $repoRoot "latest test results.log"
 $mavenWrapper = Join-Path $repoRoot "mvnw.cmd"
 
+
+#if no patch is given, skip patching and continue. This will support manual edits into the same flow.
+if (-not ($PatchFile)) {
+    Write-Host "No patch file given. Skipping patch application."
+} else {
+$resolvedPatch = (Resolve-Path $PatchFile).Path
 Write-Host "Applying patch: $resolvedPatch"
-#git apply --ignore-whitespace -- "$resolvedPatch"
-#if ($LASTEXITCODE -ne 0) {
-#    throw "git apply failed with exit code $LASTEXITCODE"
-#}
+git apply --ignore-whitespace -- "$resolvedPatch"
+if ($LASTEXITCODE -ne 0) {
+    throw "git apply failed with exit code $LASTEXITCODE"
+}
+}
 
 Write-Host "Running tests..."
 
