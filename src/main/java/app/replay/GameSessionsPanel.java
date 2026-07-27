@@ -39,7 +39,7 @@ public final class GameSessionsPanel extends JPanel {
     private static final int MAX_VISIBLE_GAMES = 12;
     private final JTabbedPane gameTabs = new JTabbedPane();
     private final Map<GameKey, GameView> views = new LinkedHashMap<>();
-    private final Map<GameKey, JScrollPane> tabComponents = new LinkedHashMap<>();
+    private final Map<GameKey, GameView> tabComponents = new LinkedHashMap<>();
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
     private final GameMessageRouter router = new GameMessageRouter();
     private final GameTextExporter exporter = new GameTextExporter();
@@ -144,11 +144,9 @@ public final class GameSessionsPanel extends JPanel {
         LOG.info("Created replay session for match {} game {}", key.getMatchId(), key.getGameNumber());
 
         GameView view = new GameView(game, abilityNames);
-        JScrollPane scrollPane = new JScrollPane(view);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(20);
-        tabComponents.put(key, scrollPane);
-        gameTabs.addTab(humanReadableTitle(key), scrollPane);
-        gameTabs.setSelectedComponent(scrollPane);
+        tabComponents.put(key, view);
+        gameTabs.addTab(humanReadableTitle(key), view);
+        gameTabs.setSelectedComponent(view);
         view.setModelChangedListener(() -> updateTabTitle(key));
         return view;
     }
@@ -162,7 +160,7 @@ public final class GameSessionsPanel extends JPanel {
     }
 
     private void updateTabTitle(GameKey key) {
-        JScrollPane component = tabComponents.get(key);
+        GameView component = tabComponents.get(key);
         if (component == null) return;
         int index = gameTabs.indexOfComponent(component);
         if (index >= 0) gameTabs.setTitleAt(index, humanReadableTitle(key));
@@ -215,7 +213,7 @@ public final class GameSessionsPanel extends JPanel {
         for (GameKey key : keys) {
             GameView view = views.remove(key);
             if (view != null) view.clear();
-            JScrollPane component = tabComponents.remove(key);
+            GameView component = tabComponents.remove(key);
             if (component != null) gameTabs.remove(component);
         }
         matches.remove(matchId);
@@ -238,17 +236,12 @@ public final class GameSessionsPanel extends JPanel {
 
     private GameView selectedGameView() {
         Component selected = gameTabs.getSelectedComponent();
-        if (!(selected instanceof JScrollPane scrollPane)
-                || !(scrollPane.getViewport().getView() instanceof GameView view)) {
-            return null;
-        }
-        return view;
+        return selected instanceof GameView view ? view : null;
     }
 
     private void copySelectedGame() {
-        Component selected = gameTabs.getSelectedComponent();
-        if (!(selected instanceof JScrollPane scrollPane) ||
-                !(scrollPane.getViewport().getView() instanceof GameView view)) {
+        GameView view = selectedGameView();
+        if (view == null) {
             status.setText("No game selected");
             return;
         }
@@ -308,9 +301,8 @@ public final class GameSessionsPanel extends JPanel {
     }
 
     private void copySelectedRawGame() {
-        Component selected = gameTabs.getSelectedComponent();
-        if (!(selected instanceof JScrollPane scrollPane) ||
-                !(scrollPane.getViewport().getView() instanceof GameView view)) {
+        GameView view = selectedGameView();
+        if (view == null) {
             status.setText("No game selected");
             return;
         }

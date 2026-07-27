@@ -253,16 +253,13 @@ public final class CoachingFrame extends JFrame {
             GameView view = new GameView(service.richGame(game));
             view.setCoachingActions(request -> prepareQuestion(game.gameNumber(), request));
             gameViews.put(game.gameNumber(), view);
-            JScrollPane scroll = new JScrollPane(view);
-            scroll.getVerticalScrollBar().setUnitIncrement(20);
-
             JLabel hint = new JLabel(
                     "Select a turn · Ctrl-click toggles · Shift-click selects a range · Right-click to ask");
             hint.setBorder(new EmptyBorder(5, 8, 5, 8));
 
             JPanel panel = new JPanel(new BorderLayout());
             panel.add(hint, BorderLayout.NORTH);
-            panel.add(scroll, BorderLayout.CENTER);
+            panel.add(view, BorderLayout.CENTER);
             return panel;
         } catch (RuntimeException error) {
             return textGameFallback(game, "Rich replay could not be loaded; showing the saved text reconstruction.");
