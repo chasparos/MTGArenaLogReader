@@ -26,6 +26,8 @@ public class BoardPermanentSnapshot {
     private Boolean tapped;
     private Integer power;
     private Integer toughness;
+    /** Current lore chapter for Saga permanents, when Arena exposes it. */
+    private Integer sagaChapter;
     /** Logical object id of the permanent this card is attached to, if any. */
     private Long attachedToLogicalObjectId;
     private final List<CounterState> counters = new ArrayList<>();

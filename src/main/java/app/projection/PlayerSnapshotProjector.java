@@ -161,6 +161,7 @@ final class PlayerSnapshotProjector {
         permanent.setTapped(object.getTapped());
         permanent.setPower(effectivePower(object));
         permanent.setToughness(effectiveToughness(object));
+        permanent.setSagaChapter(sagaChapter(object));
         permanent.setAttachedToLogicalObjectId(
                 context.attachedHost(object.getLogicalObjectId()));
         object.getCounters().forEach(counter ->
@@ -173,11 +174,38 @@ final class PlayerSnapshotProjector {
     }
 
     private Integer effectivePower(GameObjectState object) {
-        return adjustedStat(object, object.getPower());
+        return adjustedStat(object, observedOrPrintedStat(object, object.getPower(), true));
     }
 
     private Integer effectiveToughness(GameObjectState object) {
-        return adjustedStat(object, object.getToughness());
+        return adjustedStat(object, observedOrPrintedStat(object, object.getToughness(), false));
+    }
+
+    private Integer observedOrPrintedStat(GameObjectState object, Integer observed, boolean power) {
+        if (observed != null) return observed;
+        CardInfo card = object.getCard();
+        if (card == null) return null;
+        String type = card.effectiveTypeLine() == null ? "" : card.effectiveTypeLine();
+        if (!type.contains("Creature") && !type.contains("Vehicle")) return null;
+        String printed = power ? card.getPower() : card.getToughness();
+        try {
+            return printed == null ? null : Integer.valueOf(printed);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private Integer sagaChapter(GameObjectState object) {
+        CardInfo card = object.getCard();
+        String type = card == null || card.effectiveTypeLine() == null
+                ? "" : card.effectiveTypeLine();
+        if (!type.contains("Saga")) return null;
+        return object.getCounters().stream()
+                .filter(counter -> counter.getArenaType() == 108
+                        || "Lore".equalsIgnoreCase(counter.getType()))
+                .map(app.model.game.CounterState::getCount)
+                .filter(count -> count > 0)
+                .findFirst().orElse(null);
     }
 
     private Integer adjustedStat(GameObjectState object, Integer base) {

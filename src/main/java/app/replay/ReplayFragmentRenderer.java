@@ -193,6 +193,7 @@ final class ReplayFragmentRenderer {
             paintRarityMiniChip(g, card, x, chipY);
             paintTappedMiniChip(g, permanent, x + 10, chipY);
             paintCounterMiniChip(g, permanent, x + width, chipY);
+            paintSagaChapterMiniChip(g, permanent, x + width, chipY);
         } else {
             paintRarityMiniChip(g, card, x, chipY);
         }
@@ -278,6 +279,9 @@ final class ReplayFragmentRenderer {
             int rightX, int chipY) {
         List<CounterState> counters = permanent.getCounters().stream()
                 .filter(counter -> counter != null && counter.getCount() > 0)
+                .filter(counter -> permanent.getSagaChapter() == null
+                        || (counter.getArenaType() != 108
+                        && !"Lore".equalsIgnoreCase(counter.getType())))
                 .limit(3)
                 .toList();
         if (counters.isEmpty()) return;
@@ -312,6 +316,45 @@ final class ReplayFragmentRenderer {
             cursor += 1;
         }
         g.setFont(old);
+    }
+
+
+    private void paintSagaChapterMiniChip(
+            Graphics2D g, BoardPermanentSnapshot permanent,
+            int rightX, int chipY) {
+        Integer chapter = permanent.getSagaChapter();
+        if (chapter == null || chapter <= 0) return;
+        String value = chapter <= 10 ? romanNumeral(chapter) : String.valueOf(chapter);
+        Font old = g.getFont();
+        Font compact = old.deriveFont(Font.BOLD, 8f);
+        FontMetrics metrics = g.getFontMetrics(compact);
+        int width = Math.max(18, metrics.stringWidth(value) + 10);
+        int x = rightX - width + 3;
+        int y = chipY - 5;
+        Color base = blend(host.colorOr("TextArea.background", Color.WHITE),
+                host.colorOr("List.selectionBackground", new Color(0x6D7F9B)), .36f);
+        paintStateMiniChip(g, x, y, width, 14, base);
+        g.setFont(compact);
+        g.setColor(contrast(base));
+        g.drawString(value, x + (width - metrics.stringWidth(value)) / 2,
+                y + (14 - metrics.getHeight()) / 2 + metrics.getAscent());
+        g.setFont(old);
+    }
+
+    private String romanNumeral(int value) {
+        return switch (value) {
+            case 1 -> "I";
+            case 2 -> "II";
+            case 3 -> "III";
+            case 4 -> "IV";
+            case 5 -> "V";
+            case 6 -> "VI";
+            case 7 -> "VII";
+            case 8 -> "VIII";
+            case 9 -> "IX";
+            case 10 -> "X";
+            default -> String.valueOf(value);
+        };
     }
 
     private String counterResource(CounterState counter) {

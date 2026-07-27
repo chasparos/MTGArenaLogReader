@@ -37,6 +37,7 @@ final class CounterProjector {
             case 1 -> "+1/+1";
             case 2 -> "-1/-1";
             case 3 -> "Poison";
+            case 108 -> "Lore";
             default -> "Counter#" + counterType;
         };
     }

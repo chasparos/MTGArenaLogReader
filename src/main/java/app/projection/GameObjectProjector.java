@@ -52,15 +52,10 @@ final class GameObjectProjector {
 
         long previousGrpId = previous == null ? current.getGrpId() : previous.getGrpId();
         if (json.has("grpId")) current.setGrpId(longAt(json, "grpId", current.getGrpId()));
-        if (previous != null && previousGrpId > 0
-                && current.getGrpId() > 0 && previousGrpId != current.getGrpId()
-                && previous.getCard() != null && previous.getCard().isMultiFaced()) {
-            int faceIndex = previous.getActiveFaceIndex() == 0 ? 1 : 0;
-            current.setActiveFaceIndex(faceIndex);
-            current.setCard(previous.getCard().faceView(faceIndex, current.getGrpId()));
-        } else if (current.getGrpId() > 0 && cards.containsKey(current.getGrpId())) {
-            current.setCard(cards.get(current.getGrpId()));
-            current.setActiveFaceIndex(0);
+        CardFaceSelection face = selectCardFace(current.getGrpId(), cards, previous);
+        if (face != null) {
+            current.setActiveFaceIndex(face.index());
+            current.setCard(face.card());
         }
         if (json.has("type")) current.setObjectType(stringAt(json, "type"));
         if (json.has("objectSourceGrpId")) {
@@ -171,6 +166,34 @@ final class GameObjectProjector {
     private boolean isToken(GameObjectState object) {
         return object.getObjectType() != null && object.getObjectType().contains("Token");
     }
+
+    private CardFaceSelection selectCardFace(long grpId, Map<Long, CardInfo> cards,
+                                             GameObjectState previous) {
+        if (grpId <= 0) return null;
+        for (CardInfo candidate : cards.values()) {
+            if (candidate == null || !candidate.isMultiFaced()
+                    || candidate.getArenaId() == null) continue;
+            long offset = grpId - candidate.getArenaId();
+            if (offset >= 0 && offset < candidate.getCardFaces().size()) {
+                int index = Math.toIntExact(offset);
+                return new CardFaceSelection(index, candidate.faceView(index, grpId));
+            }
+        }
+        CardInfo direct = cards.get(grpId);
+        if (direct != null && direct.isMultiFaced()) {
+            return new CardFaceSelection(0, direct.faceView(0, grpId));
+        }
+        if (previous != null && previous.getCard() != null
+                && previous.getCard().isMultiFaced()
+                && previous.getGrpId() != grpId) {
+            int index = previous.getActiveFaceIndex() == 0 ? 1 : 0;
+            return new CardFaceSelection(index,
+                    previous.getCard().faceView(index, grpId));
+        }
+        return direct == null ? null : new CardFaceSelection(0, direct);
+    }
+
+    private record CardFaceSelection(int index, CardInfo card) {}
 
     private String clean(String value) {
         if (value == null) return "";
