@@ -383,6 +383,48 @@ class MatchAiExporterTest {
         assertFalse(report.contains("outcome=DESTROY provenance=UNIQUE_TARGET_CORRELATION confidence=CORRELATED"));
     }
 
+    @Test
+    void exportsDeterministicTurnDeltaBeforeTheNewFullSnapshot() {
+        MatchSession match = new MatchSession("match-turn-delta");
+        match.matchState().observePlayers(Map.of(1, "Me"));
+        GameModel game = match.game(1).model();
+
+        PlayerTurnSnapshot before = new PlayerTurnSnapshot();
+        before.setSeatId(1);
+        before.setPlayerName("Me");
+        before.setLifeTotal(20);
+        before.setHandSize(5);
+        BoardPermanentSnapshot oldPermanent = new BoardPermanentSnapshot();
+        oldPermanent.setLogicalObjectId(10);
+        oldPermanent.setName("Bear");
+        before.getBattlefield().add(oldPermanent);
+
+        PlayerTurnSnapshot after = new PlayerTurnSnapshot();
+        after.setSeatId(1);
+        after.setPlayerName("Me");
+        after.setLifeTotal(17);
+        after.setHandSize(4);
+        BoardPermanentSnapshot newPermanent = new BoardPermanentSnapshot();
+        newPermanent.setLogicalObjectId(11);
+        newPermanent.setName("Engine Rat");
+        after.getBattlefield().add(newPermanent);
+
+        GameEvent first = new GameEvent();
+        first.setTurnNumber(1);
+        first.getTurnSnapshot().add(before);
+        GameEvent second = new GameEvent();
+        second.setTurnNumber(2);
+        second.getTurnSnapshot().add(after);
+        game.addEvents(List.of(first, second));
+
+        String report = new MatchAiExporter().export(match);
+
+        String delta = "TD#2 p1 life=-3 hand=-1 board+=c2#11 board-=c1#10";
+        assertTrue(report.contains(delta));
+        assertTrue(report.indexOf(delta) < report.indexOf("S#2 p1 life=17"));
+    }
+
+
     private CardInfo card(String name) {
         CardInfo card = new CardInfo();
         card.setName(name);

@@ -14,6 +14,8 @@ import app.model.game.GameResult;
 import app.model.game.PermanentDamage;
 import app.model.game.PlayerLifeChange;
 import app.model.game.PlayerTurnSnapshot;
+import app.model.game.PlayerTurnDelta;
+import app.projection.TurnStateDiffer;
 import app.model.match.MatchResult;
 import app.model.match.MatchScore;
 import app.model.session.GameModel;
@@ -47,7 +49,7 @@ public final class MatchAiExporter {
         try {
             StringBuilder out = new StringBuilder(8192);
             out.append("MTGA_MATCH_V5\n");
-            out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision MOVE=zone-transition L=life D=permanent-damage GR=result MS=score MR=match-result\n");
+            out.append("K G=game H=opening T=turn P=phase S=state TD=turn-delta E=event A=ability C=decision MOVE=zone-transition L=life D=permanent-damage GR=result MS=score MR=match-result\n");
             out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
             out.append("Q quoted values escape backslash and quote with a preceding backslash; line breaks become spaces\n");
             out.append("STATE knownH/knownG/knownX list identities known in hand/graveyard/exile;"
@@ -150,6 +152,7 @@ public final class MatchAiExporter {
         String currentPhase = null;
         String currentStep = null;
         List<PendingTarget> pendingTargets = new ArrayList<>();
+        List<PlayerTurnSnapshot> previousTurnSnapshot = null;
         for (GameEvent event : game.snapshot()) {
             if (event.getType() == app.model.event.GameEventType.MATCH_STARTED
                     || event.getType() == app.model.event.GameEventType.GAME_STARTED
@@ -170,7 +173,11 @@ public final class MatchAiExporter {
             }
 
             if (!event.getTurnSnapshot().isEmpty()) {
+                if (previousTurnSnapshot != null) {
+                    appendTurnDeltas(out, eventId, new TurnStateDiffer().diff(previousTurnSnapshot, event.getTurnSnapshot()));
+                }
                 appendTurnSnapshot(out, eventId, event.getTurnSnapshot());
+                previousTurnSnapshot = List.copyOf(event.getTurnSnapshot());
                 continue;
             }
             if (event.getDecision() != null) {
@@ -305,6 +312,46 @@ public final class MatchAiExporter {
     }
 
     private record PendingTarget(int eventId, TargetObservation observation) {}
+
+    private void appendTurnDeltas(StringBuilder out, int eventId, List<PlayerTurnDelta> deltas) {
+        for (PlayerTurnDelta delta : deltas) {
+            out.append("TD#").append(eventId).append(' ')
+                    .append(player(value(delta.playerName(), "seat" + delta.seatId())));
+            if (delta.lifeChange() != null && delta.lifeChange() != 0) out.append(" life=").append(signed(delta.lifeChange()));
+            if (delta.handSizeChange() != null && delta.handSizeChange() != 0) out.append(" hand=").append(signed(delta.handSizeChange()));
+            if (!delta.enteredBattlefield().isEmpty()) out.append(" board+=").append(permanentList(delta.enteredBattlefield()));
+            if (!delta.leftBattlefield().isEmpty()) out.append(" board-=").append(permanentList(delta.leftBattlefield()));
+            if (!delta.enteredKnownHand().isEmpty()) out.append(" knownH+=").append(cardList(delta.enteredKnownHand()));
+            if (!delta.leftKnownHand().isEmpty()) out.append(" knownH-=").append(cardList(delta.leftKnownHand()));
+            if (!delta.enteredKnownGraveyard().isEmpty()) out.append(" knownG+=").append(cardList(delta.enteredKnownGraveyard()));
+            if (!delta.enteredKnownExile().isEmpty()) out.append(" knownX+=").append(cardList(delta.enteredKnownExile()));
+            if (!delta.counterChanges().isEmpty()) {
+                StringJoiner changes = new StringJoiner("|");
+                delta.counterChanges().forEach(change -> changes.add(
+                        card(value(change.permanentName(), "?")) + "#" + change.logicalObjectId()
+                                + ":" + compact(change.counterType()) + signed(change.change())));
+                out.append(" counters=").append(changes);
+            }
+            out.append('
+');
+        }
+    }
+
+    private String permanentList(List<BoardPermanentSnapshot> permanents) {
+        StringJoiner result = new StringJoiner("|");
+        permanents.forEach(permanent -> result.add(permanent(permanent)));
+        return result.toString();
+    }
+
+    private String cardList(List<CardInfo> cards) {
+        StringJoiner result = new StringJoiner("|");
+        cards.forEach(card -> result.add(cardIdentity(card)));
+        return result.toString();
+    }
+
+    private String signed(int value) {
+        return value > 0 ? "+" + value : Integer.toString(value);
+    }
 
     private void appendTurnSnapshot(StringBuilder out, int eventId, List<PlayerTurnSnapshot> snapshots) {
         for (PlayerTurnSnapshot player : snapshots) {

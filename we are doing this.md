@@ -29,8 +29,9 @@ This document tracks the incremental work to improve the compact AI coaching rec
 
 ## Phase 3 — deterministic token reduction
 
-- [ ] Add a structured `TurnStateDiffer`.
-- [ ] Export deterministic turn deltas alongside full snapshots.
+- [x] Add a structured `TurnStateDiffer`.
+- [x] Export deterministic turn deltas alongside full snapshots.
+  - [x] Emit conservative life, hand-size, known-zone, battlefield, and counter changes between reliable snapshots.
 - [ ] Add round-trip reconstruction tests before reducing snapshot frequency.
 
 ## Phase 4 — coaching-derived facts
