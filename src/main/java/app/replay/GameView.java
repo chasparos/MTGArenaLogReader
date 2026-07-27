@@ -49,6 +49,10 @@ public final class GameView extends JPanel implements Scrollable {
     private final ReplayEventRenderer replayEventRenderer;
     private GameEvent highlightedEvent;
     private Runnable modelChangedListener = () -> { };
+    private List<LayoutItem> layoutItems = List.of();
+    private int cachedLayoutWidth = -1;
+    private long layoutRevision;
+    private long cachedLayoutRevision = -1;
 
     public GameView(GameModel model) { this(model, new AbilityNameStore()); }
 
@@ -194,6 +198,7 @@ public final class GameView extends JPanel implements Scrollable {
         setForeground(colorOr("Label.foreground", Color.DARK_GRAY));
         Font label = UIManager.getFont("Label.font");
         if (label != null) setFont(label.deriveFont(13f));
+        invalidateLayoutCache();
     }
 
     public void setModelChangedListener(Runnable listener) {
@@ -241,26 +246,33 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void scrollTurnToTop(int turnNumber) {
-        turnHitboxes.stream()
-                .filter(hitbox -> hitbox.turnNumber() == turnNumber)
+        layoutItems.stream()
+                .filter(item -> item.kind() == LayoutKind.TURN_HEADER)
+                .filter(item -> Objects.equals(
+                        item.event().getTurnNumber(), turnNumber))
                 .findFirst()
-                .ifPresent(hitbox -> setViewportY(Math.max(0, hitbox.bounds().y - 8)));
+                .ifPresent(item -> setViewportY(Math.max(0, item.y() - 8)));
     }
 
     private void revealEvent(GameEvent event) {
-        eventHitboxes.stream()
-                .filter(hitbox -> hitbox.event() == event)
+        layoutItems.stream()
+                .filter(item -> item.kind() != LayoutKind.TURN_HEADER)
+                .filter(item -> item.event() == event)
                 .findFirst()
-                .ifPresent(hitbox -> {
+                .ifPresent(item -> {
+                    Rectangle bounds = new Rectangle(
+                            OUTER_PADDING, item.y(),
+                            Math.max(260, getWidth() - OUTER_PADDING * 2),
+                            item.height());
                     Rectangle visible = getVisibleRect();
-                    if (!visible.contains(hitbox.bounds())) {
-                        int targetY = hitbox.bounds().y < visible.y
-                                ? hitbox.bounds().y - 8
-                                : hitbox.bounds().y + hitbox.bounds().height
+                    if (!visible.contains(bounds)) {
+                        int targetY = bounds.y < visible.y
+                                ? bounds.y - 8
+                                : bounds.y + bounds.height
                                         - visible.height + 8;
                         setViewportY(Math.max(0, targetY));
                     }
-                    repaint(hitbox.bounds());
+                    repaint(bounds);
                 });
     }
 
@@ -283,6 +295,7 @@ public final class GameView extends JPanel implements Scrollable {
         boardStateMonitor.reset();
         hovered = null;
         hidePreview();
+        invalidateLayoutCache();
         updatePreferredHeight();
         repaint();
     }
@@ -300,6 +313,7 @@ public final class GameView extends JPanel implements Scrollable {
             model.addEvents(additions);
             model.setOpeningHand(projector.openingHandPlayer(),
                     projector.mulliganCount(), projector.openingHand());
+            invalidateLayoutCache();
             updatePreferredHeight();
             repaint();
             modelChangedListener.run();
@@ -317,21 +331,37 @@ public final class GameView extends JPanel implements Scrollable {
             List<GameEvent> events = model.snapshot();
             if (events.isEmpty()) { paintEmptyState(g); return; }
 
-            int y = OUTER_PADDING;
             int width = Math.max(260, getWidth() - OUTER_PADDING * 2);
-            Integer previousTurn = null;
-            for (GameEvent event : events) {
-                if (event.getTurnNumber() != null && !event.getTurnNumber().equals(previousTurn)) {
-                    y = paintTurnHeader(g, event, y, width);
-                    previousTurn = event.getTurnNumber();
+            ensureLayout(g, events, width);
+            Rectangle viewport = getVisibleRect();
+            int first = firstVisibleLayoutItem(viewport.y);
+            for (int index = first; index < layoutItems.size(); index++) {
+                LayoutItem item = layoutItems.get(index);
+                if (item.y() >= viewport.y + viewport.height) break;
+                if (item.bottom() <= viewport.y) continue;
+                switch (item.kind()) {
+                    case TURN_HEADER -> paintTurnHeader(
+                            g, item.event(), item.y(), width);
+                    case EVENT -> paintEvent(
+                            g, item.event(), item.y(), width, true);
+                    case SNAPSHOT -> paintTurnSnapshot(
+                            g, item.event(), item.y(), width, true);
                 }
-                y = event.getTurnSnapshot().isEmpty()
-                        ? paintEvent(g, event, y, width, true)
-                        : paintTurnSnapshot(g, event, y, width, true);
             }
         } finally {
             g.dispose();
         }
+    }
+
+    private int firstVisibleLayoutItem(int viewportY) {
+        int low = 0;
+        int high = layoutItems.size();
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (layoutItems.get(middle).bottom() <= viewportY) low = middle + 1;
+            else high = middle;
+        }
+        return low;
     }
 
     private void configure(Graphics2D g) {
@@ -450,24 +480,62 @@ public final class GameView extends JPanel implements Scrollable {
         int width = getWidth() > 0 ? getWidth() : 920;
         BufferedImage image = new BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
-        g.setFont(getFont());
-        configure(g);
+        try {
+            g.setFont(getFont());
+            configure(g);
+            int contentWidth = Math.max(260, width - OUTER_PADDING * 2);
+            ensureLayout(g, model.snapshot(), contentWidth);
+            int height = layoutItems.isEmpty()
+                    ? 300
+                    : layoutItems.get(layoutItems.size() - 1).bottom() + OUTER_PADDING;
+            Dimension current = getPreferredSize();
+            Dimension preferred = new Dimension(
+                    Math.max(720, current.width), Math.max(300, height));
+            if (!preferred.equals(current)) {
+                setPreferredSize(preferred);
+                revalidate();
+            }
+        } finally {
+            g.dispose();
+        }
+    }
+
+    private void ensureLayout(Graphics2D graphics, List<GameEvent> events, int width) {
+        if (cachedLayoutRevision == layoutRevision && cachedLayoutWidth == width) return;
+        List<LayoutItem> rebuilt = new ArrayList<>();
         int y = OUTER_PADDING;
-        int contentWidth = Math.max(260, width - OUTER_PADDING * 2);
         Integer previousTurn = null;
-        for (GameEvent event : model.snapshot()) {
-            if (event.getTurnNumber() != null && !event.getTurnNumber().equals(previousTurn)) {
-                y = paintTurnHeader(g, event, y, contentWidth);
+        for (GameEvent event : events) {
+            if (event.getTurnNumber() != null
+                    && !event.getTurnNumber().equals(previousTurn)) {
+                int height = turnHeaderHeight(graphics);
+                rebuilt.add(new LayoutItem(
+                        LayoutKind.TURN_HEADER, event, y, height));
+                y += height + EVENT_GAP;
                 previousTurn = event.getTurnNumber();
             }
-            y = event.getTurnSnapshot().isEmpty()
-                    ? paintEvent(g, event, y, contentWidth, false)
-                    : paintTurnSnapshot(g, event, y, contentWidth, false);
+            int nextY = event.getTurnSnapshot().isEmpty()
+                    ? paintEvent(graphics, event, y, width, false)
+                    : paintTurnSnapshot(graphics, event, y, width, false);
+            rebuilt.add(new LayoutItem(
+                    event.getTurnSnapshot().isEmpty()
+                            ? LayoutKind.EVENT : LayoutKind.SNAPSHOT,
+                    event, y, nextY - y));
+            y = nextY;
         }
-        g.dispose();
-        Dimension current = getPreferredSize();
-        setPreferredSize(new Dimension(Math.max(720, current.width), Math.max(300, y + OUTER_PADDING)));
-        revalidate();
+        layoutItems = List.copyOf(rebuilt);
+        cachedLayoutWidth = width;
+        cachedLayoutRevision = layoutRevision;
+    }
+
+    private int turnHeaderHeight(Graphics2D graphics) {
+        Font titleFont = graphics.getFont().deriveFont(Font.BOLD, 15f);
+        return graphics.getFontMetrics(titleFont).getHeight() + 10;
+    }
+
+    private void invalidateLayoutCache() {
+        layoutRevision++;
+        cachedLayoutRevision = -1;
     }
 
     @Override public void doLayout() {
@@ -576,6 +644,11 @@ public final class GameView extends JPanel implements Scrollable {
                               BoardPermanentSnapshot permanent) {}
     private record EventHitbox(Rectangle bounds, GameEvent event) {}
     private record TurnHitbox(Rectangle bounds, int turnNumber) {}
+    private record LayoutItem(
+            LayoutKind kind, GameEvent event, int y, int height) {
+        int bottom() { return y + height; }
+    }
+    private enum LayoutKind { TURN_HEADER, EVENT, SNAPSHOT }
 
     public enum CoachingScope { MATCH, GAME, TURN, SELECTED_TURNS }
 
