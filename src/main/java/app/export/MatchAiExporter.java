@@ -332,8 +332,7 @@ public final class MatchAiExporter {
                                 + ":" + compact(change.counterType()) + signed(change.change())));
                 out.append(" counters=").append(changes);
             }
-            out.append('
-');
+            out.append('\n');
         }
     }
 

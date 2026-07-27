@@ -32,6 +32,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
 - [x] Add a structured `TurnStateDiffer`.
 - [x] Export deterministic turn deltas alongside full snapshots.
   - [x] Emit conservative life, hand-size, known-zone, battlefield, and counter changes between reliable snapshots.
+  - [x] Repair the turn-delta exporter newline literal without enabling preview features.
 - [ ] Add round-trip reconstruction tests before reducing snapshot frequency.
 
 ## Phase 4 — coaching-derived facts
