@@ -6,6 +6,7 @@ import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
 import app.model.event.ZoneTransitionObservation;
+import app.model.event.TargetObservation;
 import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.match.MatchState;
@@ -687,11 +688,20 @@ public final class GameEventProjector {
                 ObjectReference sourceReference = objectReference(sourceId, cards);
                 if (sourceReference != null) addReference(targetEvent, sourceReference);
                 addCardForObject(targetEvent, findObjectIncludingAliases(sourceId));
+                List<ObjectReference> targetReferences = new ArrayList<>();
                 for (long targetId : targetIds) {
                     ObjectReference targetReference = objectReference(targetId, cards);
-                    if (targetReference != null) addReference(targetEvent, targetReference);
+                    if (targetReference != null) {
+                        addReference(targetEvent, targetReference);
+                        targetReferences.add(targetReference);
+                    }
                     addCardForObject(targetEvent, findObjectIncludingAliases(targetId));
                 }
+                targetEvent.setTargetObservation(new TargetObservation(
+                        sourceReference,
+                        abilityGrpId,
+                        targetReferences,
+                        TargetObservation.Confidence.EXPLICIT));
                 result.add(targetEvent);
             }
         }

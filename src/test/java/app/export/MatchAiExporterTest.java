@@ -6,6 +6,7 @@ import app.model.event.DecisionObservation;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
+import app.model.event.TargetObservation;
 import app.model.event.ZoneTransitionObservation;
 import app.model.event.ZoneTransitionReason;
 import app.model.game.BoardPermanentSnapshot;
@@ -169,6 +170,34 @@ class MatchAiExporterTest {
                 "C#1 kind=TARGET confidence=EXPLICIT source=c1#40@9001"
                         + " chosen=c2#41@9002"
                         + " alternatives=c3#42@9003 min=1 max=1"));
+    }
+
+
+    @Test
+    void exportsStableSpellOrAbilityTargetReferences() {
+        MatchSession match = new MatchSession("match-target");
+        GameModel game = match.game(1).model();
+
+        ObjectReference source = new ObjectReference(
+                50, 150, 9101, "Murder", null, null);
+        ObjectReference target = new ObjectReference(
+                51, 151, 9102, "Engine Rat", null, null);
+
+        GameEvent event = new GameEvent();
+        event.setText("Murder targets Engine Rat");
+        event.setTargetObservation(new TargetObservation(
+                source,
+                73001L,
+                List.of(target),
+                TargetObservation.Confidence.EXPLICIT));
+        game.addEvents(List.of(event));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains(
+                "TARGET#1 confidence=EXPLICIT source=c1#50@9101"
+                        + " abilityGrp=73001 targets=c2#51@9102"
+                        + " text=\"Murder targets Engine Rat\""));
     }
 
 

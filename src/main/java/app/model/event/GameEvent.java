@@ -43,6 +43,7 @@ public class GameEvent {
     private DecisionObservation decision;
     private AbilityReference ability;
     private ZoneTransitionObservation zoneTransition;
+    private TargetObservation targetObservation;
     private final List<PlayerTurnSnapshot> turnSnapshot = new ArrayList<>();
     private final List<CombatAttackAssignment> attackers = new ArrayList<>();
     private final List<CombatBlockAssignment> blockers = new ArrayList<>();

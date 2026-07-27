@@ -7,6 +7,7 @@ import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
 import app.model.event.ZoneTransitionObservation;
+import app.model.event.TargetObservation;
 import app.model.game.BoardPermanentSnapshot;
 import app.model.game.CounterState;
 import app.model.game.GameResult;
@@ -89,6 +90,10 @@ public final class MatchAiExporter {
                 for (ObjectReference reference : event.getObjects()) {
                     addReferenceCard(cards, reference);
                 }
+                if (event.getTargetObservation() != null) {
+                    addReferenceCard(cards, event.getTargetObservation().source());
+                    event.getTargetObservation().targets().forEach(reference -> addReferenceCard(cards, reference));
+                }
                 if (event.getDecision() != null) {
                     addReferenceCard(cards, event.getDecision().source());
                     event.getDecision().selected().forEach(reference -> addReferenceCard(cards, reference));
@@ -169,6 +174,10 @@ public final class MatchAiExporter {
             }
             if (event.getDecision() != null) {
                 appendDecision(out, eventId, event.getDecision());
+                continue;
+            }
+            if (event.getTargetObservation() != null) {
+                appendTargetObservation(out, eventId, event.getTargetObservation(), event.getText());
                 continue;
             }
 
@@ -390,6 +399,22 @@ public final class MatchAiExporter {
                 .append('\n');
     }
 
+
+
+    private void appendTargetObservation(StringBuilder out, int eventId,
+                                         TargetObservation observation, String text) {
+        out.append("TARGET#").append(eventId)
+                .append(" confidence=").append(observation.confidence());
+        if (observation.source() != null) {
+            out.append(" source=").append(reference(observation.source()));
+        }
+        if (observation.abilityGrpId() > 0) {
+            out.append(" abilityGrp=").append(observation.abilityGrpId());
+        }
+        out.append(" targets=").append(referenceList(observation.targets()));
+        if (hasText(text)) out.append(" text=").append(quoted(text));
+        out.append('\n');
+    }
 
     private void appendZoneTransition(StringBuilder out, int eventId, GameEvent event) {
         ZoneTransitionObservation transition = event.getZoneTransition();
