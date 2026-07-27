@@ -32,14 +32,21 @@ final class CanonicalValidationFixtureTest {
         assertTrue(game.isComplete(), "canonical fixture must reach a projected game result");
         assertTrue(game.rawRecordSnapshot().size() > 1_000, "fixture must remain a substantial raw replay");
 
-        ValidationSummary summary = ValidationSummary.from(game);
-        assertTrue(summary.turns() >= 10, summary.toString());
-        assertTrue(summary.snapshots() >= 10, summary.toString());
-        assertTrue(summary.zoneTransitions() > 0, summary.toString());
-        assertTrue(summary.damageEvents() > 0, summary.toString());
-        assertTrue(summary.targetEvents() > 0, summary.toString());
-        assertTrue(summary.abilityEvents() > 0, summary.toString());
-        assertTrue(summary.combatEvents() > 0, summary.toString());
+        CanonicalValidationReport summary = CanonicalValidationReport.from(game);
+        assertTrue(summary.turns() >= 10, summary.render());
+        assertTrue(summary.snapshots() >= 10, summary.render());
+        assertTrue(summary.zoneTransitions() > 0, summary.render());
+        assertTrue(summary.damageEvents() > 0, summary.render());
+        assertTrue(summary.lifeChangeEvents() > 0, summary.render());
+        assertTrue(summary.targetEvents() > 0, summary.render());
+        assertTrue(summary.abilityEvents() > 0, summary.render());
+        assertTrue(summary.combatEvents() > 0, summary.render());
+        assertTrue(summary.resultEvents() > 0, summary.render());
+
+        String firstReport = summary.render();
+        String secondReport = CanonicalValidationReport.from(game).render();
+        assertEquals(firstReport, secondReport, "canonical validation report must be deterministic");
+        assertTrue(firstReport.startsWith("Canonical Validation Report\n"));
 
         String firstExport = new MatchAiExporter().export(match);
         String secondExport = new MatchAiExporter().export(match);
@@ -107,24 +114,4 @@ final class CanonicalValidationFixtureTest {
                 "/fixtures/validation/mega-strange-game.log.gz").toURI());
     }
 
-    private record ValidationSummary(
-            long turns,
-            long snapshots,
-            long zoneTransitions,
-            long damageEvents,
-            long targetEvents,
-            long abilityEvents,
-            long combatEvents) {
-        static ValidationSummary from(GameModel game) {
-            List<GameEvent> events = game.snapshot();
-            return new ValidationSummary(
-                    events.stream().map(GameEvent::getTurnNumber).filter(java.util.Objects::nonNull).distinct().count(),
-                    events.stream().filter(event -> !event.getTurnSnapshot().isEmpty()).count(),
-                    events.stream().filter(event -> event.getZoneTransition() != null).count(),
-                    events.stream().filter(event -> event.getPermanentDamage() != null || event.getPlayerLifeChange() != null).count(),
-                    events.stream().filter(event -> event.getTargetObservation() != null).count(),
-                    events.stream().filter(event -> event.getAbility() != null).count(),
-                    events.stream().filter(event -> !event.getAttackers().isEmpty() || !event.getBlockers().isEmpty()).count());
-        }
-    }
 }
