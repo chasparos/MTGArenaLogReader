@@ -97,11 +97,12 @@ class ZoneTransferProjectorTest {
                             String text, GameObjectState object) {
                         return event(text);
                     }
-                    @Override public String transition(
+                    @Override public GameEvent transitionEvent(
+                            app.model.log.LogMessageInterface source,
                             GameObjectState before, GameObjectState object,
                             Map<Long, CardInfo> cards, String category) {
-                        return "transition " + before.getSemanticZoneId()
-                                + "->" + object.getSemanticZoneId() + " " + category;
+                        return event("transition " + before.getSemanticZoneId()
+                                + "->" + object.getSemanticZoneId() + " " + category);
                     }
                 });
     }

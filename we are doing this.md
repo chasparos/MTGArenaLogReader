@@ -16,6 +16,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
 ## Phase 2 — causal and outcome fidelity
 
 - [x] Add structured zone-transition observations and reasons.
+  - [x] Repair `ZoneTransferProjectorTest` for the new `transitionEvent(...)` context contract.
 - [ ] Add stable target references to spells and abilities.
 - [ ] Add conservative causal links for counter, bounce, destroy, exile, and damage outcomes.
 - [ ] Keep provenance/confidence explicit whenever semantics are enriched or inferred.
