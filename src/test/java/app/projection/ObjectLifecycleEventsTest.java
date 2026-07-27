@@ -46,8 +46,13 @@ class ObjectLifecycleEventsTest {
         GameObjectState previous = object(1, 30, "Card", false);
         GameObjectState current = object(1, 40, "Card", false);
 
-        assertEquals("Object 1 is put into the graveyard",
-                events().transition(previous, current, Map.of(), ""));
+        ObjectLifecycleEvents.Transition transition =
+                events().transition(previous, current, Map.of(), "");
+
+        assertEquals("Object 1 is put into the graveyard", transition.text());
+        assertEquals("Battlefield", transition.fromZone());
+        assertEquals("Graveyard", transition.toZone());
+        assertEquals(ZoneTransitionReason.PUT_INTO_GRAVEYARD, transition.reason());
     }
 
     private static ObjectLifecycleEvents events() {
