@@ -109,6 +109,11 @@ public final class LogRecordFramer {
         }
     }
 
+    /** True while a multi-line JSON record is being assembled. */
+    public boolean isCollectingJson() {
+        return collectingJson;
+    }
+
     public void reset() {
         buffer.setLength(0);
         collectingJson = false;

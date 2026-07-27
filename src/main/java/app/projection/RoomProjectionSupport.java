@@ -135,7 +135,15 @@ final class RoomProjectionSupport {
         if (room == null) return null;
         if (hasTwoFaces(room.getCard())) return room.getCard();
         CardInfo direct = cards.get(room.getGrpId());
-        return hasTwoFaces(direct) ? direct : null;
+        if (hasTwoFaces(direct)) return direct;
+
+        /*
+         * Arena puts the selected half's grpId on the parent stack object.
+         * Room ids are allocated parent, left half, right half, so resolve
+         * the half id back to the canonical parent card before presentation.
+         */
+        CardInfo parent = cards.get(room.getGrpId() - 1);
+        return hasTwoFaces(parent) ? parent : null;
     }
 
     private boolean hasTwoFaces(CardInfo card) {

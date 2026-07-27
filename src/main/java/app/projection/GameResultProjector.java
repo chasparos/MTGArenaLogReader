@@ -65,9 +65,6 @@ final class GameResultProjector {
         }
 
         inferReason(result, explicitReason);
-        if (winningTeam >= 0 && result.getConfidence() == GameResult.Confidence.INFERRED) {
-            result.setConfidence(GameResult.Confidence.EXPLICIT);
-        }
         preceding.stream()
                 .filter(event -> !event.getCards().isEmpty())
                 .reduce((first, second) -> second)

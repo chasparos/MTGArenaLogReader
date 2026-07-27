@@ -41,6 +41,9 @@ public final class PastedLogScanner {
         // empty physical lines that can occur in copied log excerpts.
         for (String line : text.split("\\R", -1)) {
             physicalLines++;
+            // Blank separator lines are not records. Preserve whitespace only
+            // while it belongs to a JSON record currently being assembled.
+            if (line.isBlank() && !framer.isCollectingJson()) continue;
             for (String record : framer.accept(line)) {
                 framedRecords++;
                 if (!LogLineFilter.isInteresting(record)) continue;
