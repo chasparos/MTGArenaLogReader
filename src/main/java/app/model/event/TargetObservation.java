@@ -7,13 +7,13 @@ public record TargetObservation(
         ObjectReference source,
         long abilityGrpId,
         List<ObjectReference> targets,
-        Confidence confidence) {
+        SemanticProvenance provenance,
+        SemanticConfidence confidence) {
 
     public TargetObservation {
         targets = List.copyOf(targets == null ? List.of() : targets);
-    }
-
-    public enum Confidence {
-        EXPLICIT
+        provenance = provenance == null
+                ? SemanticProvenance.ARENA_TARGET_DECLARATION : provenance;
+        confidence = confidence == null ? SemanticConfidence.EXPLICIT : confidence;
     }
 }

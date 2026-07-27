@@ -11,5 +11,12 @@ public record ZoneTransitionObservation(
         String fromZone,
         String toZone,
         ZoneTransitionReason reason,
-        ObjectReference subject) {
+        ObjectReference subject,
+        SemanticProvenance provenance,
+        SemanticConfidence confidence) {
+
+    public ZoneTransitionObservation {
+        provenance = provenance == null ? SemanticProvenance.ZONE_PATTERN : provenance;
+        confidence = confidence == null ? SemanticConfidence.INFERRED : confidence;
+    }
 }

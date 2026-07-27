@@ -7,6 +7,8 @@ import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
 import app.model.event.TargetObservation;
+import app.model.event.SemanticConfidence;
+import app.model.event.SemanticProvenance;
 import app.model.event.ZoneTransitionObservation;
 import app.model.event.ZoneTransitionReason;
 import app.model.game.BoardPermanentSnapshot;
@@ -189,13 +191,14 @@ class MatchAiExporterTest {
                 source,
                 73001L,
                 List.of(target),
-                TargetObservation.Confidence.EXPLICIT));
+                SemanticProvenance.ARENA_TARGET_DECLARATION,
+                SemanticConfidence.EXPLICIT));
         game.addEvents(List.of(event));
 
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "TARGET#1 confidence=EXPLICIT source=c1#50@9101"
+                "TARGET#1 provenance=ARENA_TARGET_DECLARATION confidence=EXPLICIT source=c1#50@9101"
                         + " abilityGrp=73001 targets=c2#51@9102"
                         + " text=\"Murder targets Engine Rat\""));
     }
@@ -317,13 +320,14 @@ class MatchAiExporterTest {
         event.setText("Ral is countered and put into the graveyard");
         event.getObjects().add(subject);
         event.setZoneTransition(new ZoneTransitionObservation(
-                "Stack", "Graveyard", ZoneTransitionReason.COUNTERED, subject));
+                "Stack", "Graveyard", ZoneTransitionReason.COUNTERED, subject,
+                SemanticProvenance.ARENA_CATEGORY, SemanticConfidence.EXPLICIT));
         game.addEvents(List.of(event));
 
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "MOVE#1 S>G reason=COUNTERED subject=c1#51@7001 "
+                "MOVE#1 S>G reason=COUNTERED provenance=ARENA_CATEGORY confidence=EXPLICIT subject=c1#51@7001 "
                         + "text=\"Ral is countered and put into the graveyard\""));
     }
 
@@ -338,18 +342,19 @@ class MatchAiExporterTest {
 
         GameEvent targetEvent = new GameEvent();
         targetEvent.setTargetObservation(new TargetObservation(
-                source, 73001L, List.of(target), TargetObservation.Confidence.EXPLICIT));
+                source, 73001L, List.of(target), SemanticProvenance.ARENA_TARGET_DECLARATION, SemanticConfidence.EXPLICIT));
 
         GameEvent outcomeEvent = new GameEvent();
         outcomeEvent.setZoneTransition(new ZoneTransitionObservation(
-                "Battlefield", "Graveyard", ZoneTransitionReason.PUT_INTO_GRAVEYARD, target));
+                "Battlefield", "Graveyard", ZoneTransitionReason.PUT_INTO_GRAVEYARD, target,
+                SemanticProvenance.ZONE_PATTERN, SemanticConfidence.INFERRED));
         outcomeEvent.setText("Engine Rat is destroyed");
         game.addEvents(List.of(targetEvent, outcomeEvent));
 
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "LINK#2 cause=TARGET#1 outcome=DESTROY confidence=CORRELATED"));
+                "LINK#2 cause=TARGET#1 outcome=DESTROY provenance=UNIQUE_TARGET_CORRELATION confidence=CORRELATED"));
     }
 
     @Test
@@ -363,18 +368,19 @@ class MatchAiExporterTest {
             targetEvent.setTargetObservation(new TargetObservation(
                     new ObjectReference(sourceId, sourceId + 100, sourceId + 9000,
                             "Removal " + sourceId, null, null),
-                    73001L + sourceId, List.of(target), TargetObservation.Confidence.EXPLICIT));
+                    73001L + sourceId, List.of(target), SemanticProvenance.ARENA_TARGET_DECLARATION, SemanticConfidence.EXPLICIT));
             game.addEvents(List.of(targetEvent));
         }
 
         GameEvent outcomeEvent = new GameEvent();
         outcomeEvent.setZoneTransition(new ZoneTransitionObservation(
-                "Battlefield", "Graveyard", ZoneTransitionReason.PUT_INTO_GRAVEYARD, target));
+                "Battlefield", "Graveyard", ZoneTransitionReason.PUT_INTO_GRAVEYARD, target,
+                SemanticProvenance.ZONE_PATTERN, SemanticConfidence.INFERRED));
         game.addEvents(List.of(outcomeEvent));
 
         String report = new MatchAiExporter().export(match);
 
-        assertFalse(report.contains("outcome=DESTROY confidence=CORRELATED"));
+        assertFalse(report.contains("outcome=DESTROY provenance=UNIQUE_TARGET_CORRELATION confidence=CORRELATED"));
     }
 
     private CardInfo card(String name) {

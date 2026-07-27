@@ -7,6 +7,8 @@ import app.model.event.GameEventType;
 import app.model.event.ObjectReference;
 import app.model.event.ZoneTransitionObservation;
 import app.model.event.TargetObservation;
+import app.model.event.SemanticConfidence;
+import app.model.event.SemanticProvenance;
 import app.model.game.*;
 import app.model.InformationBundle;
 import app.model.match.MatchState;
@@ -446,7 +448,11 @@ public final class GameEventProjector {
         GameEvent event = objectEvent(source, transition.text(), current);
         ObjectReference subject = objectReference(current.getInstanceId(), cards);
         event.setZoneTransition(new ZoneTransitionObservation(
-                transition.fromZone(), transition.toZone(), transition.reason(), subject));
+                transition.fromZone(), transition.toZone(), transition.reason(), subject,
+                category == null || category.isBlank()
+                        ? SemanticProvenance.ZONE_PATTERN : SemanticProvenance.ARENA_CATEGORY,
+                category == null || category.isBlank()
+                        ? SemanticConfidence.INFERRED : SemanticConfidence.EXPLICIT));
         return event;
     }
 
@@ -701,7 +707,8 @@ public final class GameEventProjector {
                         sourceReference,
                         abilityGrpId,
                         targetReferences,
-                        TargetObservation.Confidence.EXPLICIT));
+                        SemanticProvenance.ARENA_TARGET_DECLARATION,
+                        SemanticConfidence.EXPLICIT));
                 result.add(targetEvent);
             }
         }

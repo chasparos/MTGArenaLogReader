@@ -24,7 +24,8 @@ This document tracks the incremental work to improve the compact AI coaching rec
   - [x] Remove obsolete per-message `GameSession` projection INFO logging from test output.
   - [x] Repair causal-link reason mappings to use the actual `ZoneTransitionReason` enum values.
   - [x] Keep causal-link exporter tests inside `MatchAiExporterTest` without preview-language constructs.
-- [ ] Keep provenance/confidence explicit whenever semantics are enriched or inferred.
+- [x] Keep provenance/confidence explicit whenever semantics are enriched or inferred.
+  - [x] Export provenance and confidence for targets, zone-transition reasons, and conservative causal links.
 
 ## Phase 3 — deterministic token reduction
 

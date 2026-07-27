@@ -258,6 +258,7 @@ public final class MatchAiExporter {
         out.append("LINK#").append(outcomeEventId)
                 .append(" cause=TARGET#").append(match.eventId())
                 .append(" outcome=").append(kind)
+                .append(" provenance=UNIQUE_TARGET_CORRELATION")
                 .append(" confidence=CORRELATED\n");
         pendingTargets.remove(match);
     }
@@ -279,7 +280,8 @@ public final class MatchAiExporter {
         if (match == null) return;
         out.append("LINK#").append(outcomeEventId)
                 .append(" cause=TARGET#").append(match.eventId())
-                .append(" outcome=DAMAGE confidence=CORRELATED\n");
+                .append(" outcome=DAMAGE provenance=UNIQUE_TARGET_CORRELATION")
+                .append(" confidence=CORRELATED\n");
         pendingTargets.remove(match);
     }
 
@@ -473,6 +475,7 @@ public final class MatchAiExporter {
     private void appendTargetObservation(StringBuilder out, int eventId,
                                          TargetObservation observation, String text) {
         out.append("TARGET#").append(eventId)
+                .append(" provenance=").append(observation.provenance())
                 .append(" confidence=").append(observation.confidence());
         if (observation.source() != null) {
             out.append(" source=").append(reference(observation.source()));
@@ -490,7 +493,9 @@ public final class MatchAiExporter {
         out.append("MOVE#").append(eventId)
                 .append(' ').append(zone(transition.fromZone()))
                 .append('>').append(zone(transition.toZone()))
-                .append(" reason=").append(transition.reason());
+                .append(" reason=").append(transition.reason())
+                .append(" provenance=").append(transition.provenance())
+                .append(" confidence=").append(transition.confidence());
         if (transition.subject() != null) {
             out.append(" subject=").append(reference(transition.subject()));
         }
