@@ -348,7 +348,7 @@ class MatchAiExporterTest {
 
         GameEvent outcomeEvent = new GameEvent();
         outcomeEvent.setZoneTransition(new ZoneTransitionObservation(
-                "Battlefield", "Graveyard", ZoneTransitionReason.DESTROYED, target));
+                "Battlefield", "Graveyard", ZoneTransitionReason.PUT_INTO_GRAVEYARD, target));
         outcomeEvent.setText("Engine Rat is destroyed");
         game.addEvents(List.of(targetEvent, outcomeEvent));
 
@@ -375,7 +375,7 @@ class MatchAiExporterTest {
 
         GameEvent outcomeEvent = new GameEvent();
         outcomeEvent.setZoneTransition(new ZoneTransitionObservation(
-                "Battlefield", "Graveyard", ZoneTransitionReason.DESTROYED, target));
+                "Battlefield", "Graveyard", ZoneTransitionReason.PUT_INTO_GRAVEYARD, target));
         game.addEvents(List.of(outcomeEvent));
 
         String report = new MatchAiExporter().export(match);

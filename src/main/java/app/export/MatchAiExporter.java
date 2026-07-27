@@ -248,8 +248,8 @@ public final class MatchAiExporter {
         String kind = switch (transition.reason()) {
             case COUNTERED -> "COUNTER";
             case RETURNED_TO_HAND -> "BOUNCE";
-            case DESTROYED, PUT_INTO_GRAVEYARD -> "DESTROY";
-            case EXILED -> "EXILE";
+            case PUT_INTO_GRAVEYARD -> "DESTROY";
+            case EXILED_FROM_BATTLEFIELD, EXILED_FROM_GRAVEYARD -> "EXILE";
             default -> null;
         };
         if (kind == null) return;
