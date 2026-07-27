@@ -54,7 +54,7 @@ final class CanonicalValidationFixtureTest {
     }
 
     private void assertRoundTripsSupportedSnapshotState(GameModel game) {
-        List<List<PlayerTurnSnapshot>> snapshots = game.snapshot().stream()
+        List<? extends List<PlayerTurnSnapshot>> snapshots = game.snapshot().stream()
                 .map(GameEvent::getTurnSnapshot)
                 .filter(snapshot -> !snapshot.isEmpty())
                 .map(ArrayList::new)
