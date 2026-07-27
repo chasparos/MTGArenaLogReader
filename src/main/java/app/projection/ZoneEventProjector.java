@@ -25,6 +25,8 @@ final class ZoneEventProjector {
             case RESOLVE_TO_BATTLEFIELD ->
                     name + " resolves and enters the battlefield" + tappedSuffix;
             case RESOLVE_TO_GRAVEYARD -> name + " resolves and is put into the graveyard";
+            case COUNTERED -> name + " is countered and put into the graveyard";
+            case LEGEND_RULE -> "Legend rule: the old " + name + " is put into the graveyard";
             case BATTLEFIELD_TO_GRAVEYARD -> name + " is put into the graveyard";
             case BATTLEFIELD_TO_EXILE -> name + " is exiled";
             case GRAVEYARD_TO_EXILE -> name + " is exiled from the graveyard";

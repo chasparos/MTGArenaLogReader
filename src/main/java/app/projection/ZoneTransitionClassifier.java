@@ -16,6 +16,8 @@ final class ZoneTransitionClassifier {
         DRAW,
         RESOLVE_TO_BATTLEFIELD,
         RESOLVE_TO_GRAVEYARD,
+        COUNTERED,
+        LEGEND_RULE,
         BATTLEFIELD_TO_GRAVEYARD,
         BATTLEFIELD_TO_EXILE,
         GRAVEYARD_TO_EXILE,
@@ -43,10 +45,13 @@ final class ZoneTransitionClassifier {
         if ("Stack".equals(from) && "Battlefield".equals(to)) {
             return Kind.RESOLVE_TO_BATTLEFIELD;
         }
+        String normalizedCategory = category == null ? "" : category.toLowerCase(java.util.Locale.ROOT);
         if ("Stack".equals(from) && "Graveyard".equals(to)) {
+            if (normalizedCategory.contains("counter")) return Kind.COUNTERED;
             return Kind.RESOLVE_TO_GRAVEYARD;
         }
         if ("Battlefield".equals(from) && "Graveyard".equals(to)) {
+            if (normalizedCategory.contains("legend")) return Kind.LEGEND_RULE;
             return Kind.BATTLEFIELD_TO_GRAVEYARD;
         }
         if ("Battlefield".equals(from) && "Exile".equals(to)) {

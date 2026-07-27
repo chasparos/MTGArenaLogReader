@@ -674,7 +674,7 @@ public final class GameEventProjector {
             String targets = targetIds.stream()
                     .map(id -> targetDisplayName(id, cards))
                     .collect(Collectors.joining(", "));
-            if (!targets.isBlank()) {
+            if (!targets.isBlank() && !isSagaSelfTarget(sourceId, abilityGrpId, targetIds, cards)) {
                 GameEvent targetEvent = event(source, sourceName + " targets " + targets);
                 ObjectReference sourceReference = objectReference(sourceId, cards);
                 if (sourceReference != null) addReference(targetEvent, sourceReference);
@@ -687,6 +687,23 @@ public final class GameEventProjector {
                 result.add(targetEvent);
             }
         }
+    }
+
+    private boolean isSagaSelfTarget(long sourceId, long abilityGrpId,
+                                     List<Long> targetIds, Map<Long, CardInfo> cards) {
+        if (targetIds.size() != 1) return false;
+        GameObjectState sourceObject = findObjectIncludingAliases(sourceId);
+        if (sourceObject == null || !isAbility(sourceObject)) return false;
+        if (sagaChapterForAbility(sourceObject) == null) return false;
+        GameObjectState target = findObjectIncludingAliases(targetIds.get(0));
+        if (target == null) return false;
+        long sourceGrpId = sourceObject.getObjectSourceGrpId();
+        if (sourceGrpId <= 0) return false;
+        if (target.getGrpId() == sourceGrpId) return true;
+        CardInfo sourceCard = names.cardForGrpId(sourceGrpId, cards);
+        return sourceCard != null && target.getCard() != null
+                && sourceCard.getName() != null
+                && sourceCard.getName().equals(target.getCard().getName());
     }
 
     private void addCardForObject(GameEvent event, GameObjectState object) {
@@ -762,7 +779,10 @@ public final class GameEventProjector {
     private String abilityVerb(GameObjectState ability) {
         if (state.getActivatedAbilityInstances().contains(ability.getInstanceId())) return "activates";
         if (state.getTriggeredAbilityInstances().contains(ability.getInstanceId())) return "triggers ability of";
-        return "uses ability of";
+        // Arena does not always include TriggeringObject before the ability reaches
+        // the stack. Unknown non-activated ability objects are still triggers, not
+        // player-initiated activations.
+        return "triggers ability of";
     }
 
     private boolean isAbility(GameObjectState object) {
@@ -930,7 +950,7 @@ public final class GameEventProjector {
         Integer sagaChapter = sagaChapterForAbility(ability);
         if (sagaChapter != null) {
             text = cardName(ability.getObjectSourceGrpId(), knownCards)
-                    + " advances to chapter " + romanNumeral(sagaChapter);
+                    + " — chapter " + romanNumeral(sagaChapter) + " ability triggers";
         }
         GameEvent event = event(source, text);
         AbilityReference reference = new AbilityReference();

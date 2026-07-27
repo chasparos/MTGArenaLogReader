@@ -89,6 +89,8 @@ final class ZoneTransferProjector {
             return;
         }
 
+        category = semanticCategory(category, object, before, fromZone, toZone);
+
         if ("CastSpell".equals(category) && rooms.isParent(object)) {
             projectRoomCast(source, cards, result, object);
             return;
@@ -123,6 +125,47 @@ final class ZoneTransferProjector {
             context.removePendingCast(instanceId, object);
         }
         return null;
+    }
+
+    private String semanticCategory(String category, GameObjectState object,
+                                    GameObjectState before, int fromZone, int toZone) {
+        String from = context.zoneType(fromZone);
+        String to = context.zoneType(toZone);
+        String supplied = category == null ? "" : category;
+        String normalized = supplied.toLowerCase(java.util.Locale.ROOT);
+        if ("Stack".equals(from) && "Graveyard".equals(to)
+                && normalized.contains("counter")) {
+            return "Countered";
+        }
+        if ("Battlefield".equals(from) && "Graveyard".equals(to)
+                && (normalized.contains("legend") || hasMatchingLegendOnBattlefield(object))) {
+            return "LegendRule";
+        }
+        return supplied;
+    }
+
+    private boolean hasMatchingLegendOnBattlefield(GameObjectState object) {
+        if (object == null || !isLegendary(object)) return false;
+        return state.getObjects().values().stream()
+                .filter(candidate -> candidate.getInstanceId() != object.getInstanceId())
+                .filter(candidate -> candidate.getControllerSeatId() == object.getControllerSeatId())
+                .filter(candidate -> "Battlefield".equals(context.zoneType(candidate.getSemanticZoneId())))
+                .anyMatch(candidate -> sameCard(candidate, object));
+    }
+
+    private boolean sameCard(GameObjectState left, GameObjectState right) {
+        if (left.getGrpId() > 0 && right.getGrpId() > 0
+                && left.getGrpId() == right.getGrpId()) return true;
+        if (left.getCard() == null || right.getCard() == null) return false;
+        String leftName = left.getCard().getName();
+        String rightName = right.getCard().getName();
+        return leftName != null && leftName.equals(rightName);
+    }
+
+    private boolean isLegendary(GameObjectState object) {
+        if (object.getCard() == null) return false;
+        String typeLine = object.getCard().effectiveTypeLine();
+        return typeLine != null && typeLine.contains("Legendary");
     }
 
     private void projectRoomCast(LogMessageInterface source,
