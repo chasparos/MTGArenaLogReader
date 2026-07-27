@@ -51,7 +51,9 @@ final class ObjectLifecycleEvents {
                       Map<Long, CardInfo> cards, String category) {
         String from = context.zoneType(previous.getSemanticZoneId());
         String to = context.zoneType(current.getSemanticZoneId());
-        String name = context.objectName(current, cards);
+        GameObjectState namedObject = "Battlefield".equals(from)
+                && !"Battlefield".equals(to) ? previous : current;
+        String name = context.objectName(namedObject, cards);
         String actor = context.playerName(current.getControllerSeatId());
         ZoneTransitionClassifier.Kind kind = classifier.classify(
                 from,

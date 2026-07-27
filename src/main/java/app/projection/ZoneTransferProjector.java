@@ -77,7 +77,7 @@ final class ZoneTransferProjector {
         GameObjectState object = state.getObjects().get(instanceId);
         if (object == null || rooms.isFacet(object)) return;
 
-        GameObjectState before = object.copy();
+        GameObjectState before = sourceFaceBeforeTransfer(object, instanceId, fromZone);
         before.setSemanticZoneId(fromZone);
         object.setSemanticZoneId(toZone);
         object.setZoneId(toZone);
@@ -97,6 +97,18 @@ final class ZoneTransferProjector {
                 source,
                 context.transition(before, object, cards, category),
                 object));
+    }
+
+    private GameObjectState sourceFaceBeforeTransfer(
+            GameObjectState object, long instanceId, int fromZone) {
+        return state.getObjects().values().stream()
+                .filter(candidate -> candidate.getInstanceId() != instanceId)
+                .filter(candidate -> candidate.getLogicalObjectId() == object.getLogicalObjectId())
+                .filter(candidate -> candidate.getSemanticZoneId() == fromZone)
+                .filter(candidate -> candidate.getGrpId() != object.getGrpId())
+                .findFirst()
+                .map(GameObjectState::copy)
+                .orElseGet(object::copy);
     }
 
     private PendingCastTracker.PendingCast correlatePendingCast(

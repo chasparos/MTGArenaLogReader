@@ -281,7 +281,8 @@ final class ReplayFragmentRenderer {
                 .filter(counter -> counter != null && counter.getCount() > 0)
                 .filter(counter -> permanent.getSagaChapter() == null
                         || (counter.getArenaType() != 108
-                        && !"Lore".equalsIgnoreCase(counter.getType())))
+                        && !"Lore".equalsIgnoreCase(counter.getType())
+                        && !"Counter#108".equalsIgnoreCase(counter.getType())))
                 .limit(3)
                 .toList();
         if (counters.isEmpty()) return;
@@ -308,7 +309,7 @@ final class ReplayFragmentRenderer {
             cursor += 8;
             if (counter.getCount() > 1) {
                 String count = String.valueOf(counter.getCount());
-                g.setColor(new Color(0x3D3547));
+                g.setColor(contrast(base));
                 g.drawString(count, cursor,
                         y + (14 - metrics.getHeight()) / 2 + metrics.getAscent());
                 cursor += metrics.stringWidth(count);

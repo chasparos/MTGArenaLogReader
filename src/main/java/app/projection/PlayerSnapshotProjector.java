@@ -199,10 +199,11 @@ final class PlayerSnapshotProjector {
         CardInfo card = object.getCard();
         String type = card == null || card.effectiveTypeLine() == null
                 ? "" : card.effectiveTypeLine();
-        if (!type.contains("Saga")) return null;
+        if (!type.contains("Saga") && !object.getSubtypes().contains("Saga")) return null;
         return object.getCounters().stream()
                 .filter(counter -> counter.getArenaType() == 108
-                        || "Lore".equalsIgnoreCase(counter.getType()))
+                        || "Lore".equalsIgnoreCase(counter.getType())
+                        || "Counter#108".equalsIgnoreCase(counter.getType()))
                 .map(app.model.game.CounterState::getCount)
                 .filter(count -> count > 0)
                 .findFirst().orElse(null);

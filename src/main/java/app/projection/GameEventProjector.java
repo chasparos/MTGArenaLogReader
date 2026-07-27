@@ -448,6 +448,12 @@ public final class GameEventProjector {
             if (object == null) continue;
             ObjectReference reference = objectReference(object.getInstanceId(), knownCards);
             if (reference != null) addReference(event, reference);
+            CardInfo card = object.getCard() != null
+                    ? object.getCard()
+                    : names.cardForGrpId(object.getGrpId(), knownCards);
+            if (card != null && !event.getCards().contains(card)) {
+                event.getCards().add(card);
+            }
         }
         return event;
     }
@@ -615,16 +621,16 @@ public final class GameEventProjector {
          */
         if (rooms.isFacet(current)) return;
 
-        if (previous != null && previous.getGrpId() > 0 && current.getGrpId() > 0
+        if (transferredIds.contains(instanceId)) {
+            return; // authoritative annotation handles zone movement and face changes
+        } else if (previous != null && previous.getGrpId() > 0 && current.getGrpId() > 0
                 && previous.getGrpId() != current.getGrpId()
                 && !rooms.isParent(current)
                 && "Battlefield".equals(zoneType(current.getSemanticZoneId()))) {
             result.add(objectEvent(source,
                     playerName(current.getControllerSeatId()) + " transforms "
                             + objectDisplayName(previous, cards) + " into "
-                            + objectDisplayName(current, cards), current));
-        } else if (transferredIds.contains(instanceId)) {
-            return; // authoritative annotation handles ordinary zone movement
+                            + objectDisplayName(current, cards), previous, current));
         } else if (previous == null) {
             emitNewVisibleObject(source, current, cards, result);
         } else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
@@ -672,12 +678,25 @@ public final class GameEventProjector {
                 GameEvent targetEvent = event(source, sourceName + " targets " + targets);
                 ObjectReference sourceReference = objectReference(sourceId, cards);
                 if (sourceReference != null) addReference(targetEvent, sourceReference);
+                addCardForObject(targetEvent, findObjectIncludingAliases(sourceId));
                 for (long targetId : targetIds) {
                     ObjectReference targetReference = objectReference(targetId, cards);
                     if (targetReference != null) addReference(targetEvent, targetReference);
+                    addCardForObject(targetEvent, findObjectIncludingAliases(targetId));
                 }
                 result.add(targetEvent);
             }
+        }
+    }
+
+    private void addCardForObject(GameEvent event, GameObjectState object) {
+        if (event == null || object == null) return;
+        long grpId = isAbility(object)
+                ? object.getObjectSourceGrpId() : object.getGrpId();
+        CardInfo card = object.getCard() != null && !isAbility(object)
+                ? object.getCard() : names.cardForGrpId(grpId, knownCards);
+        if (card != null && !event.getCards().contains(card)) {
+            event.getCards().add(card);
         }
     }
 
@@ -908,6 +927,11 @@ public final class GameEventProjector {
     }
 
     private GameEvent abilityEvent(LogMessageInterface source, String text, GameObjectState ability) {
+        Integer sagaChapter = sagaChapterForAbility(ability);
+        if (sagaChapter != null) {
+            text = cardName(ability.getObjectSourceGrpId(), knownCards)
+                    + " advances to chapter " + romanNumeral(sagaChapter);
+        }
         GameEvent event = event(source, text);
         AbilityReference reference = new AbilityReference();
         reference.setAbilityGrpId(ability.getGrpId());
@@ -916,9 +940,35 @@ public final class GameEventProjector {
         reference.setKind(state.getActivatedAbilityInstances().contains(ability.getInstanceId()) ? "activated" :
                 state.getTriggeredAbilityInstances().contains(ability.getInstanceId()) ? "triggered" : "unknown");
         event.setAbility(reference);
-        CardInfo sourceCard = knownCards.get(ability.getObjectSourceGrpId());
+        CardInfo sourceCard = names.cardForGrpId(
+                ability.getObjectSourceGrpId(), knownCards);
         if (sourceCard != null && !event.getCards().contains(sourceCard)) event.getCards().add(sourceCard);
         return event;
+    }
+
+    private Integer sagaChapterForAbility(GameObjectState ability) {
+        if (ability == null || ability.getObjectSourceGrpId() <= 0) return null;
+        GameObjectState source = state.getObjects().values().stream()
+                .filter(object -> object.getGrpId() == ability.getObjectSourceGrpId())
+                .filter(object -> object.getSubtypes().contains("Saga")
+                        || (object.getCard() != null
+                        && object.getCard().effectiveTypeLine() != null
+                        && object.getCard().effectiveTypeLine().contains("Saga")))
+                .findFirst().orElse(null);
+        if (source == null) return null;
+        int index = source.getUniqueAbilityGrpIds().indexOf(ability.getGrpId());
+        return index < 0 ? null : index + 1;
+    }
+
+    private String romanNumeral(int value) {
+        return switch (value) {
+            case 1 -> "I";
+            case 2 -> "II";
+            case 3 -> "III";
+            case 4 -> "IV";
+            case 5 -> "V";
+            default -> String.valueOf(value);
+        };
     }
 
     private boolean markAnnotation(JsonObject annotation) {

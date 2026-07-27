@@ -65,7 +65,7 @@ final class ObjectNameResolver {
                             object.getInstanceId()) ? "triggered"
                     : "unknown";
             String inferred = AbilityHeuristics.infer(
-                    cards.get(object.getObjectSourceGrpId()), kind);
+                    cardForGrpId(object.getObjectSourceGrpId(), cards), kind);
             String label = !learned.isBlank() ? learned : inferred;
             return label.isBlank() ? source : source + " \u2014 " + label;
         }
@@ -124,7 +124,7 @@ final class ObjectNameResolver {
     }
 
     String cardName(long grpId, Map<Long, CardInfo> cards) {
-        CardInfo card = cards.get(grpId);
+        CardInfo card = cardForGrpId(grpId, cards);
         if (card != null && card.getName() != null && !card.getName().isBlank()) {
             return card.getName();
         }
@@ -132,6 +132,23 @@ final class ObjectNameResolver {
         return observed == null
                 ? "ArenaCard#" + grpId
                 : observedDescription(observed);
+    }
+
+    CardInfo cardForGrpId(long grpId, Map<Long, CardInfo> cards) {
+        CardInfo direct = cards.get(grpId);
+        if (direct != null) {
+            if (direct.isMultiFaced()) return direct.faceView(0, grpId);
+            return direct;
+        }
+        for (CardInfo candidate : cards.values()) {
+            if (candidate == null || !candidate.isMultiFaced()
+                    || candidate.getArenaId() == null) continue;
+            long offset = grpId - candidate.getArenaId();
+            if (offset >= 0 && offset < candidate.getCardFaces().size()) {
+                return candidate.faceView(Math.toIntExact(offset), grpId);
+            }
+        }
+        return null;
     }
 
     String observedDescription(GameObjectState object) {
