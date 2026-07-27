@@ -2,10 +2,8 @@ package app.projection;
 
 import app.model.event.AbilityReference;
 import app.model.card.CardInfo;
-import app.model.card.CardFaceInfo;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
-import app.model.event.DecisionObservation;
 import app.model.event.ObjectReference;
 import app.model.game.*;
 import app.model.InformationBundle;
@@ -40,15 +38,42 @@ public final class GameEventProjector {
     /** Previously emitted mutable events, used to replace ArenaCard placeholders when enrichment arrives later. */
     private final List<GameEvent> emittedEvents = new ArrayList<>();
     private final Map<String, CardInfo> knownRelatedCards = new LinkedHashMap<>();
-    /** Names retained after transient Stack/Limbo objects disappear. */
-    private final Map<Long, String> historicalObjectNames = new LinkedHashMap<>();
-    /** Arena ability group id -> owning card name. */
-    private final Map<Long, String> historicalAbilityOwnerNames = new LinkedHashMap<>();
     private final AttachmentTracker attachmentTracker = new AttachmentTracker();
     private final CounterProjector counterProjector = new CounterProjector();
     private final TokenResolver tokenResolver = new TokenResolver();
-    private final ZoneTransitionClassifier zoneTransitionClassifier = new ZoneTransitionClassifier();
-    private final ZoneEventProjector zoneEventProjector = new ZoneEventProjector();
+    private final GameObjectProjector gameObjectProjector =
+            new GameObjectProjector(
+                    state,
+                    objectIdentityTracker,
+                    counterProjector,
+                    tokenResolver,
+                    knownRelatedCards,
+                    this::isTransientZone);
+    private final ObjectLifecycleEvents objectLifecycleEvents =
+            new ObjectLifecycleEvents(new ObjectLifecycleEvents.Context() {
+                @Override public String zoneType(int zoneId) {
+                    return GameEventProjector.this.zoneType(zoneId);
+                }
+                @Override public String playerName(int seatId) {
+                    return GameEventProjector.this.playerName(seatId);
+                }
+                @Override public String objectName(
+                        GameObjectState object, Map<Long, CardInfo> cards) {
+                    return objectDisplayName(object, cards);
+                }
+                @Override public boolean isAbility(GameObjectState object) {
+                    return GameEventProjector.this.isAbility(object);
+                }
+                @Override public boolean isLand(
+                        GameObjectState object, Map<Long, CardInfo> cards) {
+                    return GameEventProjector.this.isLand(object, cards);
+                }
+                @Override public String abilityVerb(GameObjectState ability) {
+                    return GameEventProjector.this.abilityVerb(ability);
+                }
+            });
+    private final GameResultProjector gameResultProjector =
+            new GameResultProjector(state, this::playerName);
     private final CombatProjector combatProjector = new CombatProjector(
             state,
             objectIdentityTracker,
@@ -64,6 +89,69 @@ public final class GameEventProjector {
             this::objectDisplayName,
             this::event,
             this::markAnnotation);
+    private final RoomProjectionSupport rooms = new RoomProjectionSupport(
+            state, objectIdentityTracker, this::playerName, this::objectDisplayName);
+    private final ZoneTransferProjector zoneTransfers =
+            new ZoneTransferProjector(
+                    state,
+                    rooms,
+                    this::markAnnotation,
+                    new ZoneTransferProjector.Context() {
+                        @Override public String zoneType(int zoneId) {
+                            return GameEventProjector.this.zoneType(zoneId);
+                        }
+                        @Override public PendingCastTracker.PendingCast removePendingCast(
+                                long instanceId, GameObjectState object) {
+                            return removePendingCastFor(instanceId, object);
+                        }
+                        @Override public GameEvent cancelledCast(
+                                LogMessageInterface source,
+                                PendingCastTracker.PendingCast pending) {
+                            return cancelledCastEvent(source, pending);
+                        }
+                        @Override public GameEvent objectEvent(
+                                LogMessageInterface source, String text,
+                                GameObjectState object) {
+                            return GameEventProjector.this.objectEvent(
+                                    source, text, object);
+                        }
+                        @Override public String transition(
+                                GameObjectState before, GameObjectState object,
+                                Map<Long, CardInfo> cards, String category) {
+                            return objectLifecycleEvents.transition(
+                                    before, object, cards, category);
+                        }
+                    });
+    private final PlayerSnapshotProjector playerSnapshotProjector =
+            new PlayerSnapshotProjector(new PlayerSnapshotProjector.Context() {
+                @Override public GameState state() { return state; }
+                @Override public boolean isCurrent(GameObjectState object) {
+                    return objectIdentityTracker.isCurrent(object);
+                }
+                @Override public String zoneType(int zoneId) {
+                    return GameEventProjector.this.zoneType(zoneId);
+                }
+                @Override public boolean isAbility(GameObjectState object) {
+                    return GameEventProjector.this.isAbility(object);
+                }
+                @Override public boolean isRoomFacet(GameObjectState object) {
+                    return rooms.isFacet(object);
+                }
+                @Override public String objectName(
+                        GameObjectState object, Map<Long, CardInfo> cards) {
+                    return objectDisplayName(object, cards);
+                }
+                @Override public Long attachedHost(long logicalObjectId) {
+                    return attachmentTracker.attachedHostFor(logicalObjectId);
+                }
+                @Override public List<String> unlockedRoomHalves(
+                        GameObjectState object, Map<Long, CardInfo> cards) {
+                    return rooms.unlockedHalfNames(object, cards);
+                }
+                @Override public String playerName(int seatId) {
+                    return GameEventProjector.this.playerName(seatId);
+                }
+            });
     /** Delay turn snapshots until a post-untap state update for that turn. */
     private Integer pendingTurnSnapshot;
     private boolean pendingTurnSnapshotNeedsNextMessage;
@@ -74,29 +162,13 @@ public final class GameEventProjector {
      * Keeping this tiny correlation record lets a Limbo -> Hand rollback
      * become a semantic cancellation instead of a misleading zone movement.
      */
-    private final Map<Long, PendingCast> pendingCasts = new LinkedHashMap<>();
-    private final Map<Long, PendingTargetDecision> pendingTargetDecisions = new LinkedHashMap<>();
-    /** Cast events retained until the parent Room card identity is known. */
-    private final Map<Long, List<RoomCastProjection>> roomCastEvents = new LinkedHashMap<>();
-    private final AbilityNameStore abilityNames;
+    private final PendingCastTracker pendingCastTracker =
+            new PendingCastTracker(objectIdentityTracker);
+    private final TargetDecisionTracker targetDecisionTracker =
+            new TargetDecisionTracker(this::objectReference, this::referenceDisplayName);
+    private final ObjectNameResolver names;
     private final OpeningHandTracker openingHandTracker = new OpeningHandTracker();
     private boolean openingHandEventEmitted;
-
-    private record PendingCast(long instanceId, long grpId, int seatId, String name) {}
-
-    private enum RoomHalf { LEFT, RIGHT }
-
-    private record RoomCastProjection(GameEvent event, RoomHalf half, int seatId) {}
-
-    private record PendingTargetDecision(
-            ObjectReference source,
-            List<ObjectReference> legalTargets,
-            int minimumSelections,
-            int maximumSelections) {
-        private PendingTargetDecision {
-            legalTargets = List.copyOf(legalTargets);
-        }
-    }
 
     public GameEventProjector() { this(new AbilityNameStore(), null); }
 
@@ -105,7 +177,14 @@ public final class GameEventProjector {
     }
 
     public GameEventProjector(AbilityNameStore abilityNames, MatchState matchState) {
-        this.abilityNames = abilityNames;
+        this.names = new ObjectNameResolver(
+                state,
+                objectIdentityTracker,
+                abilityNames,
+                tokenResolver,
+                observedCardsByGrpId,
+                emittedEvents,
+                this::playerName);
         this.matchState = matchState;
         if (matchState != null) {
             state.getPlayers().putAll(matchState.playerSnapshot());
@@ -133,7 +212,7 @@ public final class GameEventProjector {
             JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
             Map<Long, CardInfo> cards = cards(model);
             knownCards.putAll(cards);
-            repairPreviouslyUnknownNames(cards);
+            names.repairPreviouslyUnknownNames(cards);
             if (model instanceof InformationBundle bundle) knownRelatedCards.putAll(bundle.getRelatedCards());
             cards = knownCards;
             List<GameEvent> result = new ArrayList<>();
@@ -200,8 +279,7 @@ public final class GameEventProjector {
                     String name = object == null
                             ? cardName(grpId, cards)
                             : objectDisplayName(object, cards);
-                    pendingCasts.put(instanceId,
-                            new PendingCast(instanceId, grpId, seatId, name));
+                    pendingCastTracker.remember(instanceId, grpId, seatId, name);
                 } else if (actionType.contains("Cancel")) {
                     cancelMostRecentPendingCast(source, result);
                 }
@@ -220,69 +298,30 @@ public final class GameEventProjector {
                 || type.contains("Select")
                 || type.contains("Optional")
                 || type.contains("Casting"))) {
-            if (containsCancelAction(payload)) {
+            if (PendingCastTracker.containsCancelAction(payload)) {
                 cancelMostRecentPendingCast(source, result);
             }
         }
     }
 
-    private boolean containsCancelAction(JsonElement element) {
-        if (element == null || element.isJsonNull()) return false;
-        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
-            String value = element.getAsString();
-            return value.startsWith("ActionType_Cancel")
-                    || value.startsWith("SelectAction_Cancel")
-                    || value.equals("Cancel");
-        }
-        if (element.isJsonArray()) {
-            for (JsonElement child : element.getAsJsonArray()) {
-                if (containsCancelAction(child)) return true;
-            }
-            return false;
-        }
-        if (element.isJsonObject()) {
-            for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
-                if (containsCancelAction(entry.getValue())) return true;
-            }
-        }
-        return false;
-    }
-
     private void cancelMostRecentPendingCast(LogMessageInterface source,
                                              List<GameEvent> result) {
-        PendingCast pending = null;
-        for (PendingCast candidate : pendingCasts.values()) pending = candidate;
+        PendingCastTracker.PendingCast pending = pendingCastTracker.removeMostRecent();
         if (pending == null) return;
-        pendingCasts.remove(pending.instanceId());
         result.add(cancelledCastEvent(source, pending));
     }
 
-    private GameEvent cancelledCastEvent(LogMessageInterface source, PendingCast pending) {
+    private GameEvent cancelledCastEvent(LogMessageInterface source,
+                                         PendingCastTracker.PendingCast pending) {
         String actor = pending.seatId() < 0
                 ? "Player"
                 : playerName(pending.seatId());
         return event(source, actor + " cancels casting " + pending.name());
     }
 
-    private PendingCast removePendingCastFor(long instanceId, GameObjectState object) {
-        PendingCast direct = pendingCasts.remove(instanceId);
-        if (direct != null) return direct;
-
-        long logicalId = objectIdentityTracker.logicalIdOf(instanceId);
-        for (Map.Entry<Long, PendingCast> entry : new ArrayList<>(pendingCasts.entrySet())) {
-            long pendingLogicalId = objectIdentityTracker.logicalIdOf(entry.getKey());
-            PendingCast candidate = entry.getValue();
-            boolean sameLogicalObject = pendingLogicalId == logicalId;
-            boolean sameKnownCard = object != null
-                    && object.getGrpId() > 0
-                    && candidate.grpId() > 0
-                    && object.getGrpId() == candidate.grpId();
-            if (sameLogicalObject || sameKnownCard) {
-                pendingCasts.remove(entry.getKey());
-                return candidate;
-            }
-        }
-        return null;
+    private PendingCastTracker.PendingCast removePendingCastFor(
+            long instanceId, GameObjectState object) {
+        return pendingCastTracker.removeFor(instanceId, object);
     }
 
     private void projectRoomState(LogMessageInterface message, JsonObject event, List<GameEvent> result) {
@@ -291,13 +330,12 @@ public final class GameEventProjector {
         if (!incomingMatchId.isBlank() && !incomingMatchId.equals(state.getMatchId())) {
             state.reset(incomingMatchId);
             openingHandEventEmitted = false;
-            historicalObjectNames.clear();
             observedCardsByGrpId.clear();
             emittedEvents.clear();
-            historicalAbilityOwnerNames.clear();
-            pendingCasts.clear();
-            pendingTargetDecisions.clear();
-            roomCastEvents.clear();
+            names.clearHistory();
+            pendingCastTracker.clear();
+            targetDecisionTracker.clear();
+            rooms.clear();
             attachmentTracker.reset();
             pendingTurnSnapshot = null;
             pendingTurnSnapshotNeedsNextMessage = false;
@@ -325,104 +363,21 @@ public final class GameEventProjector {
             } else if ("GREMessageType_DieRollResultsResp".equals(type)) {
                 projectDieRoll(message, objectAt(greMessage, "dieRollResultsResp"), result);
             } else if ("GREMessageType_SelectTargetsReq".equals(type)) {
-                observeTargetDecisionRequest(greMessage, cards);
+                targetDecisionTracker.observeRequest(greMessage, cards);
             }
-        }
-    }
-
-    private void observeTargetDecisionRequest(JsonObject greMessage,
-                                              Map<Long, CardInfo> cards) {
-        long messageId = longAt(greMessage, "msgId", -1);
-        JsonObject request = objectAt(greMessage, "selectTargetsReq");
-        if (messageId < 0 || request.size() == 0) return;
-
-        ObjectReference source = objectReference(longAt(request, "sourceId", -1), cards);
-        List<ObjectReference> legalTargets = new ArrayList<>();
-        int minimumSelections = 0;
-        int maximumSelections = 0;
-
-        for (JsonElement targetGroupElement : arrayAt(request, "targets")) {
-            if (!targetGroupElement.isJsonObject()) continue;
-            JsonObject targetGroup = targetGroupElement.getAsJsonObject();
-            minimumSelections += Math.max(0, intAt(targetGroup, "minTargets", 0));
-            maximumSelections += Math.max(0, intAt(targetGroup, "maxTargets", 0));
-
-            for (JsonElement targetElement : arrayAt(targetGroup, "targets")) {
-                if (!targetElement.isJsonObject()) continue;
-                JsonObject target = targetElement.getAsJsonObject();
-                String legalAction = stringAt(target, "legalAction");
-                if (!legalAction.isBlank() && !legalAction.contains("Select")) continue;
-                long targetId = longAt(target, "targetInstanceId",
-                        longAt(target, "targetPlayerId", -1));
-                ObjectReference reference = objectReference(targetId, cards);
-                if (reference != null && !containsReference(legalTargets, reference)) {
-                    legalTargets.add(reference);
-                }
-            }
-        }
-
-        if (!legalTargets.isEmpty()) {
-            pendingTargetDecisions.put(messageId, new PendingTargetDecision(
-                    source, legalTargets, minimumSelections, maximumSelections));
         }
     }
 
     private void projectTargetDecisionResponse(LogMessageInterface source,
                                                JsonObject payload,
                                                List<GameEvent> result) {
-        long responseTo = longAt(payload, "respId", -1);
-        PendingTargetDecision pending = pendingTargetDecisions.remove(responseTo);
-        if (pending == null) return;
-
-        List<ObjectReference> selected = new ArrayList<>();
-        JsonObject response = objectAt(payload, "selectTargetsResp");
-        collectSelectedTargets(objectAt(response, "target"), selected);
-        for (JsonElement targetElement : arrayAt(response, "targets")) {
-            if (targetElement.isJsonObject()) {
-                collectSelectedTargets(targetElement.getAsJsonObject(), selected);
-            }
-        }
-
-        List<ObjectReference> alternatives = pending.legalTargets().stream()
-                .filter(candidate -> !containsReference(selected, candidate))
-                .toList();
-        String chosen = selected.isEmpty()
-                ? "no target"
-                : selected.stream().map(this::referenceDisplayName)
-                        .collect(Collectors.joining(", "));
-        String sourceName = pending.source() == null
-                ? "Unknown spell or ability"
-                : referenceDisplayName(pending.source());
-
-        GameEvent event = event(source, sourceName + " chooses " + chosen);
-        event.setType(GameEventType.DECISION);
-        event.setDecision(new DecisionObservation(
-                DecisionObservation.Kind.TARGET,
-                pending.source(),
-                selected,
-                alternatives,
-                pending.minimumSelections(),
-                pending.maximumSelections(),
-                DecisionObservation.Confidence.EXPLICIT));
-        if (pending.source() != null) event.getObjects().add(pending.source());
-        selected.forEach(reference -> addReference(event, reference));
-        alternatives.forEach(reference -> addReference(event, reference));
-        result.add(event);
-    }
-
-    private void collectSelectedTargets(JsonObject target,
-                                        List<ObjectReference> selected) {
-        if (target.size() == 0) return;
-        for (JsonElement selectedElement : arrayAt(target, "targets")) {
-            if (!selectedElement.isJsonObject()) continue;
-            JsonObject selectedTarget = selectedElement.getAsJsonObject();
-            long targetId = longAt(selectedTarget, "targetInstanceId",
-                    longAt(selectedTarget, "targetPlayerId", -1));
-            ObjectReference reference = objectReference(targetId, knownCards);
-            if (reference != null && !containsReference(selected, reference)) {
-                selected.add(reference);
-            }
-        }
+        targetDecisionTracker.resolveResponse(payload, knownCards).ifPresent(decision -> {
+            GameEvent event = event(source, decision.text());
+            event.setType(GameEventType.DECISION);
+            event.setDecision(decision.observation());
+            decision.references().forEach(reference -> addReference(event, reference));
+            result.add(event);
+        });
     }
 
     private ObjectReference objectReference(long arenaId,
@@ -495,7 +450,8 @@ public final class GameEventProjector {
         int messageStartIndex = result.size();
         updateTurnContext(objectAt(incoming, "turnInfo"));
         Map<Integer, Integer> previousLifeTotals = new LinkedHashMap<>(state.getLifeTotals());
-        updatePlayers(message, arrayAt(incoming, "players"), result);
+        playerSnapshotProjector.observePlayers(arrayAt(incoming, "players"))
+                .forEach(text -> result.add(event(message, text)));
         updateZones(arrayAt(incoming, "zones"));
 
         JsonArray annotations = arrayAt(incoming, "annotations");
@@ -531,7 +487,7 @@ public final class GameEventProjector {
                 && pendingTurnSnapshot.equals(state.getTurnNumber())) {
             if (pendingTurnSnapshotNeedsNextMessage) {
                 pendingTurnSnapshotNeedsNextMessage = false;
-            } else if (isPostUntapBoundary()) {
+            } else if (playerSnapshotProjector.isPostUntapBoundary()) {
                 result.add(messageStartIndex, turnSnapshotEvent(message));
                 state.setLastSnapshotTurn(state.getTurnNumber());
                 pendingTurnSnapshot = null;
@@ -552,101 +508,12 @@ public final class GameEventProjector {
 
     private GameEvent gameResultEvent(LogMessageInterface source, JsonObject gameInfo,
                                       JsonArray players, List<GameEvent> preceding) {
-        GameResult gameResult = new GameResult();
-        int winningTeam = -1;
-        String explicitResultReason = "";
-        for (JsonElement element : arrayAt(gameInfo, "results")) {
-            if (!element.isJsonObject()) continue;
-            JsonObject result = element.getAsJsonObject();
-            if ("ResultType_Draw".equals(stringAt(result, "result"))) {
-                gameResult.setReason(GameResult.Reason.DRAW);
-                gameResult.setConfidence(GameResult.Confidence.EXPLICIT);
-            }
-            int team = intAt(result, "winningTeamId", -1);
-            if (team >= 0) winningTeam = team;
-            String reason = stringAt(result, "reason");
-            if (!reason.isBlank()) explicitResultReason = reason;
-        }
-
-        Map<Integer, Integer> seatTeams = new LinkedHashMap<>();
-        for (JsonElement element : players) {
-            if (!element.isJsonObject()) continue;
-            JsonObject player = element.getAsJsonObject();
-            int seat = intAt(player, "systemSeatNumber", -1);
-            int team = intAt(player, "teamId", -1);
-            if (seat >= 0) seatTeams.put(seat, team);
-        }
-        for (Map.Entry<Integer, Integer> entry : seatTeams.entrySet()) {
-            if (entry.getValue() == winningTeam) {
-                gameResult.setWinnerSeatId(entry.getKey());
-                gameResult.setWinnerName(playerName(entry.getKey()));
-            } else if (winningTeam >= 0) {
-                gameResult.setLoserSeatId(entry.getKey());
-                gameResult.setLoserName(playerName(entry.getKey()));
-            }
-        }
-
-        if (gameResult.getReason() != GameResult.Reason.DRAW) {
-            Integer loser = gameResult.getLoserSeatId();
-            int loserPoison = loser == null ? 0 : state.getPoisonCounters().getOrDefault(loser, 0);
-            Integer loserLife = loser == null ? null : state.getLifeTotals().get(loser);
-            Integer library = loser == null ? null : librarySize(loser);
-            if (loserPoison >= 10) {
-                gameResult.setReason(GameResult.Reason.POISON);
-                gameResult.setConfidence(GameResult.Confidence.CORRELATED);
-            } else if (loserLife != null && loserLife <= 0) {
-                gameResult.setReason(GameResult.Reason.DAMAGE);
-                gameResult.setConfidence(GameResult.Confidence.CORRELATED);
-            } else if (library != null && library == 0) {
-                gameResult.setReason(GameResult.Reason.EMPTY_LIBRARY);
-                gameResult.setConfidence(GameResult.Confidence.INFERRED);
-            } else if (explicitResultReason.toLowerCase().contains("concede")) {
-                gameResult.setReason(GameResult.Reason.CONCEDE);
-                gameResult.setConfidence(GameResult.Confidence.EXPLICIT);
-            } else {
-                gameResult.setReason(GameResult.Reason.OTHER);
-                gameResult.setConfidence(GameResult.Confidence.INFERRED);
-            }
-        }
-
-        for (int i = preceding.size() - 1; i >= 0; i--) {
-            GameEvent prior = preceding.get(i);
-            if (!prior.getCards().isEmpty()) {
-                gameResult.setFinishingCard(prior.getCards().get(0).getName());
-                break;
-            }
-        }
-
-        String winner = gameResult.getWinnerName() == null ? "Game" : gameResult.getWinnerName();
-        String text = switch (gameResult.getReason()) {
-            case DAMAGE -> winner + " wins by damage";
-            case POISON -> winner + " wins by poison";
-            case EMPTY_LIBRARY -> winner + " wins because the opponent drew from an empty library";
-            case CONCEDE -> winner + " wins by concession";
-            case EFFECT -> winner + " wins by a card effect";
-            case OTHER -> winner + " wins (reason not identified)";
-            case DRAW -> "Game ends in a draw";
-            case UNKNOWN -> winner + " wins";
-        };
-        if (gameResult.getFinishingCard() != null
-                && (gameResult.getReason() == GameResult.Reason.EFFECT
-                || gameResult.getReason() == GameResult.Reason.UNKNOWN)) {
-            text += " via " + gameResult.getFinishingCard();
-        }
-
-        GameEvent event = event(source, text);
+        GameResultProjector.Projection projection =
+                gameResultProjector.project(gameInfo, players, preceding);
+        GameEvent event = event(source, projection.text());
         event.setType(GameEventType.GAME_RESULT);
-        event.setGameResult(gameResult);
+        event.setGameResult(projection.result());
         return event;
-    }
-
-    private Integer librarySize(int seat) {
-        return state.getZones().values().stream()
-                .filter(zone -> zone.getOwnerSeatId() != null && zone.getOwnerSeatId() == seat)
-                .filter(zone -> "Library".equals(zone.displayName()))
-                .map(ZoneInfo::getObjectCount)
-                .filter(count -> count >= 0)
-                .findFirst().orElse(null);
     }
 
     private void updateZones(JsonArray zones) {
@@ -694,103 +561,15 @@ public final class GameEventProjector {
     private void projectObjectChange(LogMessageInterface source, JsonObject json,
                                      Map<Long, CardInfo> cards, List<GameEvent> result,
                                      Set<Long> transferredIds) {
-        long instanceId = longAt(json, "instanceId", -1);
-        if (instanceId < 0) return;
-
-        GameObjectState previous = state.getObjects().get(instanceId);
-        GameObjectState current = objectIdentityTracker.copyForObservation(instanceId);
-
-        if (json.has("grpId")) current.setGrpId(longAt(json, "grpId", current.getGrpId()));
-        if (current.getGrpId() > 0 && cards.containsKey(current.getGrpId())) current.setCard(cards.get(current.getGrpId()));
-        if (json.has("type")) current.setObjectType(stringAt(json, "type"));
-        if (json.has("objectSourceGrpId")) current.setObjectSourceGrpId(longAt(json, "objectSourceGrpId", 0));
-        if (json.has("parentId")) current.setParentId(longAt(json, "parentId", -1));
-        if (json.has("ownerSeatId")) current.setOwnerSeatId(intAt(json, "ownerSeatId", current.getOwnerSeatId()));
-        if (json.has("controllerSeatId")) current.setControllerSeatId(intAt(json, "controllerSeatId", current.getControllerSeatId()));
-        if (current.getControllerSeatId() < 0) current.setControllerSeatId(current.getOwnerSeatId());
-        if (json.has("cardTypes")) {
-            current.getCardTypes().clear();
-            for (JsonElement type : arrayAt(json, "cardTypes")) current.getCardTypes().add(clean(type.getAsString()));
-        }
-        if (json.has("subtypes")) {
-            current.getSubtypes().clear();
-            for (JsonElement type : arrayAt(json, "subtypes")) current.getSubtypes().add(clean(type.getAsString()));
-        }
-        if (json.has("color")) {
-            current.getColors().clear();
-            for (JsonElement color : arrayAt(json, "color")) current.getColors().add(clean(color.getAsString()));
-        }
-        if (json.has("uniqueAbilities")) {
-            current.getUniqueAbilityGrpIds().clear();
-            for (JsonElement ability : arrayAt(json, "uniqueAbilities")) {
-                if (!ability.isJsonObject()) continue;
-                long abilityGrpId = longAt(ability.getAsJsonObject(), "grpId", -1);
-                if (abilityGrpId > 0) current.getUniqueAbilityGrpIds().add(abilityGrpId);
-            }
-        }
-        if (json.has("counters")) {
-            current.getCounters().clear();
-            for (JsonElement counterElement : arrayAt(json, "counters")) {
-                if (!counterElement.isJsonObject()) continue;
-                JsonObject counterJson = counterElement.getAsJsonObject();
-                CounterState counter = new CounterState();
-                String type = stringAt(counterJson, "type");
-                if (type.isBlank()) type = stringAt(counterJson, "counterType");
-                int typeId = (int) longAt(counterJson, "counterTypeId",
-                        longAt(counterJson, "id", -1));
-                counter.setArenaType(typeId);
-                if (type.isBlank()) {
-                    type = typeId < 0 ? "Unknown" : counterProjector.counterTypeName(typeId);
-                }
-                counter.setType(clean(type));
-                counter.setCount(intAt(counterJson, "count",
-                        intAt(counterJson, "value", 1)));
-                current.getCounters().add(counter);
-            }
-        }
-        if (json.has("power")) current.setPower(nullableInt(objectAt(json, "power"), "value"));
-        if (json.has("toughness")) current.setToughness(nullableInt(objectAt(json, "toughness"), "value"));
-        /*
-         * Arena gameObjects are current object snapshots, not sparse patches.
-         * isTapped is only present when true; its absence means untapped.
-         * Retaining the previous true value made lands and attackers appear
-         * permanently tapped in later turn snapshots.
-         */
-        current.setTapped(json.has("isTapped") && json.get("isTapped").getAsBoolean());
-        if (json.has("attackState")) {
-            current.setAttackState(stringAt(json, "attackState"));
-            if (!current.getAttackState().endsWith("_Attacking")
-                    && !current.getAttackState().endsWith("_Declared")) {
-                current.setAttackTargetId(null);
-            }
-        }
-        if (json.has("attackInfo")) {
-            JsonObject attackInfo = objectAt(json, "attackInfo");
-            long targetId = longAt(attackInfo, "targetId", -1);
-            current.setAttackTargetId(targetId < 0 ? null : targetId);
-        }
-        if (json.has("blockState")) {
-            current.setBlockState(stringAt(json, "blockState"));
-            if (!current.getBlockState().endsWith("_Blocking")
-                    && !current.getBlockState().endsWith("_Declared")) {
-                current.getBlockedAttackerIds().clear();
-            }
-        }
-        if (json.has("blockInfo")) {
-            current.getBlockedAttackerIds().clear();
-            current.getBlockedAttackerIds().addAll(longArray(objectAt(json, "blockInfo"), "attackerIds"));
-        }
-        if (isToken(current) && current.getCard() == null) {
-            current.setCard(tokenResolver.resolve(current, knownCards, knownRelatedCards));
-        }
-
-        int incomingZone = json.has("zoneId") ? intAt(json, "zoneId", current.getZoneId()) : current.getZoneId();
-        current.setZoneId(incomingZone);
-        int previousSemanticZone = previous == null ? -1 : previous.getSemanticZoneId();
-        if (!isTransientZone(incomingZone)) current.setSemanticZoneId(incomingZone);
-        else if (previous != null) current.setSemanticZoneId(previousSemanticZone);
-        state.getObjects().put(instanceId, current);
-        repairRoomCastEvents(current, cards);
+        GameObjectProjector.Observation observation =
+                gameObjectProjector.apply(json, cards);
+        if (observation == null) return;
+        GameObjectState previous = observation.previous();
+        GameObjectState current = observation.current();
+        long instanceId = current.getInstanceId();
+        int previousSemanticZone = observation.previousSemanticZone();
+        int incomingZone = observation.incomingZone();
+        rooms.repairCastEvents(current, cards);
         if (current.getGrpId() > 0 && !isAbility(current)) {
             observedCardsByGrpId.put(current.getGrpId(), current.copy());
         }
@@ -810,97 +589,28 @@ public final class GameEventProjector {
 
         // TargetSpec annotations can outlive the transient spell/ability object.
         // Retain both the instance name and the owning card for each ability grpId.
-        String historicalName = objectDisplayName(current, cards);
-        if (!historicalName.isBlank() && !historicalName.startsWith("ArenaCard#")) {
-            historicalObjectNames.put(instanceId, historicalName);
-            for (long abilityGrpId : current.getUniqueAbilityGrpIds()) {
-                historicalAbilityOwnerNames.put(abilityGrpId, historicalName);
-            }
-        }
+        names.remember(instanceId, current, cards);
 
         /*
          * RoomLeft/RoomRight objects are facets of the parent Room permanent,
          * not independent permanents. Retain them in canonical state as Arena
          * evidence, but never project their zone changes as semantic objects.
          */
-        if (isRoomFacet(current)) return;
+        if (rooms.isFacet(current)) return;
 
         if (transferredIds.contains(instanceId)) return; // authoritative annotation handles it
         if (previous == null) emitNewVisibleObject(source, current, cards, result);
         else if (current.getSemanticZoneId() >= 0 && previousSemanticZone >= 0
                 && current.getSemanticZoneId() != previousSemanticZone) {
-            result.add(objectEvent(source, describeTransition(previous, current, cards, ""), current));
+            result.add(objectEvent(source,
+                    objectLifecycleEvents.transition(previous, current, cards, ""), current));
         }
     }
 
 
     private void projectZoneTransfers(LogMessageInterface source, JsonArray annotations,
                                       Map<Long, CardInfo> cards, List<GameEvent> result) {
-        for (JsonElement element : annotations) {
-            if (!element.isJsonObject()) continue;
-            JsonObject annotation = element.getAsJsonObject();
-            if (!hasType(annotation, "AnnotationType_ZoneTransfer") || !markAnnotation(annotation)) continue;
-            int fromZone = (int) detailLong(annotation, "zone_src", -1);
-            int toZone = (int) detailLong(annotation, "zone_dest", -1);
-            String category = detailString(annotation, "category");
-            for (long instanceId : longArray(annotation, "affectedIds")) {
-                GameObjectState object = state.getObjects().get(instanceId);
-                if (object == null) continue;
-
-                /*
-                 * Room halves are represented by Arena as child game objects,
-                 * but their zone transfers describe the parent Room spell or
-                 * permanent. They are evidence for the parent, not separate
-                 * semantic objects.
-                 */
-                if (isRoomFacet(object)) continue;
-
-                GameObjectState before = object.copy();
-                before.setSemanticZoneId(fromZone);
-                object.setSemanticZoneId(toZone);
-                object.setZoneId(toZone);
-
-                /*
-                 * Cancelling target/mode/payment selection commonly rolls the
-                 * card from Limbo back to Hand.  Limbo is intentionally not a
-                 * semantic zone elsewhere, but it is meaningful for this one
-                 * correlation.
-                 */
-                if ("Hand".equals(zoneType(toZone))
-                        && ("Limbo".equals(zoneType(fromZone))
-                        || "Stack".equals(zoneType(fromZone)))) {
-                    PendingCast pending = removePendingCastFor(instanceId, object);
-                    if (pending != null) {
-                        result.add(cancelledCastEvent(source, pending));
-                        continue;
-                    }
-                } else if ("Stack".equals(zoneType(fromZone))) {
-                    removePendingCastFor(instanceId, object);
-                }
-
-                if ("CastSpell".equals(category) && isRoomParent(object)) {
-                    RoomHalf half = roomHalfFor(object);
-                    if (half != null && object.getGrpId() > 0
-                            && !object.getUnlockedRoomGrpIds().contains(object.getGrpId())) {
-                        object.getUnlockedRoomGrpIds().add(object.getGrpId());
-                    }
-                    GameEvent castEvent = objectEvent(
-                            source,
-                            describeRoomCast(object, cards, half),
-                            object);
-                    result.add(castEvent);
-                    if (half != null) {
-                        roomCastEvents
-                                .computeIfAbsent(object.getLogicalObjectId(), ignored -> new ArrayList<>())
-                                .add(new RoomCastProjection(
-                                        castEvent, half, object.getControllerSeatId()));
-                    }
-                } else {
-                    result.add(objectEvent(source,
-                            describeTransition(before, object, cards, category), object));
-                }
-            }
-        }
+        zoneTransfers.project(source, annotations, cards, result);
     }
 
     private void projectTargets(LogMessageInterface source, JsonArray persistentAnnotations,
@@ -924,25 +634,8 @@ public final class GameEventProjector {
 
         for (Map.Entry<Long, List<Long>> entry : targetsBySource.entrySet()) {
             long sourceId = entry.getKey();
-            GameObjectState sourceObject = state.getObjects().get(sourceId);
             long abilityGrpId = sourceGrpIds.getOrDefault(sourceId, -1L);
-            String sourceName;
-            if (sourceObject != null) {
-                sourceName = objectDisplayName(sourceObject, cards);
-            } else if (historicalObjectNames.containsKey(sourceId)) {
-                sourceName = historicalObjectNames.get(sourceId);
-            } else if (abilityGrpId > 0 && historicalAbilityOwnerNames.containsKey(abilityGrpId)) {
-                sourceName = historicalAbilityOwnerNames.get(abilityGrpId);
-            } else {
-                GameObjectState abilityOwner = abilityGrpId > 0
-                        ? findObjectOwningAbilityGroup(abilityGrpId)
-                        : null;
-                sourceName = abilityOwner == null
-                        ? (abilityGrpId > 0
-                            ? "Unknown spell or ability [Arena ability #" + abilityGrpId + "]"
-                            : "Unknown spell or ability")
-                        : objectDisplayName(abilityOwner, cards);
-            }
+            String sourceName = names.sourceName(sourceId, abilityGrpId, cards);
 
             List<Long> targetIds = entry.getValue().stream().distinct().toList();
             String targets = targetIds.stream()
@@ -963,63 +656,14 @@ public final class GameEventProjector {
 
     private void emitNewVisibleObject(LogMessageInterface source, GameObjectState current,
                                       Map<Long, CardInfo> cards, List<GameEvent> result) {
-        String zoneType = zoneType(current.getSemanticZoneId());
-        if (!"Stack".equals(zoneType) && !"Battlefield".equals(zoneType)) return;
-        String actor = playerName(current.getControllerSeatId());
-        String name = objectDisplayName(current, cards);
-
-        if ("Stack".equals(zoneType)) {
-            if (isAbility(current)) {
-                String verb = abilityVerb(current);
-                result.add(abilityEvent(source, actor + " " + verb + " " + name, current));
-            } else {
-                result.add(objectEvent(source, actor + " casts " + name, current));
-            }
-        } else if (!isAbility(current)) {
-            if (isLand(current, cards)) {
-                result.add(objectEvent(source, actor + " plays " + name + tappedSuffix(current), current));
-            } else {
-                result.add(objectEvent(source, name + " entered the battlefield"
-                        + tappedSuffix(current) + " under " + actor + "'s control", current));
-            }
-        }
+        ObjectLifecycleEvents.Description description =
+                objectLifecycleEvents.newlyVisible(current, cards);
+        if (description == null) return;
+        result.add(description.ability()
+                ? abilityEvent(source, description.text(), current)
+                : objectEvent(source, description.text(), current));
     }
 
-    private String describeTransition(GameObjectState previous, GameObjectState current,
-                                      Map<Long, CardInfo> cards, String category) {
-        String from = zoneType(previous.getSemanticZoneId());
-        String to = zoneType(current.getSemanticZoneId());
-        String name = objectDisplayName(current, cards);
-        String actor = playerName(current.getControllerSeatId());
-
-        ZoneTransitionClassifier.Kind kind = zoneTransitionClassifier.classify(
-                from,
-                to,
-                category,
-                isAbility(current),
-                isLand(current, cards));
-
-        return zoneEventProjector.describe(
-                kind,
-                from,
-                to,
-                actor,
-                name,
-                abilityVerb(current),
-                tappedSuffix(current));
-    }
-
-
-    private GameObjectState findObjectOwningAbilityGroup(long abilityGrpId) {
-        return state.getObjects().values().stream()
-                .filter(object -> object.getUniqueAbilityGrpIds().contains(abilityGrpId))
-                .filter(objectIdentityTracker::isCurrent)
-                .findFirst()
-                .orElseGet(() -> state.getObjects().values().stream()
-                        .filter(object -> object.getUniqueAbilityGrpIds().contains(abilityGrpId))
-                        .findFirst()
-                        .orElse(null));
-    }
 
     /**
      * Arena game-state messages are batched observations rather than a
@@ -1069,11 +713,6 @@ public final class GameEventProjector {
                 || text.contains(" plays "));
     }
 
-    private String tappedSuffix(GameObjectState object) {
-        if (object.getTapped() == null) return "";
-        return object.getTapped() ? " tapped" : " untapped";
-    }
-
     private String abilityVerb(GameObjectState ability) {
         if (state.getActivatedAbilityInstances().contains(ability.getInstanceId())) return "activates";
         if (state.getTriggeredAbilityInstances().contains(ability.getInstanceId())) return "triggers ability of";
@@ -1085,73 +724,20 @@ public final class GameEventProjector {
     }
 
     private String objectDisplayName(long instanceId, Map<Long, CardInfo> cards) {
-        GameObjectState object = state.getObjects().get(instanceId);
-        if (object == null) return "object " + instanceId;
-        return objectDisplayName(object, cards);
+        return names.displayName(instanceId, cards);
     }
 
     private String targetDisplayName(long id, Map<Long, CardInfo> cards) {
-        GameObjectState object = state.getObjects().get(id);
-        if (object != null) return objectDisplayName(object, cards);
-        if (state.getPlayers().containsKey((int) id)) return playerName((int) id);
-        return "object " + id;
+        return names.targetName(id, cards);
     }
 
     private String objectDisplayName(GameObjectState object, Map<Long, CardInfo> cards) {
-        if (isAbility(object)) {
-            String source = cardName(object.getObjectSourceGrpId(), cards);
-            String learned = abilityNames.find(object.getObjectSourceGrpId(), object.getGrpId());
-            String kind = state.getActivatedAbilityInstances().contains(object.getInstanceId()) ? "activated" :
-                    state.getTriggeredAbilityInstances().contains(object.getInstanceId()) ? "triggered" : "unknown";
-            String inferred = AbilityHeuristics.infer(cards.get(object.getObjectSourceGrpId()), kind);
-            String label = !learned.isBlank() ? learned : inferred;
-            return label.isBlank() ? source : source + " — " + label;
-        }
-        if (object.getCard() != null && object.getCard().getName() != null && !object.getCard().getName().isBlank()) {
-            return object.getCard().getName();
-        }
-        if (isToken(object)) return tokenResolver.descriptiveName(object);
-        String resolved = cardName(object.getGrpId(), cards);
-        if (!resolved.startsWith("ArenaCard#")) return resolved;
-        return observedCardDescription(object);
+        return names.displayName(object, cards);
     }
 
 
     private String observedCardDescription(GameObjectState object) {
-        if (object == null) return "Unknown card";
-        StringBuilder out = new StringBuilder("Unknown");
-        if (!object.getColors().isEmpty()) {
-            out.append(' ').append(String.join("/", object.getColors()).toLowerCase());
-        }
-        if (!object.getSubtypes().isEmpty()) {
-            out.append(' ').append(String.join(" ", object.getSubtypes()));
-        }
-        if (!object.getCardTypes().isEmpty()) {
-            out.append(' ').append(String.join(" ", object.getCardTypes()).toLowerCase());
-        } else if (object.getObjectType() != null && !object.getObjectType().isBlank()) {
-            out.append(' ').append(clean(object.getObjectType()).toLowerCase());
-        } else {
-            out.append(" card");
-        }
-        if (object.getPower() != null && object.getToughness() != null) {
-            out.append(" (").append(object.getPower()).append('/').append(object.getToughness()).append(')');
-        }
-        if (object.getGrpId() > 0) out.append(" [Arena #").append(object.getGrpId()).append(']');
-        return out.toString();
-    }
-
-    private void repairPreviouslyUnknownNames(Map<Long, CardInfo> newlyKnown) {
-        if (newlyKnown == null || newlyKnown.isEmpty() || emittedEvents.isEmpty()) return;
-        for (Map.Entry<Long, CardInfo> entry : newlyKnown.entrySet()) {
-            CardInfo card = entry.getValue();
-            if (card == null || card.getName() == null || card.getName().isBlank()) continue;
-            String placeholder = "ArenaCard#" + entry.getKey();
-            for (GameEvent event : emittedEvents) {
-                if (event.getText() != null && event.getText().contains(placeholder)) {
-                    event.setText(event.getText().replace(placeholder, card.getName()));
-                }
-            }
-        }
+        return names.observedDescription(object);
     }
 
     /**
@@ -1176,7 +762,9 @@ public final class GameEventProjector {
 
             for (long affectedId : longArray(annotation, "affectedIds")) {
                 if (state.getPlayers().containsKey((int) affectedId)) {
-                    applyPlayerCounter(source, (int) affectedId, counterType, delta, result);
+                    playerSnapshotProjector.applyPlayerCounter(
+                                    (int) affectedId, counterType, delta)
+                            .ifPresent(text -> result.add(event(source, text)));
                     continue;
                 }
 
@@ -1213,291 +801,17 @@ public final class GameEventProjector {
         }
     }
 
-    private void applyPlayerCounter(LogMessageInterface source,
-                                    int seatId,
-                                    int counterType,
-                                    int delta,
-                                    List<GameEvent> result) {
-        // Verified from the supplied Fynn game: Arena counter_type 3 on a
-        // player seat is poison.
-        if (counterType != 3) return;
-
-        int previous = state.getPoisonCounters().getOrDefault(seatId, 0);
-        int current = Math.max(0, previous + delta);
-        state.getPoisonCounters().put(seatId, current);
-        if (current == previous) return;
-
-        int changed = current - previous;
-        String verb = changed > 0
-                ? "gets " + changed + " poison counter" + (changed == 1 ? "" : "s")
-                : "loses " + Math.abs(changed) + " poison counter"
-                    + (changed == -1 ? "" : "s");
-        result.add(event(source, playerName(seatId) + " " + verb
-                + " (" + current + " total)"));
-    }
-
     private GameObjectState findObjectIncludingAliases(long instanceId) {
         return objectIdentityTracker.findIncludingAliases(instanceId);
     }
 
-    private void updatePlayers(LogMessageInterface source, JsonArray players,
-                               List<GameEvent> result) {
-        for (JsonElement element : players) {
-            if (!element.isJsonObject()) continue;
-            JsonObject player = element.getAsJsonObject();
-            int seat = intAt(player, "systemSeatNumber", intAt(player, "systemSeatId", -1));
-            if (seat < 0) continue;
-            if (player.has("lifeTotal")) state.getLifeTotals().put(seat, intAt(player, "lifeTotal", 0));
-            Integer poison = poisonCount(player);
-            if (poison != null) {
-                Integer previous = state.getPoisonCounters().put(seat, poison);
-                if (previous != null && previous.intValue() != poison.intValue()) {
-                    int delta = poison - previous;
-                    String verb = delta > 0 ? "gets " + delta + " poison counter"
-                            + (delta == 1 ? "" : "s")
-                            : "loses " + Math.abs(delta) + " poison counter"
-                            + (delta == -1 ? "" : "s");
-                    result.add(event(source, playerName(seat) + " " + verb
-                            + " (" + poison + " total)"));
-                }
-            }
-        }
-    }
-
-    private Integer poisonCount(JsonObject player) {
-        for (String key : List.of("poisonCount", "poisonCounter", "poisonCounters")) {
-            if (player.has(key) && player.get(key).isJsonPrimitive()) return player.get(key).getAsInt();
-        }
-        for (JsonElement element : arrayAt(player, "counters")) {
-            if (!element.isJsonObject()) continue;
-            JsonObject counter = element.getAsJsonObject();
-            String type = stringAt(counter, "type");
-            if (type.toLowerCase().contains("poison")) return intAt(counter, "count", intAt(counter, "value", 0));
-        }
-        return null;
-    }
-
     private GameEvent turnSnapshotEvent(LogMessageInterface source) {
         GameEvent event = event(source, "Turn state");
-        event.getBattlefieldObservation().addAll(currentBattlefieldObservation());
-        for (Map.Entry<Integer, String> player : state.getPlayers().entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
-            PlayerTurnSnapshot snapshot = new PlayerTurnSnapshot();
-            snapshot.setSeatId(player.getKey());
-            snapshot.setPlayerName(player.getValue());
-            snapshot.setLifeTotal(state.getLifeTotals().get(player.getKey()));
-            snapshot.setPoisonCounters(state.getPoisonCounters().getOrDefault(player.getKey(), 0));
-            snapshot.setHandSize(handSize(player.getKey()));
-            snapshot.getKnownHand().addAll(knownCardsInZone(player.getKey(), "Hand"));
-            snapshot.getKnownGraveyard().addAll(knownCardsInZone(player.getKey(), "Graveyard"));
-            snapshot.getKnownExile().addAll(knownCardsInZone(player.getKey(), "Exile"));
-            event.getTurnSnapshot().add(snapshot);
-        }
+        PlayerSnapshotProjector.TurnSnapshot snapshot =
+                playerSnapshotProjector.snapshot(knownCards);
+        event.getBattlefieldObservation().addAll(snapshot.battlefield());
+        event.getTurnSnapshot().addAll(snapshot.players());
         return event;
-    }
-
-    private List<BoardPermanentSnapshot> currentBattlefieldObservation() {
-        return state.getObjects().values().stream()
-                .filter(objectIdentityTracker::isCurrent)
-                .filter(object -> "Battlefield".equals(zoneType(object.getSemanticZoneId())))
-                .filter(object -> !isAbility(object))
-                .filter(object -> !isRoomFacet(object))
-                .sorted(java.util.Comparator
-                        .comparingInt(GameObjectState::getControllerSeatId)
-                        .thenComparingLong(GameObjectState::getLogicalObjectId))
-                .map(object -> {
-                    BoardPermanentSnapshot permanent = new BoardPermanentSnapshot();
-                    permanent.setLogicalObjectId(object.getLogicalObjectId());
-                    permanent.setOwnerSeatId(object.getOwnerSeatId());
-                    permanent.setControllerSeatId(object.getControllerSeatId());
-                    permanent.setName(objectDisplayName(object, knownCards));
-                    permanent.setCard(object.getCard());
-                    permanent.setTapped(object.getTapped());
-                    permanent.setPower(object.getPower());
-                    permanent.setToughness(object.getToughness());
-                    permanent.setAttachedToLogicalObjectId(
-                            attachmentTracker.attachedHostFor(object.getLogicalObjectId()));
-                    object.getCounters().forEach(counter ->
-                            permanent.getCounters().add(counter.copy()));
-                    roomUnlockedHalfNames(object, knownCards)
-                            .forEach(permanent.getUnlockedRoomHalves()::add);
-                    observedEvergreenAbilities(object)
-                            .forEach(permanent.getEvergreenAbilities()::add);
-                    return permanent;
-                })
-                .toList();
-    }
-
-    private List<String> observedEvergreenAbilities(GameObjectState object) {
-        java.util.LinkedHashSet<String> abilities = new java.util.LinkedHashSet<>();
-        if (object.getCard() != null && object.getCard().getKeywords() != null) {
-            object.getCard().getKeywords().stream()
-                    .map(keyword -> keyword == null ? "" : keyword.trim().toLowerCase(java.util.Locale.ROOT))
-                    .filter(this::isBattleRelevantEvergreen)
-                    .forEach(abilities::add);
-        }
-        object.getCounters().stream()
-                .map(counter -> counter.getType() == null ? "" : counter.getType())
-                .map(type -> type.toLowerCase(java.util.Locale.ROOT)
-                        .replace("countertype_", "")
-                        .replace("counter_", "")
-                        .replace(" counter", "")
-                        .replace('_', ' ')
-                        .trim())
-                .filter(type -> isBattleRelevantEvergreen(type) || "shield".equals(type))
-                .forEach(abilities::add);
-        return List.copyOf(abilities);
-    }
-
-    private boolean isBattleRelevantEvergreen(String ability) {
-        return java.util.Set.of(
-                "deathtouch", "defender", "double strike", "first strike", "flying",
-                "haste", "hexproof", "indestructible", "lifelink", "menace",
-                "reach", "trample", "vigilance", "ward").contains(ability);
-    }
-
-    private boolean isPostUntapBoundary() {
-        String phase = state.getPhase() == null ? "" : state.getPhase();
-        String step = state.getStep() == null ? "" : state.getStep();
-        if (!phase.contains("Beginning")) return true;
-        return step.contains("Upkeep") || step.contains("Draw");
-    }
-
-    private Integer handSize(int seat) {
-        return state.getZones().values().stream()
-                .filter(zone -> zone.getOwnerSeatId() != null && zone.getOwnerSeatId() == seat)
-                .filter(zone -> "Hand".equals(zone.displayName()))
-                .map(ZoneInfo::getObjectCount).filter(count -> count >= 0).findFirst().orElse(null);
-    }
-
-    private List<CardInfo> knownCardsInZone(int seat, String zoneName) {
-        return state.getObjects().values().stream()
-                .filter(objectIdentityTracker::isCurrent)
-                .filter(object -> object.getOwnerSeatId() == seat)
-                .filter(object -> zoneName.equals(zoneType(object.getSemanticZoneId())))
-                .filter(object -> !isAbility(object) && !isRoomFacet(object))
-                .map(GameObjectState::getCard)
-                .filter(java.util.Objects::nonNull)
-                .sorted(java.util.Comparator.comparing(CardInfo::getName,
-                        java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
-                .toList();
-    }
-
-    private boolean isRoomParent(GameObjectState object) {
-        return object != null
-                && !isRoomFacet(object)
-                && object.getSubtypes().contains("Room");
-    }
-
-    private RoomHalf roomHalfFor(GameObjectState room) {
-        if (!isRoomParent(room) || room.getGrpId() <= 0) return null;
-        for (GameObjectState candidate : state.getObjects().values()) {
-            if (!isRoomFacet(candidate) || candidate.getGrpId() != room.getGrpId()) continue;
-            long parentLogicalId = objectIdentityTracker.logicalIdOf(candidate.getParentId());
-            if (parentLogicalId != room.getLogicalObjectId()) continue;
-            return "GameObjectType_RoomLeft".equals(candidate.getObjectType())
-                    ? RoomHalf.LEFT
-                    : "GameObjectType_RoomRight".equals(candidate.getObjectType())
-                    ? RoomHalf.RIGHT
-                    : null;
-        }
-        return null;
-    }
-
-    private String describeRoomCast(GameObjectState room,
-                                    Map<Long, CardInfo> cards,
-                                    RoomHalf half) {
-        String halfName = roomHalfName(room, cards, half);
-        String actor = playerName(room.getControllerSeatId());
-        return actor + " casts " + halfName;
-    }
-
-    private String roomHalfName(GameObjectState room,
-                                Map<Long, CardInfo> cards,
-                                RoomHalf half) {
-        CardInfo parentCard = roomParentCard(room, cards);
-        if (parentCard != null && parentCard.getCardFaces() != null
-                && parentCard.getCardFaces().size() >= 2 && half != null) {
-            CardFaceInfo face = parentCard.getCardFaces().get(half == RoomHalf.LEFT ? 0 : 1);
-            if (face != null && face.getName() != null && !face.getName().isBlank()) {
-                return face.getName();
-            }
-        }
-        return half == RoomHalf.LEFT ? "left Room half"
-                : half == RoomHalf.RIGHT ? "right Room half"
-                : objectDisplayName(room, cards);
-    }
-
-    private CardInfo roomParentCard(GameObjectState room, Map<Long, CardInfo> cards) {
-        if (room == null) return null;
-        if (room.getCard() != null && room.getCard().getCardFaces() != null
-                && room.getCard().getCardFaces().size() >= 2) {
-            return room.getCard();
-        }
-        CardInfo direct = cards.get(room.getGrpId());
-        if (direct != null && direct.getCardFaces() != null
-                && direct.getCardFaces().size() >= 2) {
-            return direct;
-        }
-        return null;
-    }
-
-    private List<String> roomUnlockedHalfNames(GameObjectState room,
-                                                Map<Long, CardInfo> cards) {
-        if (!isRoomParent(room) || room.getUnlockedRoomGrpIds().isEmpty()) return List.of();
-        List<String> names = new ArrayList<>();
-        for (long grpId : room.getUnlockedRoomGrpIds()) {
-            RoomHalf half = null;
-            for (GameObjectState candidate : state.getObjects().values()) {
-                if (isRoomFacet(candidate) && candidate.getGrpId() == grpId) {
-                    half = "GameObjectType_RoomLeft".equals(candidate.getObjectType())
-                            ? RoomHalf.LEFT : RoomHalf.RIGHT;
-                    break;
-                }
-            }
-            String name = roomHalfName(room, cards, half);
-            if (!names.contains(name)) names.add(name);
-        }
-        return names;
-    }
-
-    private void repairRoomCastEvents(GameObjectState room,
-                                      Map<Long, CardInfo> cards) {
-        if (!isRoomParent(room)) return;
-        CardInfo parentCard = roomParentCard(room, cards);
-        if (parentCard == null) return;
-        List<RoomCastProjection> projections =
-                roomCastEvents.get(room.getLogicalObjectId());
-        if (projections == null) return;
-        for (RoomCastProjection projection : projections) {
-            projection.event().setText(
-                    playerName(projection.seatId()) + " casts "
-                            + roomHalfName(room, cards, projection.half()));
-            if (!projection.event().getCards().contains(parentCard)) {
-                projection.event().getCards().add(parentCard);
-            }
-        }
-    }
-
-    private boolean isRoomFacet(GameObjectState object) {
-        if (object == null) return false;
-
-        String objectType = object.getObjectType();
-        if ("GameObjectType_RoomLeft".equals(objectType)
-                || "GameObjectType_RoomRight".equals(objectType)) {
-            return true;
-        }
-
-        /*
-         * Some incremental observations omit the object type. The stable
-         * relationship is that a Room facet is a Room subtype child of the
-         * parent Room card.
-         */
-        return object.getParentId() >= 0
-                && object.getSubtypes().contains("Room");
-    }
-
-    private boolean isToken(GameObjectState object) {
-        return object.getObjectType() != null && object.getObjectType().contains("Token");
     }
 
     private void projectOpeningHand(LogMessageInterface source, List<GameEvent> result) {
@@ -1608,10 +922,7 @@ public final class GameEventProjector {
 
     private String cardName(long grpId, Map<Long, CardInfo> cards) {
         if (grpId <= 0) return "unknown source";
-        CardInfo card = cards.get(grpId);
-        if (card != null && card.getName() != null && !card.getName().isBlank()) return card.getName();
-        GameObjectState observed = observedCardsByGrpId.get(grpId);
-        return observed == null ? "ArenaCard#" + grpId : observedCardDescription(observed);
+        return names.cardName(grpId, cards);
     }
 
     private String playerName(Integer seat) {

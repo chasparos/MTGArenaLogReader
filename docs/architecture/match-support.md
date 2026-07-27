@@ -2,9 +2,17 @@
 
 ## Status
 
-This document defines the architectural boundaries for the **match-support** arc.
+This document records the architectural boundaries and evolution plan for the
+**match-support** arc.
 
-It is a design constraint for the numbered implementation patches that follow. It does not, by itself, introduce runtime behavior.
+The core lifetime described here is now implemented: `MatchSession` owns
+`MatchState` and `MatchProjector`, and creates isolated `GameSession` instances with
+fresh per-game reconstruction state. Structured game starts, game results, match
+scores, and inferred best-of-three match results are present.
+
+The deck-configuration and complete sideboarding portions remain an evolution area;
+the rules below continue to constrain that work. For the complete current runtime
+architecture, see [`current-state.md`](current-state.md).
 
 ## Goal
 
@@ -14,9 +22,9 @@ The governing rule is:
 
 > Reconstruction state must have the same lifetime as the information it represents.
 
-The application currently routes records by `(matchId, gameNumber)` and creates independent per-game reconstruction pipelines. That isolation is correct for game-local state, but it also discards knowledge that remains valid across games in the same match.
-
-The match-support arc will introduce match lifetime without turning match state into a second copy of game state.
+The application routes records by `(matchId, gameNumber)`, creates independent
+per-game reconstruction pipelines, and retains explicit match-lifetime knowledge
+without turning match state into a second copy of game state.
 
 ## Lifetimes
 
@@ -94,7 +102,7 @@ In particular, seat mappings must be re-verifiable for every game. The applicati
 
 ## Match and game responsibilities
 
-The intended ownership direction is:
+The implemented ownership direction is:
 
 ```text
 Match session
@@ -105,7 +113,8 @@ Match session
             └── canonical GameState
 ```
 
-The exact class names and construction path will be verified against the current implementation in Patch 1.
+The concrete implementation uses `MatchSession`, `GameSession`, `MatchState`,
+`GameModel`, `MatchProjector`, and `GameEventProjector`.
 
 The Swing presentation layer must not become the canonical owner of match reconstruction. UI components consume models and structured events; they do not decide reconstruction lifetime.
 
@@ -160,14 +169,15 @@ The deck tracker must eventually calculate remaining copies and draw probabiliti
 
 ## Match events
 
-After match lifetime exists, structured match events may expose:
+Structured match events currently expose:
 
 - match start;
 - game start with current score;
 - game completion;
-- sideboarding start or completion;
 - match completion;
 - match winner.
+
+Sideboarding start/completion remains planned.
 
 Game winner and match winner are different facts and must remain separate.
 

@@ -4,10 +4,7 @@ package app.replay;
 import app.model.card.CardInfo;
 import app.model.event.GameEvent;
 import app.model.game.BoardPermanentSnapshot;
-import app.model.game.CounterState;
-import app.model.game.PlayerTurnSnapshot;
 import app.model.log.LogMessageInterface;
-import app.model.log.ModelObject;
 import app.model.session.GameModel;
 import app.model.session.GameSession;
 import app.snapshot.BoardStateMonitor;
@@ -18,14 +15,11 @@ import app.projection.GameEventProjector;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.geom.Path2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Custom-painted chronological replay. Card references are rendered as compact
@@ -35,39 +29,24 @@ import java.util.regex.Pattern;
 public final class GameView extends JPanel implements Scrollable {
     private static final int OUTER_PADDING = 18;
     private static final int EVENT_GAP = 9;
-    private static final int CARD_PADDING = 11;
-    private static final int CONTEXT_WIDTH = 190;
-    private static final int CHIP_X_PADDING = 12;
-    private static final int CHIP_Y_PADDING = 2;
-    private static final int RICH_LINE_HEIGHT = 38;
-    private static final int SNAPSHOT_LINE_HEIGHT = 36;
-    private static final int CHIP_ARC = 14;
-    private static final int SYMBOL_SIZE = 11;
-    private static final int CARD_MANA_GAP = 14;
-    private static final int CARD_TYPE_ICON_SIZE = 11;
-    private static final int CARD_TYPE_GAP = 6;
-    private static final Pattern MANA = Pattern.compile("\\{([^}]+)}");
     private final GameModel model;
     private final GameEventProjector projector;
     private final GameSession session;
-    private final Deque<PendingMessage> pending = new ArrayDeque<>();
+    private final OrderedMessageBuffer pendingMessages = new OrderedMessageBuffer();
     private final List<CardHitbox> cardHitboxes = new ArrayList<>();
     private final List<EventHitbox> eventHitboxes = new ArrayList<>();
     private final List<TurnHitbox> turnHitboxes = new ArrayList<>();
-    private final NavigableSet<Integer> selectedTurns = new TreeSet<>();
-    private final AbilityNameStore abilityNames;
+    private final ReplayTurnSelection turnSelection = new ReplayTurnSelection();
     private final BoardStateMonitor boardStateMonitor = new BoardStateMonitor();
     private final CardImageCache imageCache = new CardImageCache(
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
-    private final SvgAssetRenderer svgAssets = new SvgAssetRenderer();
-    private final ManaCostPainter manaCostPainter = new ManaCostPainter(svgAssets, SYMBOL_SIZE - 2);
-    private final ManaCostPainter miniManaCostPainter = new ManaCostPainter(svgAssets, 8);
-    private final ActivatedAbilityParser activatedAbilityParser = new ActivatedAbilityParser();
     private final ReplayFragmentParser replayFragmentParser = new ReplayFragmentParser();
-    private JWindow previewWindow;
+    private final CardPreviewController previewController = new CardPreviewController(imageCache);
     private CardHitbox hovered;
-    private CoachingActions coachingActions;
-    private Integer selectionAnchorTurn;
+    private final ReplayInteractionController interactions;
+    private final ReplayFragmentRenderer replayFragmentRenderer;
+    private final TurnSnapshotRenderer turnSnapshotRenderer;
+    private final ReplayEventRenderer replayEventRenderer;
     private GameEvent highlightedEvent;
     private Runnable modelChangedListener = () -> { };
 
@@ -88,9 +67,98 @@ public final class GameView extends JPanel implements Scrollable {
     private GameView(GameModel model, AbilityNameStore abilityNames,
                      GameEventProjector projector, GameSession session) {
         this.model = model;
-        this.abilityNames = abilityNames;
         this.projector = projector;
         this.session = session;
+        this.interactions = new ReplayInteractionController(
+                this,
+                turnSelection,
+                abilityNames,
+                this::turnNumberAt,
+                this::eventAtPoint,
+                this::repaint);
+        this.replayFragmentRenderer = new ReplayFragmentRenderer(
+                new ReplayFragmentRenderer.Host() {
+                    @Override public Font font() { return getFont(); }
+                    @Override public Color foreground() { return getForeground(); }
+                    @Override public Color colorOr(String key, Color fallback) {
+                        return GameView.this.colorOr(key, fallback);
+                    }
+                    @Override public boolean isHovered(Rectangle bounds) {
+                        return hovered != null && hovered.bounds().equals(bounds);
+                    }
+                    @Override public void registerHitbox(
+                            Rectangle bounds, CardInfo card, GameEvent event,
+                            BoardPermanentSnapshot permanent) {
+                        cardHitboxes.add(
+                                new CardHitbox(bounds, card, event, permanent));
+                    }
+                });
+        this.turnSnapshotRenderer = new TurnSnapshotRenderer(
+                new TurnSnapshotRenderer.Host() {
+                    @Override public Font font() { return getFont(); }
+                    @Override public Color foreground() { return getForeground(); }
+                    @Override public Color colorOr(String key, Color fallback) {
+                        return GameView.this.colorOr(key, fallback);
+                    }
+                    @Override public Color blend(
+                            Color first, Color second, float amount) {
+                        return GameView.this.blend(first, second, amount);
+                    }
+                    @Override public boolean paintSvg(
+                            Graphics2D graphics, String resource,
+                            int x, int y, int width, int height) {
+                        return replayFragmentRenderer.paintSvg(
+                                graphics, resource, x, y, width, height);
+                    }
+                    @Override public int fragmentWidth(
+                            Graphics2D graphics, ReplayFragment fragment) {
+                        return replayFragmentRenderer.width(graphics, fragment);
+                    }
+                    @Override public void paintFragment(
+                            Graphics2D graphics, ReplayFragment fragment,
+                            int x, int topY, int lineHeight, GameEvent event) {
+                        replayFragmentRenderer.paint(
+                                graphics, fragment, x, topY, lineHeight, event);
+                    }
+                    @Override public void paintPanel(
+                            Graphics2D graphics, int y, int width,
+                            int height, boolean snapshot) {
+                        GameView.this.paintPanel(
+                                graphics, y, width, height, snapshot);
+                    }
+                });
+        this.replayEventRenderer = new ReplayEventRenderer(
+                new ReplayEventRenderer.Host() {
+                    @Override public Font font() { return getFont(); }
+                    @Override public Color foreground() { return getForeground(); }
+                    @Override public Color colorOr(String key, Color fallback) {
+                        return GameView.this.colorOr(key, fallback);
+                    }
+                    @Override public String contextText(GameEvent event) {
+                        return GameView.this.contextText(event);
+                    }
+                    @Override public int fragmentWidth(
+                            Graphics2D graphics, ReplayFragment fragment) {
+                        return replayFragmentRenderer.width(graphics, fragment);
+                    }
+                    @Override public void paintFragment(
+                            Graphics2D graphics, ReplayFragment fragment,
+                            int x, int y, int lineHeight, GameEvent event) {
+                        replayFragmentRenderer.paint(
+                                graphics, fragment, x, y, lineHeight, event);
+                    }
+                    @Override public void paintPanel(
+                            Graphics2D graphics, int y, int width,
+                            int height, boolean highlighted) {
+                        GameView.this.paintPanel(
+                                graphics, y, width, height, false, highlighted);
+                    }
+                    @Override public void registerHitbox(
+                            Rectangle bounds, GameEvent event) {
+                        eventHitboxes.add(new EventHitbox(bounds, event));
+                    }
+                },
+                replayFragmentParser);
         setOpaque(true);
         setBackground(colorOr("Panel.background", new Color(0xF3F3F3)));
         setForeground(colorOr("Label.foreground", Color.DARK_GRAY));
@@ -137,16 +205,11 @@ public final class GameView extends JPanel implements Scrollable {
      * restores the normal reconstruction view.
      */
     public void setCoachingActions(CoachingActions coachingActions) {
-        this.coachingActions = coachingActions;
-        if (coachingActions == null) {
-            selectedTurns.clear();
-            selectionAnchorTurn = null;
-        }
-        repaint();
+        interactions.setCoachingActions(coachingActions);
     }
 
     public Set<Integer> getSelectedTurns() {
-        return Set.copyOf(selectedTurns);
+        return turnSelection.snapshot();
     }
 
     /**
@@ -173,9 +236,7 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void selectTurn(int turnNumber) {
-        selectedTurns.clear();
-        selectedTurns.add(turnNumber);
-        selectionAnchorTurn = turnNumber;
+        turnSelection.selectOnly(turnNumber);
         repaint();
     }
 
@@ -212,16 +273,12 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     public void accept(LogMessageInterface message) {
-        PendingMessage pendingMessage = new PendingMessage(message);
-        synchronized (pending) { pending.addLast(pendingMessage); }
-        message.getModelFuture().whenComplete((modelObject, error) -> {
-            synchronized (pending) { pendingMessage.complete(modelObject, error); }
-            SwingUtilities.invokeLater(this::flushCompletedMessages);
-        });
+        pendingMessages.add(message,
+                () -> SwingUtilities.invokeLater(this::flushCompletedMessages));
     }
 
     public void clear() {
-        synchronized (pending) { pending.clear(); }
+        pendingMessages.clear();
         model.clear();
         boardStateMonitor.reset();
         hovered = null;
@@ -232,15 +289,11 @@ public final class GameView extends JPanel implements Scrollable {
 
     private void flushCompletedMessages() {
         List<GameEvent> additions = new ArrayList<>();
-        synchronized (pending) {
-            while (!pending.isEmpty() && pending.peekFirst().completed()) {
-                PendingMessage completed = pending.removeFirst();
-                if (completed.error() == null) {
-                    additions.addAll(session == null
-                            ? projector.project(completed.message(), completed.modelObject())
-                            : session.project(completed.message(), completed.modelObject()));
-                }
-            }
+        for (OrderedMessageBuffer.CompletedMessage completed
+                : pendingMessages.drainReady()) {
+            additions.addAll(session == null
+                    ? projector.project(completed.message(), completed.modelObject())
+                    : session.project(completed.message(), completed.modelObject()));
         }
         if (!additions.isEmpty()) {
             boardStateMonitor.accept(additions);
@@ -293,8 +346,8 @@ public final class GameView extends JPanel implements Scrollable {
         g.setFont(titleFont);
         FontMetrics fm = g.getFontMetrics();
         int h = fm.getHeight() + 10;
-        boolean selected = coachingActions != null
-                && selectedTurns.contains(event.getTurnNumber());
+        boolean selected = interactions.coachingEnabled()
+                && turnSelection.contains(event.getTurnNumber());
         Color accent = colorOr("List.selectionBackground", new Color(0x4477AA));
         g.setColor(blend(getBackground(), accent, selected ? .34f : .13f));
         Shape header = new RoundRectangle2D.Float(OUTER_PADDING, y, width, h, 14, 14);
@@ -306,7 +359,7 @@ public final class GameView extends JPanel implements Scrollable {
         g.setColor(colorOr("Label.foreground", getForeground()));
         String title = "Turn " + event.getTurnNumber() + "  ·  " + nullToEmpty(event.getActivePlayerName());
         g.drawString(title, OUTER_PADDING + 12, y + 5 + fm.getAscent());
-        if (coachingActions != null) {
+        if (interactions.coachingEnabled()) {
             turnHitboxes.add(new TurnHitbox(new Rectangle(OUTER_PADDING, y, width, h),
                     event.getTurnNumber()));
         }
@@ -315,313 +368,12 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private int paintTurnSnapshot(Graphics2D g, GameEvent event, int y, int width, boolean draw) {
-        List<PlayerTurnSnapshot> players = event.getTurnSnapshot();
-        int innerWidth = width - CARD_PADDING * 2;
-        int gap = 14;
-        int columnWidth = players.size() <= 1 ? innerWidth : (innerWidth - gap) / 2;
-        List<List<SnapshotRow>> columns = players.stream()
-                .map(player -> snapshotRows(g, player, columnWidth))
-                .toList();
-        int lineHeight = Math.max(g.getFontMetrics().getHeight() + 5, SNAPSHOT_LINE_HEIGHT);
-        int contentRows = columns.stream().mapToInt(List::size).max().orElse(1);
-        int titleHeight = g.getFontMetrics(getFont().deriveFont(Font.BOLD)).getHeight() + 8;
-        int boxHeight = CARD_PADDING * 2 + titleHeight + contentRows * lineHeight;
-
-        if (draw) {
-            paintPanel(g, y, width, boxHeight, true);
-            int x = OUTER_PADDING + CARD_PADDING;
-            int titleBaseline = y + CARD_PADDING
-                    + g.getFontMetrics(getFont().deriveFont(Font.BOLD)).getAscent();
-            g.setFont(getFont().deriveFont(Font.BOLD));
-            g.setColor(colorOr("Label.foreground", getForeground()));
-            g.drawString("Start of turn", x, titleBaseline);
-            g.setFont(getFont());
-
-            int top = y + CARD_PADDING + titleHeight;
-            for (int i = 0; i < columns.size(); i++) {
-                int columnX = x + i * (columnWidth + gap);
-                paintSnapshotColumn(g, event, columns.get(i), columnX, top, columnWidth, lineHeight);
-                if (i > 0) {
-                    g.setColor(blend(colorOr("Separator.foreground", new Color(0xAAAAAA)),
-                            colorOr("TextArea.background", Color.WHITE), .45f));
-                    int dividerX = columnX - gap / 2;
-                    g.drawLine(dividerX, top, dividerX, y + boxHeight - CARD_PADDING);
-                }
-            }
-        }
-        return y + boxHeight + EVENT_GAP;
-    }
-
-    private List<SnapshotRow> snapshotRows(Graphics2D g, PlayerTurnSnapshot player, int width) {
-        List<SnapshotRow> rows = new ArrayList<>();
-        rows.add(new SnapshotRow(null, nullToEmpty(player.getPlayerName()), "", true));
-        rows.add(new SnapshotRow("/svg/ability-lifelink.svg",
-                player.getLifeTotal() == null ? "Life ?" : player.getLifeTotal() + " life", "", false));
-        if (player.getPoisonCounters() != null && player.getPoisonCounters() > 0) {
-            rows.add(new SnapshotRow("/svg/ability-toxic.svg",
-                    player.getPoisonCounters() + " poison", "", false));
-        }
-        rows.add(new SnapshotRow("/svg/multiple.svg",
-                player.getHandSize() == null ? "Hand ?" : player.getHandSize() + " cards in hand",
-                "", false));
-
-        addKnownZoneRows(g, rows, width, "/svg/multiple.svg", "Known hand", player.getKnownHand());
-        addKnownZoneRows(g, rows, width, "/svg/counter-skull.svg", "Graveyard", player.getKnownGraveyard());
-        addKnownZoneRows(g, rows, width, "/svg/ability-foretell.svg", "Exile", player.getKnownExile());
-
-        rows.add(new SnapshotRow("/svg/land.svg", "Battlefield", "", true));
-        if (player.getBattlefield().isEmpty()) {
-            rows.add(new SnapshotRow(null, "Empty", "", false));
-        } else {
-            List<BoardPermanentSnapshot> roots = roots(player.getBattlefield()).stream()
-                    .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
-                            Comparator.nullsLast(cardTypeComparator())))
-                    .toList();
-            addBattlefieldGroupRows(g, rows, width, "Lands", roots.stream()
-                    .filter(permanent -> permanentTypeGroup(permanent) == 0).toList());
-            addBattlefieldGroupRows(g, rows, width, "Creatures", roots.stream()
-                    .filter(permanent -> permanentTypeGroup(permanent) == 1).toList());
-            addBattlefieldGroupRows(g, rows, width, "Other permanents", roots.stream()
-                    .filter(permanent -> permanentTypeGroup(permanent) == 2).toList());
-
-            List<BoardPermanentSnapshot> attachments = player.getBattlefield().stream()
-                    .filter(permanent -> permanent.getAttachedToLogicalObjectId() != null)
-                    .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
-                            Comparator.nullsLast(cardTypeComparator())))
-                    .toList();
-            addBattlefieldGroupRows(g, rows, width, "Attachments", attachments);
-        }
-        return rows;
-    }
-
-    private void addBattlefieldGroupRows(Graphics2D g, List<SnapshotRow> rows, int width,
-                                         String group, List<BoardPermanentSnapshot> permanents) {
-        if (permanents.isEmpty()) return;
-        rows.add(new SnapshotRow(null, group + " (" + permanents.size() + ")", "", true));
-        int columns = inferPermanentColumns(g, permanents, width);
-        for (int offset = 0; offset < permanents.size(); offset += columns) {
-            rows.add(SnapshotRow.permanentGrid(
-                    permanents.subList(offset, Math.min(offset + columns, permanents.size())),
-                    columns));
-        }
-    }
-
-    private int inferPermanentColumns(Graphics2D g,
-                                      List<BoardPermanentSnapshot> permanents,
-                                      int width) {
-        int gap = 8;
-        int preferredCellWidth = permanents.stream()
-                .filter(permanent -> permanent.getCard() != null)
-                .map(permanent -> new CardFragment(
-                        permanent.getCard(),
-                        permanent.getCard().getName(),
-                        roomStateLabel(permanent),
-                        permanent))
-                .mapToInt(fragment -> fragmentWidth(g, fragment))
-                .max()
-                .orElse(0);
-        for (int columns = Math.min(3, permanents.size()); columns >= 2; columns--) {
-            int cellWidth = (width - gap * (columns - 1)) / columns;
-            if (cellWidth >= Math.min(preferredCellWidth, 205)) return columns;
-        }
-        return 1;
-    }
-
-    private int permanentTypeGroup(BoardPermanentSnapshot permanent) {
-        CardInfo card = permanent.getCard();
-        String typeLine = card == null ? "" : nullToEmpty(card.getTypeLine()).toLowerCase(Locale.ROOT);
-        if (typeLine.contains("land")) return 0;
-        if (typeLine.contains("creature")) return 1;
-        return 2;
-    }
-
-    private String roomStateLabel(BoardPermanentSnapshot permanent) {
-        return permanent.getUnlockedRoomHalves().isEmpty()
-                ? ""
-                : "unlocked: " + String.join(", ", permanent.getUnlockedRoomHalves());
-    }
-
-    private void addKnownZoneRows(Graphics2D g, List<SnapshotRow> rows, int width,
-                                  String icon, String zone, List<CardInfo> cards) {
-        if (cards.isEmpty()) return;
-        List<CardInfo> ordered = cards.stream()
-                .filter(Objects::nonNull)
-                .sorted(cardTypeComparator())
-                .toList();
-        rows.add(new SnapshotRow(icon, zone + " (" + cards.size() + " known)", "", true));
-        int columns = inferZoneColumns(g, ordered, width);
-        for (int offset = 0; offset < ordered.size(); offset += columns) {
-            rows.add(SnapshotRow.cardGrid(
-                    ordered.subList(offset, Math.min(offset + columns, ordered.size())),
-                    columns));
-        }
-    }
-
-    private int inferZoneColumns(Graphics2D g, List<CardInfo> cards, int width) {
-        int gap = 8;
-        int preferredCellWidth = cards.stream()
-                .map(card -> new CardFragment(card, card.getName(), "", null))
-                .mapToInt(fragment -> fragmentWidth(g, fragment))
-                .max()
-                .orElse(0);
-        for (int columns = Math.min(3, cards.size()); columns >= 2; columns--) {
-            int cellWidth = (width - gap * (columns - 1)) / columns;
-            if (cellWidth >= Math.min(preferredCellWidth, 190)) return columns;
-        }
-        return 1;
-    }
-
-    private Comparator<CardInfo> cardTypeComparator() {
-        return Comparator.comparingInt(this::cardTypeRank)
-                .thenComparing(card -> nullToEmpty(card.getTypeLine()), String.CASE_INSENSITIVE_ORDER)
-                .thenComparing(card -> nullToEmpty(card.getName()), String.CASE_INSENSITIVE_ORDER);
-    }
-
-    private int cardTypeRank(CardInfo card) {
-        String typeLine = nullToEmpty(card.getTypeLine()).toLowerCase(Locale.ROOT);
-        if (typeLine.contains("land")) return 0;
-        if (typeLine.contains("creature")) return 1;
-        if (typeLine.contains("enchantment")) return 2;
-        if (typeLine.contains("artifact")) return 3;
-        if (typeLine.contains("planeswalker")) return 4;
-        if (typeLine.contains("battle")) return 5;
-        if (typeLine.contains("instant")) return 6;
-        if (typeLine.contains("sorcery")) return 7;
-        return 8;
-    }
-
-    private void addPermanentRows(List<SnapshotRow> rows, List<BoardPermanentSnapshot> battlefield,
-                                  BoardPermanentSnapshot permanent, int depth) {
-        String suffix = boardPermanentSuffix(permanent);
-        rows.add(new SnapshotRow(null, "  ".repeat(depth), suffix, false,
-                permanent.getCard(), permanent, List.of(), 1, List.of(), 1));
-        attachmentsOf(battlefield, permanent.getLogicalObjectId()).stream()
-                .sorted(Comparator.comparing(BoardPermanentSnapshot::getCard,
-                        Comparator.nullsLast(cardTypeComparator())))
-                .forEach(attached -> addPermanentRows(
-                        rows, battlefield, attached, depth + 1));
-    }
-
-    private void paintSnapshotColumn(Graphics2D g, GameEvent event, List<SnapshotRow> rows,
-                                     int x, int top, int width, int lineHeight) {
-        int y = top;
-        for (SnapshotRow row : rows) {
-            int textX = x;
-            if (row.iconResource() != null) {
-                int iconSize = 14;
-                int iconY = y + (lineHeight - iconSize) / 2;
-                if (svgAssets.paint(g, row.iconResource(), textX, iconY, iconSize, iconSize)) {
-                    textX += iconSize + 6;
-                }
-            }
-            if (!row.permanents().isEmpty()) {
-                int gap = 8;
-                int cellWidth = (width - gap * (row.permanentColumns() - 1))
-                        / row.permanentColumns();
-                for (int index = 0; index < row.permanents().size(); index++) {
-                    BoardPermanentSnapshot permanent = row.permanents().get(index);
-                    if (permanent.getCard() == null) continue;
-                    int cellX = x + index * (cellWidth + gap);
-                    Graphics2D cellGraphics = (Graphics2D) g.create();
-                    try {
-                        cellGraphics.clipRect(cellX - 7, y - 10, cellWidth + 14, lineHeight + 20);
-                        paintFragment(cellGraphics,
-                                new CardFragment(
-                                        permanent.getCard(),
-                                        permanent.getCard().getName(),
-                                        roomStateLabel(permanent),
-                                        permanent),
-                                cellX, y, lineHeight, event);
-                    } finally {
-                        cellGraphics.dispose();
-                    }
-                }
-            } else if (!row.cards().isEmpty()) {
-                int gap = 8;
-                int cellWidth = (width - gap * (row.cardColumns() - 1)) / row.cardColumns();
-                for (int index = 0; index < row.cards().size(); index++) {
-                    CardInfo card = row.cards().get(index);
-                    int cellX = x + index * (cellWidth + gap);
-                    Graphics2D cellGraphics = (Graphics2D) g.create();
-                    try {
-                        cellGraphics.clipRect(cellX - 7, y - 4, cellWidth + 14, lineHeight + 8);
-                        paintFragment(cellGraphics,
-                                new CardFragment(card, card.getName(), "", null),
-                                cellX, y, lineHeight, event);
-                    } finally {
-                        cellGraphics.dispose();
-                    }
-                }
-            } else if (row.card() != null) {
-                if (!row.text().isBlank()) {
-                    g.setColor(colorOr("TextArea.foreground", getForeground()));
-                    g.drawString(row.text(), textX,
-                            y + (lineHeight - g.getFontMetrics().getHeight()) / 2
-                                    + g.getFontMetrics().getAscent());
-                    textX += g.getFontMetrics().stringWidth(row.text());
-                }
-                String state = row.suffix().startsWith("unlocked:")
-                        ? row.suffix() : "";
-                CardFragment fragment = new CardFragment(row.card(), row.card().getName(), state, row.permanent());
-                int chipWidth = Math.min(fragmentWidth(g, fragment), Math.max(80, width - (textX - x)));
-                if (chipWidth > 0) paintFragment(g, fragment, textX, y, lineHeight, event);
-                if (!row.suffix().isBlank() && state.isBlank()) {
-                    int suffixX = textX + fragmentWidth(g, fragment) + 6;
-                    g.setColor(colorOr("Label.disabledForeground", getForeground()));
-                    g.drawString(row.suffix(), suffixX,
-                            y + (lineHeight - g.getFontMetrics().getHeight()) / 2
-                                    + g.getFontMetrics().getAscent());
-                }
-            } else {
-                g.setFont(row.heading() ? getFont().deriveFont(Font.BOLD) : getFont());
-                g.setColor(row.heading()
-                        ? colorOr("Label.foreground", getForeground())
-                        : colorOr("TextArea.foreground", getForeground()));
-                g.drawString(row.text(), textX,
-                        y + (lineHeight - g.getFontMetrics().getHeight()) / 2
-                                + g.getFontMetrics().getAscent());
-                g.setFont(getFont());
-            }
-            y += lineHeight;
-        }
-    }
-
-    private String boardPermanentSuffix(BoardPermanentSnapshot permanent) {
-        List<String> state = new ArrayList<>();
-        if (permanent.getPower() != null && permanent.getToughness() != null) {
-            state.add(permanent.getPower() + "/" + permanent.getToughness());
-        }
-        if (Boolean.TRUE.equals(permanent.getTapped())) state.add("tapped");
-        if (!permanent.getUnlockedRoomHalves().isEmpty()) {
-            state.add(0, "unlocked: " + String.join(", ", permanent.getUnlockedRoomHalves()));
-        }
-        return String.join(" · ", state);
-    }
-
-    private String boardPermanentText(BoardPermanentSnapshot permanent) {
-        String name = permanent.getName() == null || permanent.getName().isBlank()
-                ? "Unknown permanent" : permanent.getName();
-        String suffix = boardPermanentSuffix(permanent);
-        return suffix.isBlank() ? name : name + "  · " + suffix;
+        return turnSnapshotRenderer.paint(g, event, y, width, draw);
     }
 
     private int paintEvent(Graphics2D g, GameEvent event, int y, int width, boolean draw) {
-        int contentX = OUTER_PADDING + CARD_PADDING + CONTEXT_WIDTH;
-        int maxX = OUTER_PADDING + width - CARD_PADDING;
-        RichLayout layout = layoutEvent(g, event, contentX, maxX, y + CARD_PADDING, draw);
-        int boxHeight = Math.max(g.getFontMetrics().getHeight(), layout.height()) + CARD_PADDING * 2;
-        if (draw) {
-            paintPanel(g, y, width, boxHeight, false, event == highlightedEvent);
-            String context = contextText(event);
-            g.setColor(colorOr("Label.disabledForeground", getForeground()));
-            g.setFont(getFont().deriveFont(Font.PLAIN, 12f));
-            g.drawString(context, OUTER_PADDING + CARD_PADDING,
-                    y + CARD_PADDING + g.getFontMetrics(getFont()).getAscent());
-            g.setFont(getFont());
-            layoutEvent(g, event, contentX, maxX, y + CARD_PADDING, true);
-            eventHitboxes.add(new EventHitbox(new Rectangle(OUTER_PADDING, y, width, boxHeight), event));
-        }
-        return y + boxHeight + EVENT_GAP;
+        return replayEventRenderer.paint(g, event, y, width, draw,
+                event == highlightedEvent);
     }
 
     private void paintPanel(Graphics2D g, int y, int width, int height, boolean snapshot) {
@@ -652,635 +404,6 @@ public final class GameView extends JPanel implements Scrollable {
         g.setStroke(previous);
     }
 
-    private RichLayout layoutEvent(Graphics2D g, GameEvent event, int startX, int maxX, int topY, boolean draw) {
-        List<ReplayFragment> fragments = replayFragmentParser.parse(event);
-        FontMetrics fm = g.getFontMetrics(getFont());
-        int lineHeight = Math.max(RICH_LINE_HEIGHT, fm.getHeight());
-        int x = startX;
-        int y = topY;
-        for (ReplayFragment fragment : fragments) {
-            int width = fragmentWidth(g, fragment);
-            if (x > startX && x + width > maxX) {
-                x = startX;
-                y += lineHeight;
-            }
-            if (draw) paintFragment(g, fragment, x, y, lineHeight, event);
-            x += width;
-        }
-        return new RichLayout(y - topY + lineHeight);
-    }
-
-    private int fragmentWidth(Graphics2D g, ReplayFragment fragment) {
-        FontMetrics fm = g.getFontMetrics(getFont());
-        if (fragment instanceof TextFragment t) return fm.stringWidth(t.text());
-        if (fragment instanceof ManaFragment) return SYMBOL_SIZE + 2;
-        if (fragment instanceof PowerToughnessFragment pt) {
-            return fm.stringWidth(pt.power() + "/" + pt.toughness()) + CHIP_X_PADDING * 2;
-        }
-        if (fragment instanceof KeywordFragment keyword) {
-            return SYMBOL_SIZE + 4 + fm.stringWidth(keyword.label()) + CHIP_X_PADDING * 2;
-        }
-        CardFragment cardFragment = (CardFragment) fragment;
-        CardInfo card = cardFragment.card();
-        Font chipFont = cardNameFont(cardFragment.label());
-        FontMetrics chipMetrics = g.getFontMetrics(chipFont);
-        int mana = manaCostPainter.width(card.getManaCost());
-        int typeIcon = cardTypeResource(card) == null ? 0 : CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
-        boolean[] unlocks = roomUnlockSides(cardFragment);
-        int lockWidth = (unlocks[0] ? SYMBOL_SIZE + 3 : 0)
-                + (unlocks[1] ? SYMBOL_SIZE + 3 : 0);
-        return typeIcon + chipMetrics.stringWidth(cardFragment.label()) + lockWidth
-                + CHIP_X_PADDING * 2 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
-    }
-
-    private void paintFragment(Graphics2D g, ReplayFragment fragment, int x, int topY,
-                               int lineHeight, GameEvent event) {
-        paintFragment(g, fragment, x, topY, lineHeight, event, true);
-    }
-
-    private void paintFragment(Graphics2D g, ReplayFragment fragment, int x, int topY,
-                               int lineHeight, GameEvent event, boolean registerHitbox) {
-        FontMetrics fm = g.getFontMetrics(getFont());
-        int baseline = topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
-        if (fragment instanceof TextFragment t) {
-            g.setColor(colorOr("TextArea.foreground", getForeground()));
-            g.drawString(t.text(), x, baseline);
-            return;
-        }
-        if (fragment instanceof ManaFragment mana) {
-            paintMana(g, mana.symbol(), x, topY + (lineHeight - SYMBOL_SIZE) / 2);
-            return;
-        }
-        if (fragment instanceof PowerToughnessFragment pt) {
-            paintPowerToughnessChip(g, pt, x, topY, lineHeight);
-            return;
-        }
-        if (fragment instanceof KeywordFragment keyword) {
-            paintKeywordChip(g, keyword, x, topY, lineHeight);
-            return;
-        }
-
-        CardFragment cardFragment = (CardFragment) fragment;
-        CardInfo card = cardFragment.card();
-        int width = fragmentWidth(g, fragment);
-        int chipHeight = fm.getHeight() + CHIP_Y_PADDING * 2;
-        int chipY = topY + (lineHeight - chipHeight) / 2;
-        Rectangle bounds = new Rectangle(x, chipY, width, chipHeight);
-        boolean hot = hovered != null && hovered.bounds().equals(bounds);
-
-        Color base = cardColor(card);
-        Color edge = blend(base, Color.BLACK, .28f);
-        if (hot) base = blend(base, Color.WHITE, .18f);
-        Shape cardShape = cardChipShape(card, x, chipY, width, chipHeight);
-        g.setColor(base);
-        g.fill(cardShape);
-        g.setColor(edge);
-        g.draw(cardShape);
-
-        Color textColor = contrast(base);
-        g.setColor(textColor);
-        Font oldFont = g.getFont();
-        Font chipFont = cardNameFont(cardFragment.label());
-        g.setFont(chipFont);
-        FontMetrics chipMetrics = g.getFontMetrics();
-        int textX = x + CHIP_X_PADDING;
-        String typeResource = cardTypeResource(card);
-        if (typeResource != null) {
-            int iconY = chipY + (chipHeight - CARD_TYPE_ICON_SIZE) / 2 + 1;
-            if (svgAssets.paint(g, "/svg/" + typeResource + ".svg",
-                    textX, iconY, CARD_TYPE_ICON_SIZE, CARD_TYPE_ICON_SIZE)) {
-                textX += CARD_TYPE_ICON_SIZE + CARD_TYPE_GAP;
-            }
-        }
-        boolean[] unlocks = roomUnlockSides(cardFragment);
-        int lockY = chipY + (chipHeight - SYMBOL_SIZE) / 2 + 1;
-        if (unlocks[0] && svgAssets.paint(g, "/svg/open-lock.svg",
-                textX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
-            textX += SYMBOL_SIZE + 3;
-        }
-        int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
-        g.drawString(cardFragment.label(), textX, textBaseline);
-        textX += chipMetrics.stringWidth(cardFragment.label());
-        if (unlocks[1]) {
-            int rightLockX = textX + 3;
-            if (svgAssets.paint(g, "/svg/open-lock.svg",
-                    rightLockX, lockY, SYMBOL_SIZE, SYMBOL_SIZE)) {
-                textX = rightLockX + SYMBOL_SIZE;
-            }
-        }
-        if (false) {
-            int badgeX = textX + CARD_TYPE_GAP;
-            int badgeWidth = chipMetrics.stringWidth(cardFragment.stateLabel()) + 10;
-            int badgeY = chipY + 3;
-            int badgeHeight = chipHeight - 6;
-            Color badge = blend(base, Color.WHITE, .28f);
-            g.setColor(badge);
-            g.fill(new RoundRectangle2D.Float(badgeX, badgeY, badgeWidth, badgeHeight, 10, 10));
-            g.setColor(contrast(badge));
-            Font badgeFont = chipFont.deriveFont(Font.PLAIN, Math.max(8f, chipFont.getSize2D() - 2f));
-            g.setFont(badgeFont);
-            FontMetrics badgeMetrics = g.getFontMetrics();
-            g.drawString(cardFragment.stateLabel(), badgeX + 5,
-                    badgeY + (badgeHeight - badgeMetrics.getHeight()) / 2 + badgeMetrics.getAscent());
-            g.setFont(chipFont);
-        }
-
-        int manaWidth = manaCostPainter.width(card.getManaCost());
-        if (manaWidth > 0) {
-            int manaX = x + width - CHIP_X_PADDING - manaWidth;
-            int manaY = chipY + (chipHeight - (SYMBOL_SIZE - 2)) / 2;
-            manaCostPainter.paint(g, card.getManaCost(), manaX, manaY, base);
-        }
-        if (cardFragment.permanent() != null) {
-            BoardPermanentSnapshot permanent = cardFragment.permanent();
-            if (permanent.getPower() != null && permanent.getToughness() != null) {
-                paintPowerToughnessChip(g,
-                        new PowerToughnessFragment(
-                                String.valueOf(permanent.getPower()),
-                                String.valueOf(permanent.getToughness())),
-                        x + width, topY, lineHeight);
-            }
-            paintActivatedAbilityMiniChip(g, card, x - 3, topY, lineHeight);
-            paintPermanentAbilityMiniChip(
-                    g, permanent, x + width, topY, lineHeight);
-            paintRarityMiniChip(g, card, x, chipY);
-            paintTappedMiniChip(g, permanent, x + 10, chipY);
-            paintCounterMiniChip(g, permanent, x + width, chipY);
-        } else {
-            paintRarityMiniChip(g, card, x, chipY);
-        }
-        g.setFont(oldFont);
-        if (registerHitbox) {
-            cardHitboxes.add(new CardHitbox(bounds, card, event, cardFragment.permanent()));
-        }
-    }
-
-    private Font cardNameFont(String name) {
-        String value = nullToEmpty(name);
-        float normal = Math.max(9f, getFont().getSize2D() - 1f);
-        float reduction = 0f;
-        if (value.contains(" // ")) reduction += 1f;
-        if (value.length() > 28) reduction += 1f;
-        if (value.length() > 42) reduction += 1f;
-        return getFont().deriveFont(
-                Font.BOLD, Math.max(8f, normal - reduction));
-    }
-
-    private Shape cardChipShape(
-            CardInfo card, int x, int y, int width, int height) {
-        String typeLine = card == null ? ""
-                : nullToEmpty(card.effectiveTypeLine()).toLowerCase(Locale.ROOT);
-        if (!typeLine.contains("legendary")) {
-            return new RoundRectangle2D.Float(
-                    x, y, width, height, CHIP_ARC, CHIP_ARC);
-        }
-        int shoulder = Math.min(7, Math.max(3, height / 4));
-        Path2D path = new Path2D.Float();
-        path.moveTo(x + 7, y);
-        path.lineTo(x + width * .17, y);
-        path.curveTo(x + width * .22, y,
-                x + width * .18, y - shoulder,
-                x + width * .26, y - shoulder);
-        path.curveTo(x + width * .23, y - shoulder - 3,
-                x + width * .31, y - shoulder - 3,
-                x + width * .35, y - shoulder);
-        path.lineTo(x + width * .65, y - shoulder);
-        path.curveTo(x + width * .69, y - shoulder - 3,
-                x + width * .77, y - shoulder - 3,
-                x + width * .74, y - shoulder);
-        path.curveTo(x + width * .82, y - shoulder,
-                x + width * .78, y,
-                x + width * .83, y);
-        path.lineTo(x + width - 7, y);
-        path.quadTo(x + width, y, x + width, y + 7);
-        path.lineTo(x + width, y + height - 7);
-        path.quadTo(x + width, y + height,
-                x + width - 7, y + height);
-        path.lineTo(x + 7, y + height);
-        path.quadTo(x, y + height, x, y + height - 7);
-        path.lineTo(x, y + 7);
-        path.quadTo(x, y, x + 7, y);
-        path.closePath();
-        return path;
-    }
-
-    private void paintRarityMiniChip(
-            Graphics2D g, CardInfo card, int leftX, int chipY) {
-        if (card == null || card.getRarity() == null) return;
-        Color rarity = switch (card.getRarity().toLowerCase(Locale.ROOT)) {
-            case "mythic" -> new Color(0xD95B27);
-            case "rare" -> new Color(0xC99B21);
-            case "uncommon" -> new Color(0x8B9DA8);
-            default -> new Color(0x404143);
-        };
-        int size = 9;
-        int x = leftX - 3;
-        int y = chipY - 5;
-        g.setColor(new Color(250, 250, 245, 235));
-        g.fillOval(x, y, size + 4, size + 4);
-        g.setColor(rarity);
-        g.drawOval(x, y, size + 4, size + 4);
-        if (!svgAssets.paintTinted(g, "/svg/rarity.svg",
-                x + 2, y + 2, size, size, rarity)) {
-            g.fillOval(x + 4, y + 4, size - 4, size - 4);
-        }
-    }
-
-    private void paintCounterMiniChip(
-            Graphics2D g, BoardPermanentSnapshot permanent,
-            int rightX, int chipY) {
-        List<CounterState> counters = permanent.getCounters().stream()
-                .filter(counter -> counter != null && counter.getCount() > 0)
-                .limit(3)
-                .toList();
-        if (counters.isEmpty()) return;
-        Font old = g.getFont();
-        Font compact = old.deriveFont(Font.BOLD, 8f);
-        FontMetrics metrics = g.getFontMetrics(compact);
-        int width = 5;
-        for (CounterState counter : counters) {
-            width += 9 + metrics.stringWidth(
-                    counter.getCount() > 1 ? String.valueOf(counter.getCount()) : "");
-        }
-        int x = rightX - width + 3;
-        int y = chipY - 5;
-        paintStateMiniChip(g, x, y, width, 14, new Color(0xE8E1F1));
-        int cursor = x + 3;
-        g.setFont(compact);
-        for (CounterState counter : counters) {
-            String resource = counterResource(counter);
-            if (!svgAssets.paint(g, resource, cursor, y + 3, 8, 8)) {
-                paintFallbackSymbol(g, "•", cursor, y + 3, 8);
-            }
-            cursor += 8;
-            if (counter.getCount() > 1) {
-                String count = String.valueOf(counter.getCount());
-                g.setColor(new Color(0x3D3547));
-                g.drawString(count, cursor,
-                        y + (14 - metrics.getHeight()) / 2 + metrics.getAscent());
-                cursor += metrics.stringWidth(count);
-            }
-            cursor += 1;
-        }
-        g.setFont(old);
-    }
-
-    private String counterResource(CounterState counter) {
-        String type = nullToEmpty(counter.getType()).toLowerCase(Locale.ROOT);
-        if (type.contains("+1/+1")) return "/svg/counter-plus.svg";
-        if (type.contains("-1/-1") || type.contains("−1/−1")) {
-            return "/svg/counter-minus.svg";
-        }
-        for (String known : List.of("charge", "doom", "flood", "fungus",
-                "gold", "lore", "loyalty", "shield", "stun", "time")) {
-            if (type.contains(known)) return "/svg/counter-" + known + ".svg";
-        }
-        return "/svg/counter-pin.svg";
-    }
-
-    private void paintStateMiniChip(
-            Graphics2D g, int x, int y, int width, int height, Color base) {
-        Shape chip = new RoundRectangle2D.Float(
-                x, y, width, height, height - 2, height - 2);
-        g.setColor(base);
-        g.fill(chip);
-        g.setColor(blend(base, Color.BLACK, .28f));
-        g.draw(chip);
-    }
-
-    private boolean[] roomUnlockSides(CardFragment fragment) {
-        boolean[] result = new boolean[2];
-        String name = fragment.card() == null ? "" : nullToEmpty(fragment.card().getName());
-        if (!name.contains(" // ") || fragment.stateLabel().isBlank()) return result;
-        String[] halves = name.split(" // ", 2);
-        String state = fragment.stateLabel().toLowerCase(Locale.ROOT);
-        if ("unlock".equals(state)) {
-            result[fragment.label().equalsIgnoreCase(halves[1]) ? 1 : 0] = true;
-            return result;
-        }
-        result[0] = state.contains(halves[0].toLowerCase(Locale.ROOT));
-        result[1] = state.contains(halves[1].toLowerCase(Locale.ROOT));
-        return result;
-    }
-
-    private void paintPermanentAbilityMiniChip(Graphics2D g, BoardPermanentSnapshot permanent,
-                                               int rightX, int topY,
-                                               int lineHeight) {
-        List<String> abilities = permanent.getEvergreenAbilities();
-        if (abilities == null || abilities.isEmpty()) return;
-        int visible = Math.min(4, abilities.size());
-        int iconSize = 8;
-        int padding = 2;
-        int gap = 1;
-        int width = padding * 2 + visible * iconSize + Math.max(0, visible - 1) * gap;
-        int height = iconSize + padding * 2;
-        int x = rightX - width - 4;
-        int y = topY + lineHeight - height - 1;
-        Color base = blend(colorOr("TextArea.background", Color.WHITE),
-                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
-        Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
-        g.setColor(base);
-        g.fill(chip);
-        g.setColor(blend(base, Color.BLACK, .28f));
-        g.draw(chip);
-        int iconX = x + padding;
-        for (int i = 0; i < visible; i++) {
-            paintKeyword(g, abilities.get(i), iconX, y + padding, iconSize);
-            iconX += iconSize + gap;
-        }
-    }
-
-
-    private void paintTappedMiniChip(Graphics2D g,
-                                     BoardPermanentSnapshot permanent,
-                                     int leftX, int chipY) {
-        if (!Boolean.TRUE.equals(permanent.getTapped())) return;
-
-        int iconSize = 8;
-        int padding = 2;
-        int diameter = iconSize + padding * 2 + 1;
-        int x = leftX;
-        int y = chipY - 5;
-
-        Color base = blend(colorOr("TextArea.background", Color.WHITE),
-                new Color(0xC94F4F), .55f);
-        g.setColor(base);
-        g.fillOval(x, y, diameter, diameter);
-        g.setColor(blend(base, Color.BLACK, .28f));
-        g.drawOval(x, y, diameter, diameter);
-
-        if (!svgAssets.paint(g, "/svg/tap.svg",
-                x + padding, y + padding, iconSize, iconSize)) {
-            paintFallbackSymbol(g, "T", x + padding, y + padding, iconSize);
-        }
-    }
-
-
-    private void paintActivatedAbilityMiniChip(Graphics2D g, CardInfo card,
-                                                 int cardNameX, int topY, int lineHeight) {
-        ActivatedAbilityParser.Badge badge = activatedAbilityParser.parse(card);
-        if (badge == null) return;
-
-        Font old = g.getFont();
-        Font compact = old.deriveFont(Font.PLAIN, Math.max(6f, old.getSize2D() - 5f));
-        FontMetrics metrics = g.getFontMetrics(compact);
-        int tapSize = 8;
-        int padding = 2;
-        int gap = 2;
-        int contentWidth = 0;
-        if (badge.tap()) contentWidth += tapSize;
-        if (!badge.manaCost().isBlank()) {
-            if (contentWidth > 0) contentWidth += gap;
-            contentWidth += miniManaCostPainter.width(badge.manaCost());
-        }
-        if (!badge.textCost().isBlank()) {
-            if (contentWidth > 0) contentWidth += gap;
-            contentWidth += metrics.stringWidth(badge.textCost());
-        }
-        if (!badge.manaOptions().isEmpty()) {
-            contentWidth += manaOptionsWidth(g, badge.manaOptions(), compact);
-        }
-        if (contentWidth == 0) return;
-
-        int width = padding * 2 + contentWidth;
-        int height = Math.max(12, tapSize + padding * 2);
-        int x = cardNameX;
-        int y = topY + lineHeight - height - 1;
-
-        Color base = blend(colorOr("TextArea.background", Color.WHITE),
-                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .18f);
-        Shape chip = new RoundRectangle2D.Float(x, y, width, height, 10, 10);
-        g.setColor(base);
-        g.fill(chip);
-        g.setColor(blend(base, Color.BLACK, .28f));
-        g.draw(chip);
-
-        int cursor = x + padding;
-        if (badge.tap()) {
-            if (!svgAssets.paint(g, "/svg/tap.svg", cursor, y + padding, tapSize, tapSize)) {
-                paintFallbackSymbol(g, "T", cursor, y + padding, tapSize);
-            }
-            cursor += tapSize;
-        }
-        if (!badge.manaCost().isBlank()) {
-            if (cursor > x + padding) cursor += gap;
-            miniManaCostPainter.paint(g, badge.manaCost(), cursor,
-                    y + (height - 8) / 2, base);
-            cursor += miniManaCostPainter.width(badge.manaCost());
-        }
-        if (!badge.textCost().isBlank()) {
-            if (cursor > x + padding) cursor += gap;
-            g.setColor(contrast(base));
-            g.setFont(compact);
-            g.drawString(badge.textCost(), cursor,
-                    y + (height - metrics.getHeight()) / 2 + metrics.getAscent());
-            cursor += metrics.stringWidth(badge.textCost());
-        }
-        if (!badge.manaOptions().isEmpty()) {
-            paintManaOptions(g, badge.manaOptions(), cursor, y, height, compact, base);
-        }
-        g.setFont(old);
-    }
-
-    private int manaOptionsWidth(Graphics2D g, List<String> options, Font font) {
-        FontMetrics metrics = g.getFontMetrics(font);
-        int width = metrics.stringWidth(": ");
-        for (int i = 0; i < options.size(); i++) {
-            width += miniManaCostPainter.width("{" + options.get(i) + "}");
-            if (i + 1 < options.size()) {
-                width += metrics.stringWidth(" | ");
-            }
-        }
-        return width;
-    }
-
-    private void paintManaOptions(Graphics2D g, List<String> options, int x, int y,
-                                  int height, Font font, Color base) {
-        Font old = g.getFont();
-        g.setFont(font);
-        FontMetrics metrics = g.getFontMetrics();
-        int baseline = y + (height - metrics.getHeight()) / 2 + metrics.getAscent();
-
-        g.setColor(contrast(base));
-        g.drawString(": ", x, baseline);
-        int cursor = x + metrics.stringWidth(": ");
-
-        for (int i = 0; i < options.size(); i++) {
-            String manaCost = "{" + options.get(i) + "}";
-            miniManaCostPainter.paint(g, manaCost, cursor,
-                    y + (height - 8) / 2, base);
-            cursor += miniManaCostPainter.width(manaCost);
-
-            if (i + 1 < options.size()) {
-                g.setColor(contrast(base));
-                g.drawString(" | ", cursor, baseline);
-                cursor += metrics.stringWidth(" | ");
-            }
-        }
-        g.setFont(old);
-    }
-
-    private void paintPowerToughnessChip(Graphics2D g, PowerToughnessFragment pt,
-                                         int x, int topY, int lineHeight) {
-        FontMetrics fm = g.getFontMetrics(getFont());
-        String value = pt.power() + "/" + pt.toughness();
-        Font old = g.getFont();
-        Font compact = old.deriveFont(Font.PLAIN, Math.max(7f, old.getSize2D() - 5f));
-        FontMetrics compactMetrics = g.getFontMetrics(compact);
-        int overlap = 8;
-        x -= overlap;
-        int width = compactMetrics.stringWidth(value) + 7;
-        int height = Math.max(11, compactMetrics.getHeight()) + 2;
-        int y = topY + lineHeight - height - 4;
-        Color base = blend(colorOr("TextArea.background", Color.WHITE),
-                new Color(0x9D785A), .24f);
-        Shape chip = new RoundRectangle2D.Float(x, y, width, height, CHIP_ARC, CHIP_ARC);
-        g.setColor(base);
-        g.fill(chip);
-        g.setColor(blend(base, Color.BLACK, .30f));
-        g.draw(chip);
-        g.setColor(contrast(base));
-        g.setFont(compact);
-        g.drawString(value, x + 4,
-                y + (height - compactMetrics.getHeight()) / 2 + compactMetrics.getAscent());
-        g.setFont(old);
-    }
-
-    private void paintKeywordChip(Graphics2D g, KeywordFragment keyword,
-                                  int x, int topY, int lineHeight) {
-        FontMetrics fm = g.getFontMetrics(getFont());
-        int width = fragmentWidth(g, keyword);
-        int height = fm.getHeight() + CHIP_Y_PADDING * 2;
-        int y = topY + (lineHeight - height) / 2;
-        Color base = blend(colorOr("TextArea.background", Color.WHITE),
-                colorOr("List.selectionBackground", new Color(0x6D7F9B)), .14f);
-        Shape chip = new RoundRectangle2D.Float(x, y, width, height, CHIP_ARC, CHIP_ARC);
-        g.setColor(base);
-        g.fill(chip);
-        g.setColor(blend(base, Color.BLACK, .24f));
-        g.draw(chip);
-        int iconY = topY + (lineHeight - SYMBOL_SIZE) / 2;
-        paintKeyword(g, keyword.keyword(), x + CHIP_X_PADDING, iconY);
-        g.setColor(contrast(base));
-        g.drawString(keyword.label(), x + CHIP_X_PADDING + SYMBOL_SIZE + 4,
-                topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent());
-    }
-
-    private void paintMana(Graphics2D g, String symbol, int x, int y) {
-        String normalized = normalizeSymbol(symbol).replace("/", "_");
-        if (svgAssets.paint(g, "/mana-svg/" + normalized + ".svg",
-                x, y, SYMBOL_SIZE, SYMBOL_SIZE)) return;
-        paintFallbackSymbol(g, symbol, x, y, SYMBOL_SIZE);
-    }
-
-    private void paintKeyword(Graphics2D g, String keyword, int x, int y) {
-        paintKeyword(g, keyword, x, y, SYMBOL_SIZE);
-    }
-
-    private void paintKeyword(
-            Graphics2D g, String keyword, int x, int y, int size) {
-        String resource = switch (keyword.toLowerCase(Locale.ROOT)) {
-            case "double strike" -> "doublestrike";
-            case "first strike" -> "firststrike";
-            default -> keyword.toLowerCase(Locale.ROOT).replace(' ', '-');
-        };
-        if (svgAssets.paint(g, "/keyword-svg/ability-" + resource + ".svg",
-                x, y, size, size)) return;
-        paintFallbackSymbol(g, keyword.substring(0, 1).toUpperCase(Locale.ROOT),
-                x, y, size);
-    }
-
-    private void paintFallbackSymbol(Graphics2D g, String text, int x, int y, int size) {
-        Color fill = blend(colorOr("TextArea.background", Color.WHITE),
-                colorOr("Label.foreground", Color.DARK_GRAY), .12f);
-        g.setColor(fill);
-        g.fillOval(x, y, size, size);
-        g.setColor(blend(fill, Color.BLACK, .35f));
-        g.drawOval(x, y, size, size);
-        Font old = g.getFont();
-        g.setFont(old.deriveFont(Font.BOLD, text.length() > 2 ? 8f : 10f));
-        FontMetrics metrics = g.getFontMetrics();
-        String clipped = text.length() > 3 ? text.substring(0, 3) : text;
-        g.drawString(clipped, x + (size - metrics.stringWidth(clipped)) / 2,
-                y + (size - metrics.getHeight()) / 2 + metrics.getAscent());
-        g.setFont(old);
-    }
-
-    private List<String> manaTokens(String cost) {
-        if (cost == null || cost.isBlank()) return List.of();
-        List<String> result = new ArrayList<>();
-        Matcher m = MANA.matcher(cost);
-        while (m.find()) result.add(m.group(1));
-        return result;
-    }
-
-    private String normalizeSymbol(String symbol) {
-        return symbol.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private String cardTypeResource(CardInfo card) {
-        if (card == null) return null;
-        String type = card.effectiveTypeLine();
-        if (type == null || type.isBlank()) return null;
-        if (type.contains("Land")) return "land";
-        if (type.contains("Creature")) return "creature";
-        if (type.contains("Planeswalker")) return "planeswalker";
-        if (type.contains("Artifact")) return "artifact";
-        if (type.contains("Enchantment")) return "enchantment";
-        if (type.contains("Instant")) return "instant";
-        if (type.contains("Sorcery")) return "sorcery";
-        return null;
-    }
-
-    private Color cardColor(CardInfo card) {
-        List<String> colors = card.getColors() == null || card.getColors().isEmpty()
-                ? card.getColorIdentity() : card.getColors();
-        if (colors == null || colors.isEmpty()) {
-            String type = card.effectiveTypeLine();
-            if (type != null && type.contains("Land")) return new Color(0xC9B18A);
-            return new Color(0xC7CBD1);
-        }
-        if (colors.size() > 1) return new Color(0xD6B85A);
-        return switch (colors.get(0).toUpperCase(Locale.ROOT)) {
-            case "W" -> new Color(0xEEE6C8);
-            case "U" -> new Color(0x8CB8D8);
-            case "B" -> new Color(0x8E8791);
-            case "R" -> new Color(0xD9957E);
-            case "G" -> new Color(0x8FBE91);
-            default -> new Color(0xC7CBD1);
-        };
-    }
-
-    private Color contrast(Color color) {
-        double luminance = .299 * color.getRed() + .587 * color.getGreen() + .114 * color.getBlue();
-        return luminance < 128 ? Color.WHITE : new Color(0x202020);
-    }
-
-    private Color blend(Color a, Color b, float amount) {
-        float n = Math.max(0, Math.min(1, amount));
-        return new Color(
-                Math.round(a.getRed() * (1 - n) + b.getRed() * n),
-                Math.round(a.getGreen() * (1 - n) + b.getGreen() * n),
-                Math.round(a.getBlue() * (1 - n) + b.getBlue() * n),
-                Math.round(a.getAlpha() * (1 - n) + b.getAlpha() * n));
-    }
-
-    private List<BoardPermanentSnapshot> roots(List<BoardPermanentSnapshot> battlefield) {
-        Set<Long> ids = new HashSet<>();
-        battlefield.forEach(p -> ids.add(p.getLogicalObjectId()));
-        return battlefield.stream()
-                .filter(p -> p.getAttachedToLogicalObjectId() == null
-                        || !ids.contains(p.getAttachedToLogicalObjectId()))
-                .toList();
-    }
-
-    private List<BoardPermanentSnapshot> attachmentsOf(List<BoardPermanentSnapshot> battlefield, long hostId) {
-        return battlefield.stream()
-                .filter(p -> p.getAttachedToLogicalObjectId() != null
-                        && p.getAttachedToLogicalObjectId() == hostId)
-                .toList();
-    }
-
     private String contextText(GameEvent event) {
         if (event.getGameResult() != null) return "Game result";
         String phase = displayEnum(event.getPhase());
@@ -1297,6 +420,20 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private String nullToEmpty(String value) { return value == null ? "" : value; }
+
+    private Color blend(Color first, Color second, float amount) {
+        float normalized = Math.max(0, Math.min(1, amount));
+        return new Color(
+                Math.round(first.getRed() * (1 - normalized)
+                        + second.getRed() * normalized),
+                Math.round(first.getGreen() * (1 - normalized)
+                        + second.getGreen() * normalized),
+                Math.round(first.getBlue() * (1 - normalized)
+                        + second.getBlue() * normalized),
+                Math.round(first.getAlpha() * (1 - normalized)
+                        + second.getAlpha() * normalized));
+    }
+
     private Color colorOr(String key, Color fallback) {
         Color color = UIManager.getColor(key);
         return color == null ? fallback : color;
@@ -1350,87 +487,15 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void showPreview(CardHitbox hit, MouseEvent mouse) {
-        CardInfo card = hit.card();
-        JWindow window = new JWindow(SwingUtilities.getWindowAncestor(this));
-        JPanel panel = new JPanel(new BorderLayout(8, 8));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(colorOr("Separator.foreground", Color.GRAY)),
-                BorderFactory.createEmptyBorder(9, 9, 9, 9)));
-
-        List<String> urls = card.previewImageUrls();
-        int imageCount = Math.max(1, urls.size());
-        JPanel images = new JPanel();
-        images.setOpaque(false);
-        images.setLayout(new BoxLayout(images, BoxLayout.X_AXIS));
-        List<JLabel> labels = new ArrayList<>();
-        for (int index = 0; index < imageCount; index++) {
-            JLabel image = new JLabel("Loading image…", SwingConstants.CENTER);
-            image.setPreferredSize(previewImageSize(card, imageCount));
-            labels.add(image);
-            images.add(image);
-            if (index + 1 < imageCount) images.add(Box.createHorizontalStrut(8));
-        }
-        panel.add(new PreviewCardChip(hit.card(), hit.permanent()), BorderLayout.NORTH);
-        panel.add(images, BorderLayout.CENTER);
-
-        window.setContentPane(panel);
-        window.pack();
-        Point screen = mouse.getLocationOnScreen();
-        Rectangle screenBounds = getGraphicsConfiguration().getBounds();
-        int px = Math.min(screen.x + 18, screenBounds.x + screenBounds.width - window.getWidth() - 8);
-        int py = Math.min(screen.y + 18, screenBounds.y + screenBounds.height - window.getHeight() - 8);
-        window.setLocation(px, py);
-        window.setVisible(true);
-        previewWindow = window;
-
-        for (int index = 0; index < imageCount; index++) {
-            int imageIndex = index;
-            JLabel image = labels.get(index);
-            imageCache.get(card, imageIndex).thenAccept(optional -> SwingUtilities.invokeLater(() -> {
-                if (previewWindow != window || !window.isVisible()) return;
-                if (optional.isPresent()) {
-                    BufferedImage raw = optional.get();
-                    if (isSplitLayout(card) && imageCount == 1) raw = rotateClockwise(raw);
-                    Dimension target = previewImageSize(card, imageCount);
-                    int w = target.width;
-                    int h = Math.max(1, raw.getHeight() * w / raw.getWidth());
-                    if (h > target.height) {
-                        h = target.height;
-                        w = Math.max(1, raw.getWidth() * h / raw.getHeight());
-                    }
-                    image.setText("");
-                    image.setIcon(new ImageIcon(raw.getScaledInstance(w, h, Image.SCALE_SMOOTH)));
-                    window.pack();
-                } else {
-                    image.setText("No image available");
-                }
-            }));
-        }
+        previewController.show(
+                this, hit.card(), new PreviewCardChip(hit.card(), hit.permanent()), mouse);
     }
 
-    private Dimension previewImageSize(CardInfo card, int imageCount) {
-        if (isSplitLayout(card) && imageCount == 1) return new Dimension(340, 244);
-        return imageCount > 1 ? new Dimension(220, 307) : new Dimension(244, 340);
-    }
-
-    private boolean isSplitLayout(CardInfo card) {
-        String layout = card == null ? "" : nullToEmpty(card.getLayout()).toLowerCase(Locale.ROOT);
-        return layout.equals("split") || layout.equals("aftermath");
-    }
-
-    private BufferedImage rotateClockwise(BufferedImage source) {
-        BufferedImage rotated = new BufferedImage(
-                source.getHeight(), source.getWidth(), BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = rotated.createGraphics();
-        try {
-            configure(g);
-            g.translate(rotated.getWidth(), 0);
-            g.rotate(Math.PI / 2);
-            g.drawImage(source, 0, 0, null);
-        } finally {
-            g.dispose();
-        }
-        return rotated;
+    private String roomStateLabel(BoardPermanentSnapshot permanent) {
+        return permanent.getUnlockedRoomHalves().isEmpty()
+                ? ""
+                : "unlocked: "
+                        + String.join(", ", permanent.getUnlockedRoomHalves());
     }
 
     private final class PreviewCardChip extends JComponent {
@@ -1453,9 +518,10 @@ public final class GameView extends JPanel implements Scrollable {
                         card == null ? "Unknown card" : nullToEmpty(card.getName()),
                         permanent == null ? "" : roomStateLabel(permanent),
                         permanent);
-                int width = fragmentWidth(g, fragment);
+                int width = replayFragmentRenderer.width(g, fragment);
                 int x = Math.max(7, (getWidth() - width) / 2);
-                paintFragment(g, fragment, x, 2, getHeight() - 4, null, false);
+                replayFragmentRenderer.paint(
+                        g, fragment, x, 2, getHeight() - 4, null, false);
             } finally {
                 g.dispose();
             }
@@ -1463,103 +529,15 @@ public final class GameView extends JPanel implements Scrollable {
     }
 
     private void hidePreview() {
-        if (previewWindow != null) { previewWindow.dispose(); previewWindow = null; }
+        previewController.hide();
     }
 
     private void selectTurnAt(MouseEvent mouse) {
-        if (coachingActions == null) return;
-        TurnHitbox hit = turnAt(mouse.getPoint());
-        if (hit == null) return;
-
-        int turn = hit.turnNumber();
-        if (mouse.isShiftDown() && selectionAnchorTurn != null) {
-            int from = Math.min(selectionAnchorTurn, turn);
-            int to = Math.max(selectionAnchorTurn, turn);
-            if (!mouse.isControlDown() && !mouse.isMetaDown()) selectedTurns.clear();
-            for (int value = from; value <= to; value++) selectedTurns.add(value);
-        } else if (mouse.isControlDown() || mouse.isMetaDown()) {
-            if (!selectedTurns.remove(turn)) selectedTurns.add(turn);
-            selectionAnchorTurn = turn;
-        } else {
-            selectedTurns.clear();
-            selectedTurns.add(turn);
-            selectionAnchorTurn = turn;
-        }
-        repaint();
+        interactions.selectTurnAt(mouse);
     }
 
     private void showContextMenu(MouseEvent mouse) {
-        if (coachingActions == null) {
-            if (SwingUtilities.isRightMouseButton(mouse)) nameAbilityAt(mouse.getPoint());
-            return;
-        }
-
-        TurnHitbox hit = turnAt(mouse.getPoint());
-        Integer turn = hit == null ? eventTurnAt(mouse.getPoint()) : hit.turnNumber();
-        if (turn != null && !selectedTurns.contains(turn)) {
-            selectedTurns.clear();
-            selectedTurns.add(turn);
-            selectionAnchorTurn = turn;
-            repaint();
-        }
-
-        JPopupMenu menu = new JPopupMenu();
-        addContextItem(menu, "Ask about this match", CoachingScope.MATCH, Set.of(), null);
-        addContextItem(menu, "Ask about this game", CoachingScope.GAME, Set.of(), null);
-        if (turn != null) {
-            addContextItem(menu, "Ask about turn " + turn, CoachingScope.TURN,
-                    Set.of(turn), null);
-        }
-        if (!selectedTurns.isEmpty()) {
-            addContextItem(menu, selectedTurns.size() == 1
-                            ? "Ask about selected turn"
-                            : "Ask about selected turns " + compactTurns(selectedTurns),
-                    CoachingScope.SELECTED_TURNS, Set.copyOf(selectedTurns), null);
-        }
-
-        menu.addSeparator();
-        JMenu standard = new JMenu("Standard questions");
-        addStandardQuestions(standard, turn);
-        menu.add(standard);
-
-        EventHitbox event = eventAt(mouse.getPoint());
-        if (event != null && event.event().getAbility() != null) {
-            menu.addSeparator();
-            JMenuItem nameAbility = new JMenuItem("Name this ability…");
-            nameAbility.addActionListener(ignored -> nameAbilityAt(mouse.getPoint()));
-            menu.add(nameAbility);
-        }
-        menu.show(this, mouse.getX(), mouse.getY());
-    }
-
-    private void addStandardQuestions(JMenu menu, Integer turn) {
-        addContextItem(menu, "What deck is my opponent using?",
-                CoachingScope.MATCH, Set.of(),
-                "What deck is my opponent using, and what should I know about decks of this kind?");
-        addContextItem(menu, "Was my starting hand keep correct?",
-                CoachingScope.GAME, Set.of(),
-                "Was keeping my starting hand correct? Explain the important factors and alternatives.");
-        if (turn != null) {
-            addContextItem(menu, "Could I have played this turn differently?",
-                    CoachingScope.TURN, Set.of(turn),
-                    "Could I have played this turn differently? Focus on realistic alternatives using only known information.");
-            addContextItem(menu, "Review attacks and blocks",
-                    CoachingScope.TURN, Set.of(turn),
-                    "Were the attacks and blocks on this turn correct? Explain better lines, if any.");
-        }
-        if (!selectedTurns.isEmpty()) {
-            addContextItem(menu, "Review selected turns",
-                    CoachingScope.SELECTED_TURNS, Set.copyOf(selectedTurns),
-                    "Review these turns as one sequence. Identify the most important decision and a better line, if one existed.");
-        }
-    }
-
-    private void addContextItem(JComponent menu, String label, CoachingScope scope,
-                                Set<Integer> turns, String question) {
-        JMenuItem item = new JMenuItem(label);
-        item.addActionListener(ignored -> coachingActions.request(
-                new CoachingRequest(scope, turns, question)));
-        menu.add(item);
+        interactions.showContextMenu(mouse);
     }
 
     private TurnHitbox turnAt(Point point) {
@@ -1574,29 +552,16 @@ public final class GameView extends JPanel implements Scrollable {
                 .findFirst().orElse(null);
     }
 
-    private Integer eventTurnAt(Point point) {
+    private Integer turnNumberAt(Point point) {
+        TurnHitbox hit = turnAt(point);
+        if (hit != null) return hit.turnNumber();
+        GameEvent event = eventAtPoint(point);
+        return event == null ? null : event.getTurnNumber();
+    }
+
+    private GameEvent eventAtPoint(Point point) {
         EventHitbox hit = eventAt(point);
-        return hit == null ? null : hit.event().getTurnNumber();
-    }
-
-    private String compactTurns(Collection<Integer> turns) {
-        if (turns.isEmpty()) return "";
-        if (turns.size() == 1) return Integer.toString(turns.iterator().next());
-        return turns.iterator().next() + "–" + ((NavigableSet<Integer>) new TreeSet<>(turns)).last();
-    }
-
-    private void nameAbilityAt(Point point) {
-        EventHitbox hit = eventHitboxes.stream()
-                .filter(value -> value.bounds().contains(point)).findFirst().orElse(null);
-        if (hit == null || hit.event().getAbility() == null) return;
-        var ability = hit.event().getAbility();
-        String current = abilityNames.find(ability.getSourceGrpId(), ability.getAbilityGrpId());
-        String prompt = "Name this " + ability.getKind() + " ability for future games:\n"
-                + ability.getSourceName() + "\nArena IDs "
-                + ability.getSourceGrpId() + ":" + ability.getAbilityGrpId();
-        String name = JOptionPane.showInputDialog(this, prompt, current);
-        if (name == null) return;
-        abilityNames.put(ability.getSourceGrpId(), ability.getAbilityGrpId(), name);
+        return hit == null ? null : hit.event();
     }
 
     @Override public Dimension getPreferredScrollableViewportSize() { return new Dimension(900, 600); }
@@ -1607,39 +572,6 @@ public final class GameView extends JPanel implements Scrollable {
     @Override public boolean getScrollableTracksViewportWidth() { return true; }
     @Override public boolean getScrollableTracksViewportHeight() { return false; }
 
-    private record SnapshotRow(
-            String iconResource,
-            String text,
-            String suffix,
-            boolean heading,
-            CardInfo card,
-            BoardPermanentSnapshot permanent,
-            List<CardInfo> cards,
-            int cardColumns,
-            List<BoardPermanentSnapshot> permanents,
-            int permanentColumns) {
-        private SnapshotRow(String iconResource, String text, String suffix, boolean heading) {
-            this(iconResource, text, suffix, heading, null, null, List.of(), 1, List.of(), 1);
-        }
-
-        private SnapshotRow(String iconResource, String text, String suffix,
-                            boolean heading, CardInfo card) {
-            this(iconResource, text, suffix, heading, card, null, List.of(), 1, List.of(), 1);
-        }
-
-        private static SnapshotRow cardGrid(List<CardInfo> cards, int columns) {
-            return new SnapshotRow(null, "", "", false, null, null,
-                    List.copyOf(cards), columns, List.of(), 1);
-        }
-
-        private static SnapshotRow permanentGrid(List<BoardPermanentSnapshot> permanents,
-                                                 int columns) {
-            return new SnapshotRow(null, "", "", false, null, null,
-                    List.of(), 1, List.copyOf(permanents), columns);
-        }
-    }
-
-    private record RichLayout(int height) {}
     private record CardHitbox(Rectangle bounds, CardInfo card, GameEvent event,
                               BoardPermanentSnapshot permanent) {}
     private record EventHitbox(Rectangle bounds, GameEvent event) {}
@@ -1659,18 +591,4 @@ public final class GameView extends JPanel implements Scrollable {
         void request(CoachingRequest request);
     }
 
-    private static final class PendingMessage {
-        private final LogMessageInterface message;
-        private ModelObject modelObject;
-        private Throwable error;
-        private boolean completed;
-        private PendingMessage(LogMessageInterface message) { this.message = message; }
-        private void complete(ModelObject modelObject, Throwable error) {
-            this.modelObject = modelObject; this.error = error; this.completed = true;
-        }
-        private LogMessageInterface message() { return message; }
-        private ModelObject modelObject() { return modelObject; }
-        private Throwable error() { return error; }
-        private boolean completed() { return completed; }
-    }
 }

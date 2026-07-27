@@ -1,8 +1,11 @@
-# Arena Log Viewer
+# MTGArenaLogReader
 
-Java/Swing prototype that tails MTG Arena's `Player.log`, filters interesting entries,
-creates typed log messages, asynchronously enriches messages with Scryfall card data,
-and displays a copyable parallel log.
+Java 24/Swing desktop application that tails MTG Arena's `Player.log`, reconstructs
+games and matches, enriches cards with Scryfall metadata, and provides replay, deck
+tracking, draft assistance, export, and manual coaching tools.
+
+The maintained architectural overview is
+[`docs/architecture/current-state.md`](docs/architecture/current-state.md).
 
 ## Pipeline
 
@@ -13,9 +16,12 @@ Player.log
   -> LogMessageReader
   -> BlockingQueue<LogMessageInterface>
   -> InformationCollector
-       -> immediately: BlockingQueue<LogMessageInterface> for UI
-       -> asynchronously: CompletableFuture<ModelObject>
-  -> MainFrame / JTextArea
+       -> immediately: BlockingQueue<LogMessageInterface> for consumers
+       -> asynchronously: CompletableFuture<ModelObject> with card metadata
+  -> MainFrame
+       -> GameSessionsPanel / match and game reconstruction
+       -> DeckTracker
+       -> DraftTracker
 ```
 
 ## Run
@@ -24,7 +30,8 @@ Player.log
 mvn compile exec:java
 ```
 
-By default the application starts at the current end of `Player.log`. To use another file:
+By default the application starts at the current end of `Player.log`. The rescan
+action in the UI replays the current file from byte zero. To use another file:
 
 ```bash
 mvn compile exec:java -Dexec.args="C:\\path\\to\\Player.log"
@@ -57,9 +64,15 @@ Each event records the active turn, player, phase and step when Arena exposes
 that information. The view uses `paintComponent` rather than one Swing child
 component per event.
 
+## Historical feature notes
+
+The sections below record major feature increments. For current subsystem ownership
+and runtime flow, use the
+[architecture overview](docs/architecture/current-state.md).
+
 ## v4 game projection changes
 
-- Log reading begins at byte offset 0 so an existing Player.log is replayed on startup.
+- The application can replay an existing Player.log from byte offset 0 via rescan.
 - H2 uses an embedded file connection without `AUTO_SERVER`.
 - Zone names are learned from each match's `zones` collection; numeric zone IDs are match-local.
 - The game projector maintains a `GameState` and compares successive object states.
@@ -80,9 +93,8 @@ Version 5 introduces `GameMessageRouter` and `GameSessionsPanel`.
 - The selected game can be copied as compact plain text with the
   **Copy selected game** button.
 
-The application continues reading `Player.log` from byte zero and then follows
-newly appended content, so previously logged games appear first and an active
-match continues updating in realtime.
+Historical rescan and live appended records use the same routing and reconstruction
+path.
 
 ## Annotation-aware replay
 
