@@ -216,6 +216,7 @@ public final class CoachingFrame extends JFrame {
         if (summary == null) {
             selected = null;
             transcript.showConversation("", List.of());
+            disposeGameViews();
             games.removeAll();
             gameViews.clear();
             return;
@@ -232,6 +233,7 @@ public final class CoachingFrame extends JFrame {
 
 
     private void showGames(List<CoachingGame> persistedGames) {
+        disposeGameViews();
         games.removeAll();
         gameViews.clear();
         if (persistedGames.isEmpty()) {
@@ -299,6 +301,10 @@ public final class CoachingFrame extends JFrame {
         return new JScrollPane(area);
     }
 
+
+    private void disposeGameViews() {
+        for (GameView view : gameViews.values()) view.dispose();
+    }
 
     private void copyReconstruction() {
         if (selected == null) {

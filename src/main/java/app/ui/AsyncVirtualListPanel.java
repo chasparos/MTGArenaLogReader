@@ -273,9 +273,15 @@ public abstract class AsyncVirtualListPanel<T, C> extends JComponent {
         }
     }
 
-    @Override public void removeNotify() {
+    /**
+     * Permanently releases the backing renderer. Removing a Swing component from
+     * the hierarchy is not permanent: hidden windows and tab changes may call
+     * removeNotify() and later add the same component again. The owner therefore
+     * disposes the renderer explicitly only when the view itself is discarded.
+     */
+    protected final void disposeRenderer() {
+        generation.incrementAndGet();
         renderer.shutdownNow();
-        super.removeNotify();
     }
 
     private void scheduleRenderWorker(List<Item<T>> snapshot,

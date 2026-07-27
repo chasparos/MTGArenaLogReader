@@ -291,7 +291,9 @@ final class ReplayFragmentRenderer {
         }
         int x = rightX - width + 3;
         int y = chipY - 5;
-        paintStateMiniChip(g, x, y, width, 14, new Color(0xE8E1F1));
+        Color base = blend(host.colorOr("TextArea.background", Color.WHITE),
+                host.colorOr("List.selectionBackground", new Color(0x6D7F9B)), .22f);
+        paintStateMiniChip(g, x, y, width, 14, base);
         int cursor = x + 3;
         g.setFont(compact);
         for (CounterState counter : counters) {

@@ -29,7 +29,7 @@ import java.util.Set;
  * Expensive rows are measured and painted once on a worker thread, while the
  * EDT only composites visible row images and lightweight interaction overlays.
  */
-public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, GameView.ReplayHit> {
+public final class GameView extends AsyncVirtualListPanel<GameView.ReplayRenderNode, GameView.ReplayHit> {
     private static final int OUTER_PADDING = 18;
     private static final int EVENT_GAP = 9;
     private static final int HEADER_ESTIMATE = 38;
@@ -190,6 +190,14 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         };
         addMouseMotionListener(mouse);
         addMouseListener(mouse);
+
+        // Live views are initially empty and will rebuild as messages arrive.
+        // Coaching views are constructed from an already populated decoded model,
+        // so hydrate their retained render nodes immediately.
+        if (!model.snapshot().isEmpty()) {
+            if (SwingUtilities.isEventDispatchThread()) rebuildRenderNodes();
+            else SwingUtilities.invokeLater(this::rebuildRenderNodes);
+        }
     }
 
     public GameModel getModel() { return model; }
@@ -246,6 +254,13 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         repaint();
     }
 
+    /** Permanently releases resources when this view will not be reused. */
+    public void dispose() {
+        pendingMessages.clear();
+        hidePreview();
+        disposeRenderer();
+    }
+
     private void flushCompletedMessages() {
         List<GameEvent> additions = new ArrayList<>();
         for (OrderedMessageBuffer.CompletedMessage completed
@@ -259,31 +274,35 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         model.addEvents(additions);
         model.setOpeningHand(projector.openingHandPlayer(),
                 projector.mulliganCount(), projector.openingHand());
-        rebuildPanels();
+        rebuildRenderNodes();
         modelChangedListener.run();
     }
 
-    private void rebuildPanels() {
-        List<Item<ReplayPanel>> panels = new ArrayList<>();
+    private void rebuildRenderNodes() {
+        List<Item<ReplayRenderNode>> panels = new ArrayList<>();
         Integer previousTurn = null;
         for (GameEvent event : model.snapshot()) {
             if (event.getTurnNumber() != null
                     && !event.getTurnNumber().equals(previousTurn)) {
-                panels.add(new Item<>(turnKey(event.getTurnNumber()),
-                        new ReplayPanel(PanelKind.TURN_HEADER, event), HEADER_ESTIMATE));
+                Object key = turnKey(event.getTurnNumber());
+                panels.add(new Item<>(key,
+                        new ReplayRenderNode(key, PanelKind.TURN_HEADER, event, HEADER_ESTIMATE),
+                        HEADER_ESTIMATE));
                 previousTurn = event.getTurnNumber();
             }
             PanelKind kind = event.getTurnSnapshot().isEmpty()
                     ? PanelKind.EVENT : PanelKind.SNAPSHOT;
-            panels.add(new Item<>(eventKey(event), new ReplayPanel(kind, event),
-                    kind == PanelKind.EVENT ? EVENT_ESTIMATE : SNAPSHOT_ESTIMATE));
+            Object key = eventKey(event);
+            int estimate = kind == PanelKind.EVENT ? EVENT_ESTIMATE : SNAPSHOT_ESTIMATE;
+            panels.add(new Item<>(key,
+                    new ReplayRenderNode(key, kind, event, estimate), estimate));
         }
         setItems(panels);
     }
 
     @Override protected RenderedItem<ReplayHit> renderItem(
-            Item<ReplayPanel> item, int width) {
-        ReplayPanel panel = item.value();
+            Item<ReplayRenderNode> item, int width) {
+        ReplayRenderNode panel = item.value();
         int contentWidth = Math.max(260, width - OUTER_PADDING * 2);
         RenderCapture capture = new RenderCapture();
         renderCapture.set(capture);
@@ -309,7 +328,7 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         }
     }
 
-    private int measurePanel(ReplayPanel panel, int width) {
+    private int measurePanel(ReplayRenderNode panel, int width) {
         BufferedImage scratch = new BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = scratch.createGraphics();
         try {
@@ -327,7 +346,7 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         }
     }
 
-    private void paintPanelContent(Graphics2D graphics, ReplayPanel panel, int width) {
+    private void paintPanelContent(Graphics2D graphics, ReplayRenderNode panel, int width) {
         switch (panel.kind()) {
             case TURN_HEADER -> paintTurnHeader(graphics, panel.event(), 0, width);
             case EVENT -> replayEventRenderer.paint(
@@ -366,7 +385,7 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
     }
 
     @Override protected void paintPlaceholder(Graphics2D graphics,
-                                               Item<ReplayPanel> item,
+                                               Item<ReplayRenderNode> item,
                                                Rectangle bounds) {
         Color panel = colorOr("TextArea.background", Color.WHITE);
         graphics.setColor(panel);
@@ -376,8 +395,8 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
     }
 
     @Override protected void paintItemOverlay(Graphics2D graphics,
-                                              LocatedItem<ReplayPanel, ReplayHit> located) {
-        ReplayPanel panel = located.item().value();
+                                              LocatedItem<ReplayRenderNode, ReplayHit> located) {
+        ReplayRenderNode panel = located.item().value();
         Rectangle bounds = located.bounds();
         Color accent = colorOr("List.selectionBackground", new Color(0x4477AA));
         boolean selected = panel.kind() == PanelKind.TURN_HEADER
@@ -464,7 +483,7 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         if (hit instanceof CardHit card && card.event() != null) {
             return card.event().getTurnNumber();
         }
-        LocatedItem<ReplayPanel, ReplayHit> item = itemAt(point);
+        LocatedItem<ReplayRenderNode, ReplayHit> item = itemAt(point);
         return item == null ? null : item.item().value().event().getTurnNumber();
     }
 
@@ -472,7 +491,7 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         ReplayHit hit = contextAt(point);
         if (hit instanceof EventHit event) return event.event();
         if (hit instanceof CardHit card) return card.event();
-        LocatedItem<ReplayPanel, ReplayHit> item = itemAt(point);
+        LocatedItem<ReplayRenderNode, ReplayHit> item = itemAt(point);
         if (item == null || item.item().value().kind() == PanelKind.TURN_HEADER) return null;
         return item.item().value().event();
     }
@@ -578,7 +597,19 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayPanel, 
         @Override public int hashCode() { return hash; }
     }
 
-    record ReplayPanel(PanelKind kind, GameEvent event) {}
+    /**
+     * Immutable retained presentation node. Domain events stay unchanged while
+     * virtual-list identity, row kind and provisional layout belong to the view.
+     */
+    record ReplayRenderNode(Object key, PanelKind kind, GameEvent event,
+                            int estimatedHeight) {
+        ReplayRenderNode {
+            Objects.requireNonNull(key, "key");
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(event, "event");
+            estimatedHeight = Math.max(1, estimatedHeight);
+        }
+    }
     private enum PanelKind { TURN_HEADER, EVENT, SNAPSHOT }
     sealed interface ReplayHit permits CardHit, EventHit, TurnHit {}
     private record CardHit(CardInfo card, GameEvent event,
