@@ -13,7 +13,6 @@ import app.model.game.PlayerTurnSnapshot;
 import app.model.match.MatchScore;
 import app.model.session.GameModel;
 import app.model.session.MatchSession;
-import app.projection.AbilityNameStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,7 +25,7 @@ class MatchAiExporterTest {
 
     @Test
     void exportsAllKnownGamesInOrderWithCompactSemanticState() {
-        MatchSession match = new MatchSession("match-123", new AbilityNameStore());
+        MatchSession match = new MatchSession("match-123");
         match.matchState().observePlayers(Map.of(2, "Opponent", 1, "Me"));
 
         GameModel gameTwo = match.game(2).model();
@@ -78,7 +77,7 @@ class MatchAiExporterTest {
 
     @Test
     void emitsStructuredResultsWithoutDuplicatingPresentationText() {
-        MatchSession match = new MatchSession("match-456", new AbilityNameStore());
+        MatchSession match = new MatchSession("match-456");
         GameModel game = match.game(1).model();
 
         GameResult result = new GameResult();
@@ -107,7 +106,7 @@ class MatchAiExporterTest {
 
     @Test
     void exportsAbilitySourceAndArenaCardIdentityStructurally() {
-        MatchSession match = new MatchSession("match-ability", new AbilityNameStore());
+        MatchSession match = new MatchSession("match-ability");
         GameModel game = match.game(1).model();
 
         CardInfo sourceCard = card("The Serpent Society");
@@ -118,6 +117,9 @@ class MatchAiExporterTest {
         ability.setSourceName("The Serpent Society");
         ability.setSourceGrpId(12345L);
         ability.setAbilityGrpId(67890L);
+        ability.setChapter(2);
+        ability.setEffectText("Mill two cards, then draw a card.");
+        ability.setConfidence("ORACLE_HEURISTIC");
 
         GameEvent event = new GameEvent();
         event.setAbility(ability);
@@ -128,14 +130,16 @@ class MatchAiExporterTest {
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.contains(
-                "A#1 kind=triggered source=c1@12345 abilityGrp=67890"));
+                "A#1 kind=triggered source=c1@12345 abilityGrp=67890 chapter=2 "
+                        + "effect=\"Mill two cards, then draw a card.\" "
+                        + "confidence=ORACLE_HEURISTIC"));
         assertTrue(report.contains("cards=c1@12345"));
     }
 
 
     @Test
     void exportsExplicitTargetDecisionWithChosenAndAlternativeObjects() {
-        MatchSession match = new MatchSession("match-decision", new AbilityNameStore());
+        MatchSession match = new MatchSession("match-decision");
         GameModel game = match.game(1).model();
 
         ObjectReference source = new ObjectReference(
@@ -168,7 +172,7 @@ class MatchAiExporterTest {
 
     @Test
     void exportsKnownZonesAndObservedPermanentInstanceState() {
-        MatchSession match = new MatchSession("match-state", new AbilityNameStore());
+        MatchSession match = new MatchSession("match-state");
         match.matchState().observePlayers(Map.of(1, "Me"));
         GameModel game = match.game(1).model();
 

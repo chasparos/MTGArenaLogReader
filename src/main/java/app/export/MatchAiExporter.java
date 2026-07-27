@@ -453,6 +453,15 @@ public final class MatchAiExporter {
         if (ability.getAbilityGrpId() > 0) {
             out.append(" abilityGrp=").append(ability.getAbilityGrpId());
         }
+        if (ability.getChapter() != null) {
+            out.append(" chapter=").append(ability.getChapter());
+        }
+        if (hasText(ability.getEffectText())) {
+            out.append(" effect=\"").append(escape(ability.getEffectText())).append('\"');
+        }
+        if (hasText(ability.getConfidence())) {
+            out.append(" confidence=").append(ability.getConfidence());
+        }
         appendObjectReferences(out, event.getObjects());
         if (hasText(event.getText())) {
             out.append(" text=").append(compact(event.getText()));
@@ -541,6 +550,13 @@ public final class MatchAiExporter {
     /**
      * Keeps the line protocol unambiguous without verbose JSON quoting.
      */
+    private String escape(String value) {
+        return value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", " ")
+                .replace("\n", " ");
+    }
+
     private String compact(String value) {
         if (value == null) return "?";
         return value.replace('\\', '/')

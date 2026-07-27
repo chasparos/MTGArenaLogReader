@@ -7,7 +7,6 @@ import app.model.game.BoardPermanentSnapshot;
 import app.model.log.LogMessageInterface;
 import app.model.session.GameModel;
 import app.model.session.GameSession;
-import app.projection.AbilityNameStore;
 import app.projection.GameEventProjector;
 import app.snapshot.BoardStateMonitor;
 import app.ui.AsyncVirtualListPanel;
@@ -55,29 +54,23 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayRenderN
     private GameEvent highlightedEvent;
     private Runnable modelChangedListener = () -> { };
 
-    public GameView(GameModel model) { this(model, new AbilityNameStore()); }
+    public GameView(GameModel model) { this(model, new GameEventProjector(), null); }
 
-    public GameView(GameModel model, AbilityNameStore abilityNames) {
-        this(model, abilityNames, new GameEventProjector(abilityNames));
+    public GameView(GameModel model, GameEventProjector projector) {
+        this(model, projector, null);
     }
 
-    public GameView(GameModel model, AbilityNameStore abilityNames,
-                    GameEventProjector projector) {
-        this(model, abilityNames, projector, null);
+    public GameView(GameSession session) {
+        this(session.model(), session.projector(), session);
     }
 
-    public GameView(GameSession session, AbilityNameStore abilityNames) {
-        this(session.model(), abilityNames, session.projector(), session);
-    }
-
-    private GameView(GameModel model, AbilityNameStore abilityNames,
-                     GameEventProjector projector, GameSession session) {
+    private GameView(GameModel model, GameEventProjector projector, GameSession session) {
         super("arena-replay-row-renderer");
         this.model = model;
         this.projector = projector;
         this.session = session;
         this.interactions = new ReplayInteractionController(
-                this, turnSelection, abilityNames,
+                this, turnSelection,
                 this::turnNumberAt, this::eventAtPoint, this::repaint);
         this.replayFragmentRenderer = new ReplayFragmentRenderer(
                 new ReplayFragmentRenderer.Host() {

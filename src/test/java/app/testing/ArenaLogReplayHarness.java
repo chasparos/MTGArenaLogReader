@@ -5,7 +5,6 @@ import app.model.card.CardInfo;
 import app.model.session.GameModel;
 import app.model.session.GameSession;
 import app.model.session.MatchSession;
-import app.projection.AbilityNameStore;
 import app.model.InformationBundle;
 import app.model.log.LogMessageInterface;
 import app.model.log.RawLogEntry;
@@ -41,7 +40,6 @@ public final class ArenaLogReplayHarness {
     private GameMessageRouter router = new GameMessageRouter();
     private final Map<GameKey, GameSession> sessions = new LinkedHashMap<>();
     private final Map<String, MatchSession> matches = new LinkedHashMap<>();
-    private final AbilityNameStore abilityNames = new AbilityNameStore();
     private final Map<GameKey, BoardStateMonitor> boardStateMonitors = new LinkedHashMap<>();
     private long sequence;
     private final InformationBundle cardMetadata = new InformationBundle();
@@ -112,7 +110,7 @@ public final class ArenaLogReplayHarness {
 
     private GameSession createSession(GameKey key) {
         MatchSession match = matches.computeIfAbsent(
-                key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
+                key.getMatchId(), matchId -> new MatchSession(matchId));
         return match.game(key.getGameNumber());
     }
 

@@ -68,7 +68,6 @@ class ObjectNameResolverTest {
         ObjectNameResolver names = new ObjectNameResolver(
                 state,
                 new ObjectIdentityTracker(state),
-                new AbilityNameStore(),
                 new TokenResolver(),
                 observed,
                 events,

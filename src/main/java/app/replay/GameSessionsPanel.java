@@ -7,7 +7,6 @@ import app.model.session.MatchSession;
 import app.model.event.GameEvent;
 import app.model.event.GameEventType;
 import app.model.log.LogMessageInterface;
-import app.projection.AbilityNameStore;
 import app.routing.GameMessageRouter;
 import app.export.GameTextExporter;
 import app.export.MatchAiExporter;
@@ -47,7 +46,6 @@ public final class GameSessionsPanel extends JPanel {
     private final MatchArchiveStore archiveStore = new MatchArchiveStore(
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "archive"),
             aiExporter);
-    private final AbilityNameStore abilityNames = new AbilityNameStore();
     private final JLabel status = new JLabel("No games loaded");
     private final Consumer<MatchSession> coachingAction;
 
@@ -139,11 +137,11 @@ public final class GameSessionsPanel extends JPanel {
 
     private GameView createGameView(GameKey key) {
         MatchSession match = matches.computeIfAbsent(
-                key.getMatchId(), matchId -> new MatchSession(matchId, abilityNames));
+                key.getMatchId(), matchId -> new MatchSession(matchId));
         GameSession game = match.game(key.getGameNumber());
         LOG.info("Created replay session for match {} game {}", key.getMatchId(), key.getGameNumber());
 
-        GameView view = new GameView(game, abilityNames);
+        GameView view = new GameView(game);
         tabComponents.put(key, view);
         gameTabs.addTab(humanReadableTitle(key), view);
         gameTabs.setSelectedComponent(view);

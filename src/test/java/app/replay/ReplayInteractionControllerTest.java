@@ -1,6 +1,5 @@
 package app.replay;
 
-import app.projection.AbilityNameStore;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.JPanel;
@@ -20,8 +19,7 @@ class ReplayInteractionControllerTest {
         ReplayTurnSelection selection = new ReplayTurnSelection();
         AtomicInteger repaints = new AtomicInteger();
         ReplayInteractionController controller = new ReplayInteractionController(
-                owner, selection, new AbilityNameStore(),
-                point -> point.x, point -> null, repaints::incrementAndGet);
+                owner, selection,                 point -> point.x, point -> null, repaints::incrementAndGet);
 
         controller.selectTurnAt(mouse(owner, 3, 0));
         assertTrue(selection.isEmpty());

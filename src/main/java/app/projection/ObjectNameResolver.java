@@ -17,7 +17,6 @@ import java.util.function.IntFunction;
 final class ObjectNameResolver {
     private final GameState state;
     private final ObjectIdentityTracker identities;
-    private final AbilityNameStore abilityNames;
     private final TokenResolver tokens;
     private final Map<Long, GameObjectState> observedCards;
     private final List<GameEvent> emittedEvents;
@@ -28,14 +27,12 @@ final class ObjectNameResolver {
     ObjectNameResolver(
             GameState state,
             ObjectIdentityTracker identities,
-            AbilityNameStore abilityNames,
             TokenResolver tokens,
             Map<Long, GameObjectState> observedCards,
             List<GameEvent> emittedEvents,
             IntFunction<String> playerName) {
         this.state = state;
         this.identities = identities;
-        this.abilityNames = abilityNames;
         this.tokens = tokens;
         this.observedCards = observedCards;
         this.emittedEvents = emittedEvents;
@@ -57,8 +54,6 @@ final class ObjectNameResolver {
     String displayName(GameObjectState object, Map<Long, CardInfo> cards) {
         if (isAbility(object)) {
             String source = cardName(object.getObjectSourceGrpId(), cards);
-            String learned = abilityNames.find(
-                    object.getObjectSourceGrpId(), object.getGrpId());
             String kind = state.getActivatedAbilityInstances().contains(
                     object.getInstanceId()) ? "activated"
                     : state.getTriggeredAbilityInstances().contains(
@@ -66,7 +61,7 @@ final class ObjectNameResolver {
                     : "unknown";
             String inferred = AbilityHeuristics.infer(
                     cardForGrpId(object.getObjectSourceGrpId(), cards), kind);
-            String label = !learned.isBlank() ? learned : inferred;
+            String label = inferred;
             return label.isBlank() ? source : source + " \u2014 " + label;
         }
         if (object.getCard() != null

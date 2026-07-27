@@ -16,6 +16,9 @@ public class AbilityReference {
     private long sourceGrpId;
     private String sourceName;
     private String kind;
+    private Integer chapter;
+    private String effectText;
+    private String confidence = "UNKNOWN";
 
     public String key() { return sourceGrpId + ":" + abilityGrpId; }
 }

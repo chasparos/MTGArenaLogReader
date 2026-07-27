@@ -1,7 +1,6 @@
 package app.replay;
 
 import app.model.event.GameEvent;
-import app.projection.AbilityNameStore;
 
 import javax.swing.*;
 import java.awt.Component;
@@ -12,12 +11,11 @@ import java.util.function.Function;
 
 /**
  * Owns replay coaching menus, standard questions, pointer-selection dispatch,
- * and the user interaction for naming observed abilities.
+ * and pointer-selection dispatch.
  */
 final class ReplayInteractionController {
     private final Component owner;
     private final ReplayTurnSelection selection;
-    private final AbilityNameStore abilityNames;
     private final Function<Point, Integer> turnAt;
     private final Function<Point, GameEvent> eventAt;
     private final Runnable repaint;
@@ -26,13 +24,11 @@ final class ReplayInteractionController {
     ReplayInteractionController(
             Component owner,
             ReplayTurnSelection selection,
-            AbilityNameStore abilityNames,
             Function<Point, Integer> turnAt,
             Function<Point, GameEvent> eventAt,
             Runnable repaint) {
         this.owner = owner;
         this.selection = selection;
-        this.abilityNames = abilityNames;
         this.turnAt = turnAt;
         this.eventAt = eventAt;
         this.repaint = repaint;
@@ -60,12 +56,7 @@ final class ReplayInteractionController {
     }
 
     void showContextMenu(MouseEvent mouse) {
-        if (!coachingEnabled()) {
-            if (SwingUtilities.isRightMouseButton(mouse)) {
-                nameAbilityAt(mouse.getPoint());
-            }
-            return;
-        }
+        if (!coachingEnabled()) return;
 
         Integer turn = turnAt.apply(mouse.getPoint());
         if (turn == null) {
@@ -99,14 +90,6 @@ final class ReplayInteractionController {
         addStandardQuestions(standard, turn);
         menu.add(standard);
 
-        GameEvent event = eventAt.apply(mouse.getPoint());
-        if (event != null && event.getAbility() != null) {
-            menu.addSeparator();
-            JMenuItem nameAbility = new JMenuItem("Name this ability\u2026");
-            nameAbility.addActionListener(
-                    ignored -> nameAbilityAt(mouse.getPoint()));
-            menu.add(nameAbility);
-        }
         menu.show(owner, mouse.getX(), mouse.getY());
     }
 
@@ -141,20 +124,4 @@ final class ReplayInteractionController {
         menu.add(item);
     }
 
-    private void nameAbilityAt(Point point) {
-        GameEvent event = eventAt.apply(point);
-        if (event == null || event.getAbility() == null) return;
-        var ability = event.getAbility();
-        String current = abilityNames.find(
-                ability.getSourceGrpId(), ability.getAbilityGrpId());
-        String prompt = "Name this " + ability.getKind()
-                + " ability for future games:\n"
-                + ability.getSourceName() + "\nArena IDs "
-                + ability.getSourceGrpId() + ":" + ability.getAbilityGrpId();
-        String name = JOptionPane.showInputDialog(owner, prompt, current);
-        if (name != null) {
-            abilityNames.put(
-                    ability.getSourceGrpId(), ability.getAbilityGrpId(), name);
-        }
-    }
 }

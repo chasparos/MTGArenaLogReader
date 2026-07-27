@@ -171,24 +171,18 @@ public final class GameEventProjector {
     private final LocalPlayerStore localPlayerStore;
     private boolean openingHandEventEmitted;
 
-    public GameEventProjector() { this(new AbilityNameStore(), null, new LocalPlayerStore()); }
+    public GameEventProjector() { this(null, new LocalPlayerStore()); }
 
-    public GameEventProjector(AbilityNameStore abilityNames) {
-        this(abilityNames, null, new LocalPlayerStore());
+    public GameEventProjector(MatchState matchState) {
+        this(matchState, new LocalPlayerStore());
     }
 
-    public GameEventProjector(AbilityNameStore abilityNames, MatchState matchState) {
-        this(abilityNames, matchState, new LocalPlayerStore());
-    }
-
-    GameEventProjector(AbilityNameStore abilityNames, MatchState matchState,
-                       LocalPlayerStore localPlayerStore) {
+    GameEventProjector(MatchState matchState, LocalPlayerStore localPlayerStore) {
         this.localPlayerStore = java.util.Objects.requireNonNull(localPlayerStore, "localPlayerStore");
         state.setLocalPlayerName(localPlayerStore.load().orElse(null));
         this.names = new ObjectNameResolver(
                 state,
                 objectIdentityTracker,
-                abilityNames,
                 tokenResolver,
                 observedCardsByGrpId,
                 emittedEvents,
@@ -947,21 +941,27 @@ public final class GameEventProjector {
     }
 
     private GameEvent abilityEvent(LogMessageInterface source, String text, GameObjectState ability) {
+        String kind = state.getActivatedAbilityInstances().contains(ability.getInstanceId()) ? "activated" :
+                state.getTriggeredAbilityInstances().contains(ability.getInstanceId()) ? "triggered" : "unknown";
+        CardInfo sourceCard = names.cardForGrpId(
+                ability.getObjectSourceGrpId(), knownCards);
+        String effectText = AbilityHeuristics.infer(sourceCard, kind);
         Integer sagaChapter = sagaChapterForAbility(ability);
         if (sagaChapter != null) {
-            text = cardName(ability.getObjectSourceGrpId(), knownCards)
+            String chapterText = cardName(ability.getObjectSourceGrpId(), knownCards)
                     + " — chapter " + romanNumeral(sagaChapter) + " ability triggers";
+            text = effectText.isBlank() ? chapterText : chapterText + ": " + effectText;
         }
         GameEvent event = event(source, text);
         AbilityReference reference = new AbilityReference();
         reference.setAbilityGrpId(ability.getGrpId());
         reference.setSourceGrpId(ability.getObjectSourceGrpId());
         reference.setSourceName(cardName(ability.getObjectSourceGrpId(), knownCards));
-        reference.setKind(state.getActivatedAbilityInstances().contains(ability.getInstanceId()) ? "activated" :
-                state.getTriggeredAbilityInstances().contains(ability.getInstanceId()) ? "triggered" : "unknown");
+        reference.setKind(kind);
+        reference.setChapter(sagaChapter);
+        reference.setEffectText(effectText);
+        reference.setConfidence(effectText.isBlank() ? "UNKNOWN" : "ORACLE_HEURISTIC");
         event.setAbility(reference);
-        CardInfo sourceCard = names.cardForGrpId(
-                ability.getObjectSourceGrpId(), knownCards);
         if (sourceCard != null && !event.getCards().contains(sourceCard)) event.getCards().add(sourceCard);
         return event;
     }

@@ -25,7 +25,6 @@ public final class AbilityHeuristics {
             else if ("unknown".equals(kind) && (activated || triggered)) candidates.add(text);
         }
         if (candidates.size() != 1) return "";
-        String value = candidates.get(0).replaceAll("\\s+", " ");
-        return value.length() <= 72 ? value : value.substring(0, 69) + "…";
+        return candidates.get(0).replaceAll("\\s+", " ");
     }
 }
