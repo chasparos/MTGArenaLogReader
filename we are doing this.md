@@ -20,7 +20,8 @@ This document tracks the incremental work to improve the compact AI coaching rec
   - [x] Update `ObjectLifecycleEventsTest` to assert the structured transition fields instead of comparing the record to legacy text.
   - [x] Import `ZoneTransitionReason` in the structured lifecycle assertion test.
 - [x] Add stable target references to spells and abilities.
-- [ ] Add conservative causal links for counter, bounce, destroy, exile, and damage outcomes.
+- [x] Add conservative causal links for counter, bounce, destroy, exile, and damage outcomes.
+  - [x] Remove obsolete per-message `GameSession` projection INFO logging from test output.
 - [ ] Keep provenance/confidence explicit whenever semantics are enriched or inferred.
 
 ## Phase 3 — deterministic token reduction

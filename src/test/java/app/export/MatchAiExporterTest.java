@@ -334,3 +334,53 @@ class MatchAiExporterTest {
         return card;
     }
 }
+    @Test
+    void exportsConservativeTargetToZoneOutcomeCausalLink() {
+        MatchSession match = new MatchSession("match-causal");
+        GameModel game = match.game(1).model();
+
+        ObjectReference source = new ObjectReference(50, 150, 9101, "Murder", null, null);
+        ObjectReference target = new ObjectReference(51, 151, 9102, "Engine Rat", null, null);
+
+        GameEvent targetEvent = new GameEvent();
+        targetEvent.setTargetObservation(new TargetObservation(
+                source, 73001L, List.of(target), TargetObservation.Confidence.EXPLICIT));
+
+        GameEvent outcomeEvent = new GameEvent();
+        outcomeEvent.setZoneTransition(new ZoneTransitionObservation(
+                "Battlefield", "Graveyard", ZoneTransitionReason.DESTROYED, target));
+        outcomeEvent.setText("Engine Rat is destroyed");
+        game.addEvents(List.of(targetEvent, outcomeEvent));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains(
+                "LINK#2 cause=TARGET#1 outcome=DESTROY confidence=CORRELATED"));
+    }
+
+    @Test
+    void omitsCausalLinkWhenMultipleTargetsCouldExplainOutcome() {
+        MatchSession match = new MatchSession("match-ambiguous-causal");
+        GameModel game = match.game(1).model();
+
+        ObjectReference target = new ObjectReference(51, 151, 9102, "Engine Rat", null, null);
+        for (long sourceId : List.of(50L, 60L)) {
+            GameEvent targetEvent = new GameEvent();
+            targetEvent.setTargetObservation(new TargetObservation(
+                    new ObjectReference(sourceId, sourceId + 100, sourceId + 9000,
+                            "Removal " + sourceId, null, null),
+                    73001L + sourceId, List.of(target), TargetObservation.Confidence.EXPLICIT));
+            game.addEvents(List.of(targetEvent));
+        }
+
+        GameEvent outcomeEvent = new GameEvent();
+        outcomeEvent.setZoneTransition(new ZoneTransitionObservation(
+                "Battlefield", "Graveyard", ZoneTransitionReason.DESTROYED, target));
+        game.addEvents(List.of(outcomeEvent));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertFalse(report.contains("outcome=DESTROY confidence=CORRELATED"));
+    }
+
+

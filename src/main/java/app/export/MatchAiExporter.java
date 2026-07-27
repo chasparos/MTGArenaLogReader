@@ -149,6 +149,7 @@ public final class MatchAiExporter {
         Integer currentTurn = null;
         String currentPhase = null;
         String currentStep = null;
+        List<PendingTarget> pendingTargets = new ArrayList<>();
         for (GameEvent event : game.snapshot()) {
             if (event.getType() == app.model.event.GameEventType.MATCH_STARTED
                     || event.getType() == app.model.event.GameEventType.GAME_STARTED
@@ -178,6 +179,7 @@ public final class MatchAiExporter {
             }
             if (event.getTargetObservation() != null) {
                 appendTargetObservation(out, eventId, event.getTargetObservation(), event.getText());
+                pendingTargets.add(new PendingTarget(eventId, event.getTargetObservation()));
                 continue;
             }
 
@@ -199,10 +201,12 @@ public final class MatchAiExporter {
             }
             if (event.getPlayerLifeChange() != null) {
                 appendLifeChange(out, eventId, event.getPlayerLifeChange());
+                appendDamageCausalLink(out, pendingTargets, eventId, event);
                 continue;
             }
             if (event.getPermanentDamage() != null) {
                 appendPermanentDamage(out, eventId, event.getPermanentDamage());
+                appendDamageCausalLink(out, pendingTargets, eventId, event);
                 continue;
             }
 
@@ -225,6 +229,7 @@ public final class MatchAiExporter {
                 appendAbility(out, eventId, event);
             } else if (event.getZoneTransition() != null) {
                 appendZoneTransition(out, eventId, event);
+                appendCausalLink(out, pendingTargets, eventId, event);
             } else if (hasText(event.getText())) {
                 out.append("E#").append(eventId)
                         .append(" text=").append(quoted(event.getText()));
@@ -234,6 +239,70 @@ public final class MatchAiExporter {
             }
         }
     }
+
+
+    private void appendCausalLink(StringBuilder out, List<PendingTarget> pendingTargets,
+                                  int outcomeEventId, GameEvent outcome) {
+        ZoneTransitionObservation transition = outcome.getZoneTransition();
+        if (transition == null || transition.subject() == null) return;
+        String kind = switch (transition.reason()) {
+            case COUNTERED -> "COUNTER";
+            case RETURNED_TO_HAND -> "BOUNCE";
+            case DESTROYED, PUT_INTO_GRAVEYARD -> "DESTROY";
+            case EXILED -> "EXILE";
+            default -> null;
+        };
+        if (kind == null) return;
+        PendingTarget match = uniqueTarget(pendingTargets, transition.subject());
+        if (match == null) return;
+        out.append("LINK#").append(outcomeEventId)
+                .append(" cause=TARGET#").append(match.eventId())
+                .append(" outcome=").append(kind)
+                .append(" confidence=CORRELATED\n");
+        pendingTargets.remove(match);
+    }
+
+    private void appendDamageCausalLink(StringBuilder out, List<PendingTarget> pendingTargets,
+                                        int outcomeEventId, GameEvent outcome) {
+        ObjectReference target = null;
+        if (outcome.getPermanentDamage() != null) {
+            var damage = outcome.getPermanentDamage();
+            target = new ObjectReference(damage.targetLogicalObjectId(), 0, 0,
+                    damage.targetName(), null, null);
+        } else if (outcome.getPlayerLifeChange() != null
+                && outcome.getPlayerLifeChange().kind() == PlayerLifeChange.Kind.DAMAGE) {
+            var damage = outcome.getPlayerLifeChange();
+            target = new ObjectReference(0, 0, 0, damage.playerName(), damage.seatId(), null);
+        }
+        if (target == null) return;
+        PendingTarget match = uniqueTarget(pendingTargets, target);
+        if (match == null) return;
+        out.append("LINK#").append(outcomeEventId)
+                .append(" cause=TARGET#").append(match.eventId())
+                .append(" outcome=DAMAGE confidence=CORRELATED\n");
+        pendingTargets.remove(match);
+    }
+
+    private PendingTarget uniqueTarget(List<PendingTarget> pendingTargets, ObjectReference target) {
+        List<PendingTarget> matches = pendingTargets.stream()
+                .filter(pending -> pending.observation().targets().stream()
+                        .anyMatch(candidate -> sameReference(candidate, target)))
+                .toList();
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
+    private boolean sameReference(ObjectReference left, ObjectReference right) {
+        if (left == null || right == null) return false;
+        if (left.isPlayer() || right.isPlayer()) {
+            return left.playerSeat() != null && left.playerSeat().equals(right.playerSeat());
+        }
+        if (left.logicalObjectId() > 0 && right.logicalObjectId() > 0) {
+            return left.logicalObjectId() == right.logicalObjectId();
+        }
+        return left.arenaInstanceId() > 0 && left.arenaInstanceId() == right.arenaInstanceId();
+    }
+
+    private record PendingTarget(int eventId, TargetObservation observation) {}
 
     private void appendTurnSnapshot(StringBuilder out, int eventId, List<PlayerTurnSnapshot> snapshots) {
         for (PlayerTurnSnapshot player : snapshots) {

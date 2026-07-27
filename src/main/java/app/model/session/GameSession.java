@@ -7,14 +7,11 @@ import app.projection.GameEventProjector;
 import app.projection.MatchProjector;
 
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Couples one per-game model with its per-game projector and the owning match projection.
  */
 public final class GameSession {
-    private static final Logger LOG = LoggerFactory.getLogger(GameSession.class);
     private final int gameNumber;
     private final GameModel model;
     private final GameEventProjector projector;
@@ -38,11 +35,6 @@ public final class GameSession {
 
     public List<GameEvent> project(LogMessageInterface message, ModelObject modelObject) {
         List<GameEvent> gameEvents = projector.project(message, modelObject);
-        List<GameEvent> events = matchProjector.project(gameNumber, message.getSequence(), gameEvents);
-        if (!events.isEmpty()) {
-            LOG.info("Projected {} event(s) for match {} game {} from log sequence {}",
-                    events.size(), model.getMatchId(), gameNumber, message.getSequence());
-        }
-        return events;
+        return matchProjector.project(gameNumber, message.getSequence(), gameEvents);
     }
 }
