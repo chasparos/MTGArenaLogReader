@@ -9,9 +9,9 @@ This document tracks the incremental work to improve the compact AI coaching rec
 - [x] Add ability chapter, effect text, and confidence to `AbilityReference`.
 - [x] Include structured ability semantics in the compact AI export.
 - [x] Preserve saga chapter labels without replacing their inferred effect.
-- [ ] Generate the current compact schema directly instead of rendering an older schema and rewriting it.
-- [ ] Replace global player/card string substitution with field-aware aliases.
-- [ ] Define and test quoting/escaping for every free-text field.
+- [x] Generate the current compact schema directly instead of rendering an older schema and rewriting it.
+- [x] Replace global player/card string substitution with field-aware aliases.
+- [x] Define and test quoting/escaping for every free-text field.
 
 ## Phase 2 — causal and outcome fidelity
 

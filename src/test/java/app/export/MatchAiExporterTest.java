@@ -66,12 +66,12 @@ class MatchAiExporterTest {
         String report = new MatchAiExporter().export(match);
 
         assertTrue(report.startsWith("MTGA_MATCH_V5\n"));
-        assertTrue(report.contains("PLAYERS p1=Me|p2=Opponent"));
+        assertTrue(report.contains("PLAYERS p1=\"Me\"|p2=\"Opponent\""));
         assertTrue(report.indexOf("\nG1") < report.indexOf("\nG2"));
         assertTrue(report.contains("S#1 p1 life=18 poison=0 hand=5 board=c1#10[2/2,tap]"));
         assertTrue(report.contains("H player=p1 mull=1 cards=c2|c3"));
         assertTrue(report.contains("P Main1"));
-        assertTrue(report.contains("E#2 text=p2 plays Mountain"));
+        assertTrue(report.contains("E#2 text=\"Opponent plays Mountain\""));
         assertFalse(report.contains("large raw record"));
     }
 
@@ -242,6 +242,37 @@ class MatchAiExporterTest {
         assertTrue(report.contains("c2#192[1/3,abilities=Deathtouch,Shield=1]"));
         assertTrue(report.contains("knownH=c4@92375|c3@94886"));
         assertTrue(report.contains("knownG=c5@84366"));
+    }
+
+
+    @Test
+    void aliasesOnlyStructuredIdentityFieldsAndEscapesFreeText() {
+        MatchSession match = new MatchSession("match-\"quoted\"");
+        match.matchState().observePlayers(Map.of(1, "Will"));
+        GameModel game = match.game(1).model();
+
+        CardInfo bear = card("Bear");
+        bear.setArenaId(77L);
+
+        GameEvent event = new GameEvent();
+        event.setActivePlayerName("Will");
+        event.setTurnNumber(1);
+        event.setText("Willpower makes Bearable text \"safe\".\nNext line.");
+        event.getCards().add(bear);
+        game.addEvents(List.of(event));
+
+        String report = new MatchAiExporter().export(match);
+
+        assertTrue(report.contains("match=\"match-\\\"quoted\\\"\""));
+        assertTrue(report.contains("PLAYERS p1=\"Will\""));
+        assertTrue(report.contains("CARD c1=\"Bear\"@77"));
+        assertTrue(report.contains("T1 active=p1"));
+        assertTrue(report.contains("cards=c1@77"));
+        assertTrue(report.contains(
+                "text=\"Willpower makes Bearable text \\\"safe\\\". Next line.\""));
+        assertFalse(report.contains("p1power"));
+        assertFalse(report.contains("c1able"));
+        assertFalse(report.contains("MTGA_MATCH_V3"));
     }
 
     private CardInfo card(String name) {

@@ -34,80 +34,47 @@ import java.util.LinkedHashMap;
  */
 public final class MatchAiExporter {
 
-    public String export(MatchSession match) {
+    private ExportContext context;
+
+    public synchronized String export(MatchSession match) {
         Objects.requireNonNull(match, "match");
 
         List<GameModel> games = new ArrayList<>(match.gameSnapshot());
         games.sort(Comparator.comparingInt(GameModel::getGameNumber));
+        context = new ExportContext(match.matchState().playerSnapshot(), cardDictionary(match));
+        try {
+            StringBuilder out = new StringBuilder(8192);
+            out.append("MTGA_MATCH_V5\n");
+            out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision L=life D=permanent-damage GR=result MS=score MR=match-result\n");
+            out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
+            out.append("Q quoted values escape backslash and quote with a preceding backslash; line breaks become spaces\n");
+            out.append("STATE knownH/knownG/knownX list identities known in hand/graveyard/exile;"
+                    + " permanent attributes include P/T,tap,unlocked,abilities,counters,attachments,control\n");
+            out.append("match=").append(quoted(value(match.matchState().getMatchId(), "?"))).append('\n');
+            appendDictionaries(out);
 
-        StringBuilder out = new StringBuilder(8192);
-        out.append("MTGA_MATCH_V3\n");
-        out.append("schema=G game;H opening;T turn;P phase;S# state;"
-                + "E# event;A# ability;C# decision;L# life;D# pw-damage;"
-                + "GR# result;MS# score;MR# match-result;obj Name#logical@grp;? unknown\n");
-        out.append("ids=S/E/A/C/L/D/GR/MS/MR are stable within this export;"
-                + " object references preserve logical identity when observed;"
-                + " decisions list only Arena-observed legal alternatives\n");
-        out.append("match=").append(value(match.matchState().getMatchId(), "?")).append('\n');
-        appendPlayers(out, match.matchState().playerSnapshot());
-
-        int[] nextEventId = {1};
-        for (GameModel game : games) {
-            appendGame(out, game, nextEventId);
+            int[] nextEventId = {1};
+            for (GameModel game : games) {
+                appendGame(out, game, nextEventId);
+            }
+            return out.toString();
+        } finally {
+            context = null;
         }
-        return compactReport(match, out.toString());
     }
 
-    private String compactReport(MatchSession match, String verbose) {
-        String[] lines = verbose.split("\\R", -1);
-        StringBuilder body = new StringBuilder(verbose.length());
-        for (int i = 3; i < lines.length; i++) {
-            if (lines[i].startsWith("players=")) continue;
-            body.append(lines[i]).append('\n');
-        }
-
-        LinkedHashMap<String, String> replacements = new LinkedHashMap<>();
-        match.matchState().playerSnapshot().entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> replacements.put(entry.getValue(), "p" + entry.getKey()));
-
-        LinkedHashMap<String, Long> cards = cardDictionary(match);
-        int alias = 1;
-        for (String name : cards.keySet()) replacements.putIfAbsent(name, "c" + alias++);
-
-        List<Map.Entry<String, String>> ordered = replacements.entrySet().stream()
-                .sorted((left, right) -> Integer.compare(right.getKey().length(), left.getKey().length()))
-                .toList();
-        String compactBody = body.toString();
-        for (Map.Entry<String, String> replacement : ordered) {
-            compactBody = compactBody.replace(replacement.getKey(), replacement.getValue());
-        }
-        compactBody = compactZones(compactBody);
-
-        StringBuilder out = new StringBuilder(compactBody.length() + 1024);
-        out.append("MTGA_MATCH_V5\n");
-        out.append("K G=game H=opening T=turn P=phase S=state E=event A=ability C=decision L=life D=permanent-damage GR=result MS=score MR=match-result\n");
-        out.append("Z L=library H=hand B=battlefield G=graveyard S=stack X=exile M=limbo C=command; MOVE x>y is an observed zone transition\n");
-        out.append("STATE knownH/knownG/knownX list identities known in hand/graveyard/exile;"
-                + " permanent attributes include P/T,tap,unlocked,abilities,counters,attachments,control\n");
-        out.append("match=").append(value(match.matchState().getMatchId(), "?")).append('\n');
-        if (!match.matchState().playerSnapshot().isEmpty()) {
+    private void appendDictionaries(StringBuilder out) {
+        if (!context.players().isEmpty()) {
             StringJoiner players = new StringJoiner("|");
-            match.matchState().playerSnapshot().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> players.add("p" + entry.getKey() + "=" + compact(entry.getValue())));
+            context.players().forEach((seat, name) ->
+                    players.add("p" + seat + "=" + quoted(name)));
             out.append("PLAYERS ").append(players).append('\n');
         }
-        if (!cards.isEmpty()) {
-            int number = 1;
-            for (Map.Entry<String, Long> card : cards.entrySet()) {
-                out.append("CARD c").append(number++).append('=').append(compact(card.getKey()));
-                if (card.getValue() != null && card.getValue() > 0) out.append('@').append(card.getValue());
-                out.append('\n');
-            }
-        }
-        out.append(compactBody);
-        return out.toString();
+        context.cards().forEach((name, entry) -> {
+            out.append("CARD ").append(entry.alias()).append('=').append(quoted(name));
+            if (entry.arenaId() > 0) out.append('@').append(entry.arenaId());
+            out.append('\n');
+        });
     }
 
     private LinkedHashMap<String, Long> cardDictionary(MatchSession match) {
@@ -159,27 +126,6 @@ public final class MatchAiExporter {
         cards.merge(name, arenaId == null ? 0L : arenaId, (known, observed) -> known > 0 ? known : observed);
     }
 
-    private String compactZones(String text) {
-        return text.replace(" moved Library → Graveyard", " MOVE L>G")
-                .replace(" moved Library → Hand", " MOVE L>H")
-                .replace(" moved Hand → Stack", " MOVE H>S")
-                .replace(" moved Stack → Hand", " MOVE S>H")
-                .replace(" moved Stack → Graveyard", " MOVE S>G")
-                .replace(" moved Battlefield → Graveyard", " MOVE B>G")
-                .replace(" moved Graveyard → Hand", " MOVE G>H")
-                .replace(" moved Graveyard → Exile", " MOVE G>X")
-                .replace(" moved Battlefield → Exile", " MOVE B>X");
-    }
-
-    private void appendPlayers(StringBuilder out, Map<Integer, String> players) {
-        if (players.isEmpty()) return;
-        StringJoiner values = new StringJoiner("|");
-        players.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> values.add(entry.getKey() + ":" + compact(entry.getValue())));
-        out.append("players=").append(values).append('\n');
-    }
-
     private void appendGame(StringBuilder out, GameModel game, int[] nextEventId) {
         out.append("\nG").append(game.getGameNumber());
         if (game.isComplete()) out.append(" complete");
@@ -187,7 +133,7 @@ public final class MatchAiExporter {
 
         List<CardInfo> opening = game.openingHandSnapshot();
         if (!opening.isEmpty()) {
-            out.append("H player=").append(compact(value(game.getOpeningHandPlayer(), "?")))
+            out.append("H player=").append(player(value(game.getOpeningHandPlayer(), "?")))
                     .append(" mull=").append(game.getMulliganCount())
                     .append(" cards=");
             appendCardNames(out, opening);
@@ -211,7 +157,7 @@ public final class MatchAiExporter {
                 currentStep = null;
                 out.append("T").append(currentTurn);
                 if (hasText(event.getActivePlayerName())) {
-                    out.append(" active=").append(compact(event.getActivePlayerName()));
+                    out.append(" active=").append(player(event.getActivePlayerName()));
                 }
                 out.append('\n');
             }
@@ -269,7 +215,7 @@ public final class MatchAiExporter {
                 appendAbility(out, eventId, event);
             } else if (hasText(event.getText())) {
                 out.append("E#").append(eventId)
-                        .append(" text=").append(compact(event.getText()));
+                        .append(" text=").append(quoted(event.getText()));
                 appendObjectReferences(out, event.getObjects());
                 appendCardIdentities(out, event.getCards());
                 out.append('\n');
@@ -279,8 +225,7 @@ public final class MatchAiExporter {
 
     private void appendTurnSnapshot(StringBuilder out, int eventId, List<PlayerTurnSnapshot> snapshots) {
         for (PlayerTurnSnapshot player : snapshots) {
-            out.append("S#").append(eventId).append(' ').append(compact(value(player.getPlayerName(),
-                            "seat" + player.getSeatId())))
+            out.append("S#").append(eventId).append(' ').append(player(value(player.getPlayerName(), "seat" + player.getSeatId())))
                     .append(" life=").append(number(player.getLifeTotal()))
                     .append(" poison=").append(number(player.getPoisonCounters()))
                     .append(" hand=").append(number(player.getHandSize()))
@@ -309,7 +254,7 @@ public final class MatchAiExporter {
                 .filter(Objects::nonNull)
                 .sorted(Comparator
                         .comparingInt(this::cardTypeOrder)
-                        .thenComparing(card -> compact(value(card.getName(), "?")),
+                        .thenComparing(card -> card(value(card.getName(), "?")),
                                 String.CASE_INSENSITIVE_ORDER)
                         .thenComparingLong(card -> card.getArenaId() == null ? 0L : card.getArenaId()))
                 .forEach(card -> identities.add(cardIdentity(card)));
@@ -332,7 +277,7 @@ public final class MatchAiExporter {
     }
 
     private String cardIdentity(CardInfo card) {
-        StringBuilder identity = new StringBuilder(compact(value(card.getName(), "?")));
+        StringBuilder identity = new StringBuilder(card(value(card.getName(), "?")));
         if (card.getArenaId() != null && card.getArenaId() > 0) {
             identity.append('@').append(card.getArenaId());
         }
@@ -340,7 +285,7 @@ public final class MatchAiExporter {
     }
 
     private String permanent(BoardPermanentSnapshot permanent) {
-        StringBuilder out = new StringBuilder(compact(value(permanent.getName(), "?")))
+        StringBuilder out = new StringBuilder(card(value(permanent.getName(), "?")))
                 .append('#').append(permanent.getLogicalObjectId());
         List<String> attributes = new ArrayList<>();
         if (permanent.getPower() != null && permanent.getToughness() != null) {
@@ -381,7 +326,7 @@ public final class MatchAiExporter {
                 .append(" reason=").append(result.getReason())
                 .append(" confidence=").append(result.getConfidence());
         if (hasText(result.getFinishingCard())) {
-            out.append(" card=").append(compact(result.getFinishingCard()));
+            out.append(" card=").append(card(result.getFinishingCard()));
         }
         out.append('\n');
     }
@@ -403,25 +348,25 @@ public final class MatchAiExporter {
         if (seatId != null && seatId > 0) {
             return "p" + seatId;
         }
-        return compact(value(playerName, "?"));
+        return player(value(playerName, "?"));
     }
 
     private void appendLifeChange(StringBuilder out, int eventId, PlayerLifeChange change) {
-        out.append("L#").append(eventId).append(' ').append(compact(value(change.playerName(), "seat" + change.seatId())))
+        out.append("L#").append(eventId).append(' ').append(player(value(change.playerName(), "seat" + change.seatId())))
                 .append(' ').append(change.kind())
                 .append(' ').append(change.amount())
                 .append(' ').append(change.previousLife()).append('>').append(change.currentLife());
         if (hasText(change.sourceName())) {
-            out.append(" src=").append(compact(change.sourceName()));
+            out.append(" src=").append(card(change.sourceName()));
         }
         out.append('\n');
     }
 
     private void appendPermanentDamage(StringBuilder out, int eventId, PermanentDamage damage) {
-        out.append("D#").append(eventId).append(' ').append(compact(value(damage.targetName(), "?")))
+        out.append("D#").append(eventId).append(' ').append(card(value(damage.targetName(), "?")))
                 .append(" amount=").append(damage.amount());
         if (hasText(damage.sourceName())) {
-            out.append(" src=").append(compact(damage.sourceName()));
+            out.append(" src=").append(card(damage.sourceName()));
         }
         out.append('\n');
     }
@@ -446,7 +391,7 @@ public final class MatchAiExporter {
         AbilityReference ability = event.getAbility();
         out.append("A#").append(eventId)
                 .append(" kind=").append(compact(value(ability.getKind(), "unknown")))
-                .append(" source=").append(compact(value(ability.getSourceName(), "?")));
+                .append(" source=").append(card(value(ability.getSourceName(), "?")));
         if (ability.getSourceGrpId() > 0) {
             out.append("@").append(ability.getSourceGrpId());
         }
@@ -464,7 +409,7 @@ public final class MatchAiExporter {
         }
         appendObjectReferences(out, event.getObjects());
         if (hasText(event.getText())) {
-            out.append(" text=").append(compact(event.getText()));
+            out.append(" text=").append(quoted(event.getText()));
         }
         appendCardIdentities(out, event.getCards());
         out.append('\n');
@@ -486,10 +431,10 @@ public final class MatchAiExporter {
     private String reference(ObjectReference reference) {
         if (reference == null) return "?";
         if (reference.isPlayer()) {
-            return compact(value(reference.playerName(), "seat" + reference.playerSeat()))
+            return player(value(reference.playerName(), "seat" + reference.playerSeat()))
                     + "$" + reference.playerSeat();
         }
-        StringBuilder out = new StringBuilder(compact(value(reference.name(), "?")));
+        StringBuilder out = new StringBuilder(card(value(reference.name(), "?")));
         if (reference.logicalObjectId() > 0) out.append('#').append(reference.logicalObjectId());
         if (reference.arenaGrpId() > 0) out.append('@').append(reference.arenaGrpId());
         else if (reference.arenaInstanceId() > 0 && reference.logicalObjectId() <= 0) {
@@ -506,7 +451,7 @@ public final class MatchAiExporter {
                 identities.add("?");
                 continue;
             }
-            StringBuilder identity = new StringBuilder(compact(value(card.getName(), "?")));
+            StringBuilder identity = new StringBuilder(card(value(card.getName(), "?")));
             if (card.getArenaId() != null) {
                 identity.append('@').append(card.getArenaId());
             }
@@ -518,9 +463,21 @@ public final class MatchAiExporter {
     private void appendCardNames(StringBuilder out, List<CardInfo> cards) {
         StringJoiner names = new StringJoiner("|");
         for (CardInfo card : cards) {
-            names.add(compact(card == null ? "?" : value(card.getName(), "?")));
+            names.add(card(card == null ? "?" : value(card.getName(), "?")));
         }
         out.append(names);
+    }
+
+    private String player(String name) {
+        return context.playerAlias(name);
+    }
+
+    private String card(String name) {
+        return context.cardAlias(name);
+    }
+
+    private String quoted(String value) {
+        return "\"" + escape(value == null ? "?" : value) + "\"";
     }
 
     private String compactPhase(String phase) {
@@ -567,4 +524,55 @@ public final class MatchAiExporter {
                 .replaceAll("\\s+", " ")
                 .trim();
     }
+
+    private record CardAlias(String alias, long arenaId) {}
+
+    private static final class ExportContext {
+        private final LinkedHashMap<Integer, String> players = new LinkedHashMap<>();
+        private final LinkedHashMap<String, CardAlias> cards = new LinkedHashMap<>();
+        private final Map<String, String> playerAliases = new LinkedHashMap<>();
+
+        private ExportContext(Map<Integer, String> observedPlayers,
+                              LinkedHashMap<String, Long> observedCards) {
+            observedPlayers.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        players.put(entry.getKey(), entry.getValue());
+                        playerAliases.put(entry.getValue(), "p" + entry.getKey());
+                    });
+            int number = 1;
+            for (Map.Entry<String, Long> entry : observedCards.entrySet()) {
+                cards.put(entry.getKey(), new CardAlias("c" + number++,
+                        entry.getValue() == null ? 0L : entry.getValue()));
+            }
+        }
+
+        private LinkedHashMap<Integer, String> players() { return players; }
+        private LinkedHashMap<String, CardAlias> cards() { return cards; }
+
+        private String playerAlias(String name) {
+            if (name == null || name.isBlank()) return "?";
+            return playerAliases.getOrDefault(name, safeAtom(name));
+        }
+
+        private String cardAlias(String name) {
+            if (name == null || name.isBlank()) return "?";
+            CardAlias alias = cards.get(name);
+            return alias == null ? safeAtom(name) : alias.alias();
+        }
+
+        private static String safeAtom(String value) {
+            String compact = value.replace('\\', '/')
+                    .replace('\r', ' ')
+                    .replace('\n', ' ')
+                    .replace('|', '/')
+                    .replace(';', ',')
+                    .replaceAll("\\s+", " ")
+                    .trim();
+            return compact.matches("[A-Za-z0-9_?.:+/\\-]+")
+                    ? compact
+                    : "\"" + compact.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        }
+    }
+
 }
