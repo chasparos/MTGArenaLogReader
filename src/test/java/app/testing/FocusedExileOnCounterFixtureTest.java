@@ -36,8 +36,11 @@ final class FocusedExileOnCounterFixtureTest {
         assertEquals("Test Insight is countered and exiled", transition.getText());
 
         String export = new MatchAiExporter().export(replay.requireMatch(MATCH_ID));
-        assertTrue(export.contains(
-                "MOVE#1 S>X reason=COUNTERED provenance=ARENA_CATEGORY confidence=EXPLICIT subject=c1#100@5001"),
+        assertTrue(export.lines().anyMatch(line ->
+                        line.startsWith("MOVE#")
+                                && line.contains(
+                                " S>X reason=COUNTERED provenance=ARENA_CATEGORY confidence=EXPLICIT "
+                                        + "subject=c1#100@5001")),
                 export);
         assertTrue(export.contains("text=\"Test Insight is countered and exiled\""), export);
     }

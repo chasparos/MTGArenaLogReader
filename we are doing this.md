@@ -59,6 +59,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
       - [x] Correct the focused counter export assertion to use the compact card alias emitted by MatchAiExporter.
       - [x] Update PatchSequence.ps1 to collect patches from Downloads and archive applied patches automatically.
       - [x] Add a focused raw GRE exile-on-counter fixture that preserves COUNTERED semantics for Stack-to-Exile transitions.
+      - [x] Correct the exile-on-counter export assertion so it does not assume a fixed global event sequence number.
       - [ ] Add focused bounce, sacrifice, copy, and simultaneous-trigger fixtures.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
