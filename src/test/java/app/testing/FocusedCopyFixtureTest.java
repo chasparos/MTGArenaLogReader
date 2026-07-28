@@ -26,13 +26,13 @@ final class FocusedCopyFixtureTest {
         GameModel game = replay.requireGame(MATCH_ID, 1);
 
         GameEvent snapshotEvent = game.snapshot().stream()
-                .filter(event -> event.getTurnSnapshot() != null)
+                .filter(event -> !event.getTurnSnapshot().isEmpty())
                 .findFirst()
                 .orElseThrow();
         List<BoardPermanentSnapshot> permanents =
                 snapshotEvent.getBattlefieldObservation();
 
-        assertEquals(2, permanents.size());
+        assertEquals(2, permanents.size(), () -> describeEvents(game));
         assertEquals(List.of("Test Double", "Test Double"),
                 permanents.stream().map(BoardPermanentSnapshot::getName).toList());
         assertEquals(2, permanents.stream()
@@ -45,6 +45,15 @@ final class FocusedCopyFixtureTest {
                         line.startsWith("S#")
                                 && line.contains("board=c1#100[2/2];c1#101[2/2]")),
                 export);
+    }
+
+    private String describeEvents(GameModel game) {
+        return game.snapshot().stream()
+                .map(event -> "sequence=" + event.getSequence()
+                        + ", text=" + event.getText()
+                        + ", turnSnapshot=" + event.getTurnSnapshot().size()
+                        + ", battlefield=" + event.getBattlefieldObservation().size())
+                .collect(java.util.stream.Collectors.joining(System.lineSeparator()));
     }
 
     private CardInfo copiedPermanent() {
