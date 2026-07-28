@@ -19,6 +19,7 @@ final class ZoneTransitionClassifier {
         RESOLVE_TO_BATTLEFIELD,
         RESOLVE_TO_GRAVEYARD,
         COUNTERED,
+        COUNTERED_TO_EXILE,
         LEGEND_RULE,
         BATTLEFIELD_TO_GRAVEYARD,
         BATTLEFIELD_TO_EXILE,
@@ -37,7 +38,7 @@ final class ZoneTransitionClassifier {
             case DRAW -> ZoneTransitionReason.DRAWN;
             case RESOLVE_TO_BATTLEFIELD -> ZoneTransitionReason.RESOLVED_TO_BATTLEFIELD;
             case RESOLVE_TO_GRAVEYARD -> ZoneTransitionReason.RESOLVED_TO_GRAVEYARD;
-            case COUNTERED -> ZoneTransitionReason.COUNTERED;
+            case COUNTERED, COUNTERED_TO_EXILE -> ZoneTransitionReason.COUNTERED;
             case LEGEND_RULE -> ZoneTransitionReason.LEGEND_RULE;
             case BATTLEFIELD_TO_GRAVEYARD -> ZoneTransitionReason.PUT_INTO_GRAVEYARD;
             case BATTLEFIELD_TO_EXILE -> ZoneTransitionReason.EXILED_FROM_BATTLEFIELD;
@@ -71,6 +72,10 @@ final class ZoneTransitionClassifier {
         if ("Stack".equals(from) && "Graveyard".equals(to)) {
             if (normalizedCategory.contains("counter")) return Kind.COUNTERED;
             return Kind.RESOLVE_TO_GRAVEYARD;
+        }
+        if ("Stack".equals(from) && "Exile".equals(to)
+                && normalizedCategory.contains("counter")) {
+            return Kind.COUNTERED_TO_EXILE;
         }
         if ("Battlefield".equals(from) && "Graveyard".equals(to)) {
             if (normalizedCategory.contains("legend")) return Kind.LEGEND_RULE;

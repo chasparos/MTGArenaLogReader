@@ -130,7 +130,8 @@ final class ZoneTransferProjector {
         String to = context.zoneType(toZone);
         String supplied = category == null ? "" : category;
         String normalized = supplied.toLowerCase(java.util.Locale.ROOT);
-        if ("Stack".equals(from) && "Graveyard".equals(to)
+        if ("Stack".equals(from)
+                && ("Graveyard".equals(to) || "Exile".equals(to))
                 && normalized.contains("counter")) {
             return "Countered";
         }
