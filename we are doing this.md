@@ -45,30 +45,35 @@ This document tracks the incremental work to improve the compact AI coaching rec
 
 ## Validation plan
 
-- [ ] Add golden fixtures for saga chapters, ETB triggers, counters, exile-on-counter, bounce, sacrifice, copies, and simultaneous triggers.
+- [x] Add golden fixtures for saga chapters, ETB triggers, counters, exile-on-counter, bounce, sacrifice, copies, and simultaneous triggers.
   - [x] Add the canonical compressed mega-game raw-log fixture and validate broad replay, export, target, ability, combat, damage, and zone-transition coverage.
   - [x] Emit a deterministic canonical validation report with explicit semantic-category counts and conservative coverage floors.
     - [x] Count both player and planeswalker damage representations in the canonical damage total.
-  - [ ] Add focused fixtures for semantic categories not conclusively isolated by the mega-game.
+  - [x] Add focused fixtures for semantic categories not conclusively isolated by the mega-game.
     - [x] Add a raw GRE Saga fixture that verifies chapter identification, self-target suppression, and chapter export.
     - [x] Add a focused raw GRE ETB-trigger fixture that verifies battlefield-entry ordering, triggered classification, and AI export.
     - [x] Repair the Saga and ETB validation patches so their Java tests and raw GRE fixture resources are actually included and discovered by Maven.
     - [x] Repair the focused Saga fixture GRE message discriminator so the production router projects the fixture.
-    - [ ] Add focused counter, exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
+    - [x] Add focused counter, exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
       - [x] Add a focused raw GRE permanent-counter fixture that verifies transaction reconstruction and AI export.
       - [x] Correct the focused counter export assertion to use the compact card alias emitted by MatchAiExporter.
       - [x] Update PatchSequence.ps1 to collect patches from Downloads and archive applied patches automatically.
       - [x] Add a focused raw GRE exile-on-counter fixture that preserves COUNTERED semantics for Stack-to-Exile transitions.
       - [x] Correct the exile-on-counter export assertion so it does not assume a fixed global event sequence number.
-      - [ ] Add focused bounce, sacrifice, copy, and simultaneous-trigger fixtures.
+      - [x] Add focused bounce, sacrifice, copy, and simultaneous-trigger fixtures.
         - [x] Add a focused raw GRE bounce fixture that preserves RETURNED_TO_HAND semantics for Battlefield-to-Hand transitions.
-        - [x] Add a focused raw GRE sacrifice fixture that preserves SACRIFICED semantics for Battlefield-to-Graveyard transitions.\n        - [ ] Add focused copy and simultaneous-trigger fixtures.
+        - [x] Add a focused raw GRE sacrifice fixture that preserves SACRIFICED semantics for Battlefield-to-Graveyard transitions.\n        - [x] Add focused copy and simultaneous-trigger fixtures.
           - [x] Add a focused raw GRE copy fixture that preserves original and copied permanents as distinct battlefield objects.
           - [x] Correct the copy fixture battlefield membership and restore a real panel drag surface around the file drag source.
           - [x] Correct the copy fixture assertion to read the canonical battlefield observation.
           - [x] Correct the copy fixture event selector to require a populated turn snapshot and include failure diagnostics.
-          - [ ] Add a focused simultaneous-trigger fixture.
+          - [x] Add a focused simultaneous-trigger fixture that preserves both triggered abilities from one Arena batch in observed stack order.
+
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
 - [ ] Add assertions that every strategically relevant semantic field is represented in the AI export.
   - [x] Assert canonical export presence for zone transitions, targets, turn deltas, turn metrics, and game result records.
+
+## Current pause — real-game evaluation
+
+The focused semantic-fixture arc is complete. Pause planned roadmap implementation while real games are played and the compact AI-Speak export is evaluated in the coaching chat. Record concrete findings and make only small evidence-backed adjustments before selecting another development arc.
