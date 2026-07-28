@@ -1,17 +1,27 @@
 package devtools;
 
-import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.Toolkit;
-import java.awt.datatransfer.Clipboard;
+import java.awt.RenderingHints;
+import java.awt.dnd.DnDConstants;
+import java.awt.dnd.DragGestureEvent;
+import java.awt.dnd.DragSource;
+import java.awt.dnd.DragSourceAdapter;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,7 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
 
-/** One-click helper for attaching the latest snapshot and test log to ChatGPT. */
+/** Drag helper for attaching the latest snapshot and test log to ChatGPT. */
 public final class ChatGptPayloadButton {
     private static final String SNAPSHOT_PREFIX = "latest snapshot";
     private static final String TEST_RESULTS_PREFIX = "latest test results";
@@ -39,34 +49,75 @@ public final class ChatGptPayloadButton {
         frame.setAlwaysOnTop(true);
         frame.setUndecorated(true);
 
-        JButton button = new JButton("Copy snapshot + tests");
-        button.setPreferredSize(new Dimension(240, 72));
-        button.setFocusable(false);
-        DragSupport dragSupport = new DragSupport(frame);
-        button.addMouseListener(dragSupport);
-        button.addMouseMotionListener(dragSupport);
-        button.addActionListener(event -> {
-            if (!dragSupport.consumeDrag()) {
-                copyFilesToClipboard(button);
-            }
-        });
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setPreferredSize(new Dimension(112, 112));
+        panel.setBackground(new Color(42, 42, 42));
+        PanelMoveSupport moveSupport = new PanelMoveSupport(frame);
+        panel.addMouseListener(moveSupport);
+        panel.addMouseMotionListener(moveSupport);
 
-        frame.setContentPane(button);
+        FileDragSource dragSource = new FileDragSource();
+        panel.add(dragSource, BorderLayout.CENTER);
+
+        frame.setContentPane(panel);
         frame.pack();
         frame.setLocationByPlatform(true);
         frame.setVisible(true);
     }
 
+    private static final class FileDragSource extends JComponent {
+        private FileDragSource() {
+            setPreferredSize(new Dimension(80, 80));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            DragSource.getDefaultDragSource().createDefaultDragGestureRecognizer(
+                    this,
+                    DnDConstants.ACTION_COPY,
+                    this::startDrag);
+        }
 
-    private static final class DragSupport extends MouseAdapter {
-        private static final int DRAG_THRESHOLD = 4;
+        private void startDrag(DragGestureEvent event) {
+            try {
+                List<File> files = payloadFiles();
+                event.startDrag(
+                        DragSource.DefaultCopyDrop,
+                        new FileListTransferable(files),
+                        new DragSourceAdapter() { });
+            } catch (IOException exception) {
+                exception.printStackTrace();
+            }
+        }
 
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                int diameter = Math.min(getWidth(), getHeight()) - 24;
+                int x = (getWidth() - diameter) / 2;
+                int y = (getHeight() - diameter) / 2;
+                g.setColor(new Color(235, 235, 235));
+                g.fillOval(x, y, diameter, diameter);
+                g.setColor(new Color(55, 55, 55));
+                g.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND));
+                int centerX = getWidth() / 2;
+                int centerY = getHeight() / 2;
+                g.drawLine(centerX - 12, centerY, centerX + 12, centerY);
+                g.drawLine(centerX + 4, centerY - 8, centerX + 12, centerY);
+                g.drawLine(centerX + 4, centerY + 8, centerX + 12, centerY);
+            } finally {
+                g.dispose();
+            }
+        }
+    }
+
+    private static final class PanelMoveSupport extends MouseAdapter {
         private final JFrame frame;
         private Point pressedOnScreen;
         private Point frameOrigin;
-        private boolean dragged;
 
-        private DragSupport(JFrame frame) {
+        private PanelMoveSupport(JFrame frame) {
             this.frame = frame;
         }
 
@@ -74,22 +125,15 @@ public final class ChatGptPayloadButton {
         public void mousePressed(MouseEvent event) {
             pressedOnScreen = event.getLocationOnScreen();
             frameOrigin = frame.getLocation();
-            dragged = false;
         }
 
         @Override
         public void mouseDragged(MouseEvent event) {
-            if (pressedOnScreen == null || frameOrigin == null) {
-                return;
-            }
+            if (pressedOnScreen == null || frameOrigin == null) return;
             Point current = event.getLocationOnScreen();
-            int dx = current.x - pressedOnScreen.x;
-            int dy = current.y - pressedOnScreen.y;
-            if (!dragged && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) {
-                return;
-            }
-            dragged = true;
-            frame.setLocation(frameOrigin.x + dx, frameOrigin.y + dy);
+            frame.setLocation(
+                    frameOrigin.x + current.x - pressedOnScreen.x,
+                    frameOrigin.y + current.y - pressedOnScreen.y);
         }
 
         @Override
@@ -97,31 +141,17 @@ public final class ChatGptPayloadButton {
             pressedOnScreen = null;
             frameOrigin = null;
         }
-
-        private boolean consumeDrag() {
-            boolean result = dragged;
-            dragged = false;
-            return result;
-        }
     }
 
-    private static void copyFilesToClipboard(JButton button) {
-        try {
-            Path searchDirectory = Path.of("").toAbsolutePath().normalize();
-            Path snapshot = findLatest(searchDirectory, SNAPSHOT_PREFIX, ".zip");
-            Path testResults = findLatest(searchDirectory, TEST_RESULTS_PREFIX, ".log");
-            List<File> files = List.of(snapshot.toFile(), testResults.toFile());
-
-            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-            clipboard.setContents(new FileListTransferable(files), null);
-            button.setText("Copied 2 files");
-        } catch (Exception exception) {
-            button.setText("Files not found");
-            exception.printStackTrace();
-        }
+    private static List<File> payloadFiles() throws IOException {
+        Path directory = Path.of("").toAbsolutePath().normalize();
+        Path snapshot = findLatest(directory, SNAPSHOT_PREFIX, ".zip");
+        Path testResults = findLatest(directory, TEST_RESULTS_PREFIX, ".log");
+        return List.of(snapshot.toFile(), testResults.toFile());
     }
 
-    private static Path findLatest(Path directory, String prefix, String suffix) throws IOException {
+    private static Path findLatest(Path directory, String prefix, String suffix)
+            throws IOException {
         try (Stream<Path> paths = Files.list(directory)) {
             return paths
                     .filter(Files::isRegularFile)
@@ -149,7 +179,8 @@ public final class ChatGptPayloadButton {
         private FileListTransferable {
             files = List.copyOf(files);
             if (files.size() != 2 || files.stream().anyMatch(file -> !file.isFile())) {
-                throw new IllegalArgumentException("Clipboard payload must contain two existing files");
+                throw new IllegalArgumentException(
+                        "Drag payload must contain two existing files");
             }
         }
 
@@ -164,7 +195,8 @@ public final class ChatGptPayloadButton {
         }
 
         @Override
-        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+        public Object getTransferData(DataFlavor flavor)
+                throws UnsupportedFlavorException {
             if (!isDataFlavorSupported(flavor)) {
                 throw new UnsupportedFlavorException(flavor);
             }
