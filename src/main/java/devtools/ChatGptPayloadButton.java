@@ -5,7 +5,7 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import java.awt.BasicStroke;
-import java.awt.BorderLayout;
+import java.awt.GridBagLayout;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -49,7 +49,7 @@ public final class ChatGptPayloadButton {
         frame.setAlwaysOnTop(true);
         frame.setUndecorated(true);
 
-        JPanel panel = new JPanel(new BorderLayout());
+        JPanel panel = new JPanel(new GridBagLayout());
         panel.setPreferredSize(new Dimension(112, 112));
         panel.setBackground(new Color(42, 42, 42));
         PanelMoveSupport moveSupport = new PanelMoveSupport(frame);
@@ -57,7 +57,7 @@ public final class ChatGptPayloadButton {
         panel.addMouseMotionListener(moveSupport);
 
         FileDragSource dragSource = new FileDragSource();
-        panel.add(dragSource, BorderLayout.CENTER);
+        panel.add(dragSource);
 
         frame.setContentPane(panel);
         frame.pack();
@@ -67,7 +67,7 @@ public final class ChatGptPayloadButton {
 
     private static final class FileDragSource extends JComponent {
         private FileDragSource() {
-            setPreferredSize(new Dimension(80, 80));
+            setPreferredSize(new Dimension(72, 72));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             DragSource.getDefaultDragSource().createDefaultDragGestureRecognizer(
                     this,
