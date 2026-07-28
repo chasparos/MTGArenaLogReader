@@ -53,6 +53,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
     - [x] Add a raw GRE Saga fixture that verifies chapter identification, self-target suppression, and chapter export.
     - [x] Add a focused raw GRE ETB-trigger fixture that verifies battlefield-entry ordering, triggered classification, and AI export.
     - [x] Repair the Saga and ETB validation patches so their Java tests and raw GRE fixture resources are actually included and discovered by Maven.
+    - [x] Repair the focused Saga fixture GRE message discriminator so the production router projects the fixture.
     - [ ] Add focused counter, exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
