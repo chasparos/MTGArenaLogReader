@@ -29,9 +29,8 @@ final class FocusedCopyFixtureTest {
                 .filter(event -> event.getTurnSnapshot() != null)
                 .findFirst()
                 .orElseThrow();
-        List<BoardPermanentSnapshot> permanents = snapshotEvent.getTurnSnapshot().stream()
-                .flatMap(player -> player.getBattlefield().stream())
-                .toList();
+        List<BoardPermanentSnapshot> permanents =
+                snapshotEvent.getBattlefieldObservation();
 
         assertEquals(2, permanents.size());
         assertEquals(List.of("Test Double", "Test Double"),

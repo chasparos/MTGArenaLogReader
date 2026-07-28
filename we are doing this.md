@@ -65,6 +65,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
         - [x] Add a focused raw GRE sacrifice fixture that preserves SACRIFICED semantics for Battlefield-to-Graveyard transitions.\n        - [ ] Add focused copy and simultaneous-trigger fixtures.
           - [x] Add a focused raw GRE copy fixture that preserves original and copied permanents as distinct battlefield objects.
           - [x] Correct the copy fixture battlefield membership and restore a real panel drag surface around the file drag source.
+          - [x] Correct the copy fixture assertion to read the canonical battlefield observation.
           - [ ] Add a focused simultaneous-trigger fixture.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
