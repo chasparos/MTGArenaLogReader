@@ -21,6 +21,7 @@ final class ZoneTransitionClassifier {
         COUNTERED,
         COUNTERED_TO_EXILE,
         LEGEND_RULE,
+        SACRIFICE,
         BATTLEFIELD_TO_GRAVEYARD,
         BATTLEFIELD_TO_EXILE,
         BATTLEFIELD_TO_HAND,
@@ -41,6 +42,7 @@ final class ZoneTransitionClassifier {
             case RESOLVE_TO_GRAVEYARD -> ZoneTransitionReason.RESOLVED_TO_GRAVEYARD;
             case COUNTERED, COUNTERED_TO_EXILE -> ZoneTransitionReason.COUNTERED;
             case LEGEND_RULE -> ZoneTransitionReason.LEGEND_RULE;
+            case SACRIFICE -> ZoneTransitionReason.SACRIFICED;
             case BATTLEFIELD_TO_GRAVEYARD -> ZoneTransitionReason.PUT_INTO_GRAVEYARD;
             case BATTLEFIELD_TO_EXILE -> ZoneTransitionReason.EXILED_FROM_BATTLEFIELD;
             case BATTLEFIELD_TO_HAND -> ZoneTransitionReason.RETURNED_TO_HAND;
@@ -81,6 +83,7 @@ final class ZoneTransitionClassifier {
         }
         if ("Battlefield".equals(from) && "Graveyard".equals(to)) {
             if (normalizedCategory.contains("legend")) return Kind.LEGEND_RULE;
+            if (normalizedCategory.contains("sacrifice")) return Kind.SACRIFICE;
             return Kind.BATTLEFIELD_TO_GRAVEYARD;
         }
         if ("Battlefield".equals(from) && "Exile".equals(to)) {

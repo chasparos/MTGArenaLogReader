@@ -28,6 +28,7 @@ final class ZoneEventProjector {
             case COUNTERED -> name + " is countered and put into the graveyard";
             case COUNTERED_TO_EXILE -> name + " is countered and exiled";
             case LEGEND_RULE -> "Legend rule: the old " + name + " is put into the graveyard";
+            case SACRIFICE -> name + " is sacrificed";
             case BATTLEFIELD_TO_GRAVEYARD -> name + " is put into the graveyard";
             case BATTLEFIELD_TO_EXILE -> name + " is exiled";
             case BATTLEFIELD_TO_HAND -> name + " is returned to hand";

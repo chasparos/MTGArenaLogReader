@@ -4,11 +4,14 @@ import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import java.awt.Dimension;
+import java.awt.Point;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,12 +42,67 @@ public final class ChatGptPayloadButton {
         JButton button = new JButton("Copy snapshot + tests");
         button.setPreferredSize(new Dimension(240, 72));
         button.setFocusable(false);
-        button.addActionListener(event -> copyFilesToClipboard(button));
+        DragSupport dragSupport = new DragSupport(frame);
+        button.addMouseListener(dragSupport);
+        button.addMouseMotionListener(dragSupport);
+        button.addActionListener(event -> {
+            if (!dragSupport.consumeDrag()) {
+                copyFilesToClipboard(button);
+            }
+        });
 
         frame.setContentPane(button);
         frame.pack();
         frame.setLocationByPlatform(true);
         frame.setVisible(true);
+    }
+
+
+    private static final class DragSupport extends MouseAdapter {
+        private static final int DRAG_THRESHOLD = 4;
+
+        private final JFrame frame;
+        private Point pressedOnScreen;
+        private Point frameOrigin;
+        private boolean dragged;
+
+        private DragSupport(JFrame frame) {
+            this.frame = frame;
+        }
+
+        @Override
+        public void mousePressed(MouseEvent event) {
+            pressedOnScreen = event.getLocationOnScreen();
+            frameOrigin = frame.getLocation();
+            dragged = false;
+        }
+
+        @Override
+        public void mouseDragged(MouseEvent event) {
+            if (pressedOnScreen == null || frameOrigin == null) {
+                return;
+            }
+            Point current = event.getLocationOnScreen();
+            int dx = current.x - pressedOnScreen.x;
+            int dy = current.y - pressedOnScreen.y;
+            if (!dragged && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) {
+                return;
+            }
+            dragged = true;
+            frame.setLocation(frameOrigin.x + dx, frameOrigin.y + dy);
+        }
+
+        @Override
+        public void mouseReleased(MouseEvent event) {
+            pressedOnScreen = null;
+            frameOrigin = null;
+        }
+
+        private boolean consumeDrag() {
+            boolean result = dragged;
+            dragged = false;
+            return result;
+        }
     }
 
     private static void copyFilesToClipboard(JButton button) {

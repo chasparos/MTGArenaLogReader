@@ -62,7 +62,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
       - [x] Correct the exile-on-counter export assertion so it does not assume a fixed global event sequence number.
       - [ ] Add focused bounce, sacrifice, copy, and simultaneous-trigger fixtures.
         - [x] Add a focused raw GRE bounce fixture that preserves RETURNED_TO_HAND semantics for Battlefield-to-Hand transitions.
-        - [ ] Add focused sacrifice, copy, and simultaneous-trigger fixtures.
+        - [x] Add a focused raw GRE sacrifice fixture that preserves SACRIFICED semantics for Battlefield-to-Graveyard transitions.\n        - [ ] Add focused copy and simultaneous-trigger fixtures.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
 - [ ] Add assertions that every strategically relevant semantic field is represented in the AI export.
