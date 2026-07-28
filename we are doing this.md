@@ -51,7 +51,8 @@ This document tracks the incremental work to improve the compact AI coaching rec
     - [x] Count both player and planeswalker damage representations in the canonical damage total.
   - [ ] Add focused fixtures for semantic categories not conclusively isolated by the mega-game.
     - [x] Add a raw GRE Saga fixture that verifies chapter identification, self-target suppression, and chapter export.
-    - [ ] Add focused ETB-trigger, counter, exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
+    - [x] Add a focused raw GRE ETB-trigger fixture that verifies battlefield-entry ordering, triggered classification, and AI export.
+    - [ ] Add focused counter, exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
 - [ ] Add assertions that every strategically relevant semantic field is represented in the AI export.
