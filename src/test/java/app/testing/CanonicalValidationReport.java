@@ -1,6 +1,7 @@
 package app.testing;
 
 import app.model.event.GameEvent;
+import app.model.game.PlayerLifeChange;
 import app.model.session.GameModel;
 
 import java.util.List;
@@ -31,7 +32,9 @@ record CanonicalValidationReport(
                 events.stream().map(GameEvent::getTurnNumber).filter(Objects::nonNull).distinct().count(),
                 events.stream().filter(event -> !event.getTurnSnapshot().isEmpty()).count(),
                 events.stream().filter(event -> event.getZoneTransition() != null).count(),
-                events.stream().filter(event -> event.getPermanentDamage() != null).count(),
+                events.stream().filter(event -> event.getPermanentDamage() != null
+                        || (event.getPlayerLifeChange() != null
+                        && event.getPlayerLifeChange().kind() == PlayerLifeChange.Kind.DAMAGE)).count(),
                 events.stream().filter(event -> event.getPlayerLifeChange() != null).count(),
                 events.stream().filter(event -> event.getTargetObservation() != null).count(),
                 events.stream().filter(event -> event.getAbility() != null).count(),

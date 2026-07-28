@@ -48,6 +48,7 @@ This document tracks the incremental work to improve the compact AI coaching rec
 - [ ] Add golden fixtures for saga chapters, ETB triggers, counters, exile-on-counter, bounce, sacrifice, copies, and simultaneous triggers.
   - [x] Add the canonical compressed mega-game raw-log fixture and validate broad replay, export, target, ability, combat, damage, and zone-transition coverage.
   - [x] Emit a deterministic canonical validation report with explicit semantic-category counts and conservative coverage floors.
+    - [x] Count both player and planeswalker damage representations in the canonical damage total.
   - [ ] Add focused fixtures for semantic categories not conclusively isolated by the mega-game.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
