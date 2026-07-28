@@ -16,16 +16,41 @@ $testLog = Join-Path $repoRoot "latest test results.log"
 $mavenWrapper = Join-Path $repoRoot "mvnw.cmd"
 
 
-#if no patch is given, skip patching and continue. This will support manual edits into the same flow.
-if (-not ($PatchFile)) {
+# If no patch is given, skip patching and continue. This supports manual edits
+# through the same test, commit, and archive flow.
+if (-not $PatchFile) {
     Write-Host "No patch file given. Skipping patch application."
 } else {
-$resolvedPatch = (Resolve-Path $PatchFile).Path
-Write-Host "Applying patch: $resolvedPatch"
-git apply --ignore-whitespace -- "$resolvedPatch"
-if ($LASTEXITCODE -ne 0) {
-    throw "git apply failed with exit code $LASTEXITCODE"
-}
+    $downloads = Join-Path $HOME "Downloads"
+    $requestedPatch = $PatchFile
+
+    if (-not [System.IO.Path]::IsPathRooted($requestedPatch)) {
+        $downloadCandidate = Join-Path $downloads $requestedPatch
+        if (Test-Path -LiteralPath $downloadCandidate) {
+            $requestedPatch = $downloadCandidate
+        }
+    }
+
+    $sourcePatch = (Resolve-Path -LiteralPath $requestedPatch).Path
+    $rootPatch = Join-Path $repoRoot (Split-Path -Leaf $sourcePatch)
+
+    if ($sourcePatch -ne $rootPatch) {
+        Write-Host "Copying patch to project root: $rootPatch"
+        Copy-Item -LiteralPath $sourcePatch -Destination $rootPatch -Force
+    }
+
+    Write-Host "Applying patch: $rootPatch"
+    git apply --ignore-whitespace -- "$rootPatch"
+    if ($LASTEXITCODE -ne 0) {
+        throw "git apply failed with exit code $LASTEXITCODE"
+    }
+
+    $appliedPatches = Join-Path $repoRoot "applied patches"
+    New-Item -ItemType Directory -Path $appliedPatches -Force | Out-Null
+    $archivedPatch = Join-Path $appliedPatches (Split-Path -Leaf $rootPatch)
+
+    Write-Host "Archiving applied patch: $archivedPatch"
+    Move-Item -LiteralPath $rootPatch -Destination $archivedPatch -Force
 }
 
 Write-Host "Running tests..."

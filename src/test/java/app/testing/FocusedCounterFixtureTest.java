@@ -42,7 +42,7 @@ final class FocusedCounterFixtureTest {
         assertEquals(2, counter.getCount());
 
         String export = new MatchAiExporter().export(replay.requireMatch(MATCH_ID));
-        assertTrue(export.contains("Test Initiate#100[+1/+1=2]"), export);
+        assertTrue(export.contains("S#3 p1 life=? poison=0 hand=? board=c1#100[+1/+1=2]"), export);
     }
 
     private CardInfo counterCreature() {

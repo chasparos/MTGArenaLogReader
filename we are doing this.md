@@ -56,6 +56,8 @@ This document tracks the incremental work to improve the compact AI coaching rec
     - [x] Repair the focused Saga fixture GRE message discriminator so the production router projects the fixture.
     - [ ] Add focused counter, exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
       - [x] Add a focused raw GRE permanent-counter fixture that verifies transaction reconstruction and AI export.
+      - [x] Correct the focused counter export assertion to use the compact card alias emitted by MatchAiExporter.
+      - [x] Update PatchSequence.ps1 to collect patches from Downloads and archive applied patches automatically.
       - [ ] Add focused exile-on-counter, bounce, sacrifice, copy, and simultaneous-trigger fixtures.
 - [x] Add export-to-simplified-state round-trip tests.
   - [x] Validate deterministic export and supported snapshot reconstruction across the canonical mega-game.
