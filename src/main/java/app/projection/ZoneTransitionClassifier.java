@@ -23,6 +23,7 @@ final class ZoneTransitionClassifier {
         LEGEND_RULE,
         BATTLEFIELD_TO_GRAVEYARD,
         BATTLEFIELD_TO_EXILE,
+        BATTLEFIELD_TO_HAND,
         GRAVEYARD_TO_EXILE,
         GRAVEYARD_TO_BATTLEFIELD,
         GRAVEYARD_TO_HAND,
@@ -42,6 +43,7 @@ final class ZoneTransitionClassifier {
             case LEGEND_RULE -> ZoneTransitionReason.LEGEND_RULE;
             case BATTLEFIELD_TO_GRAVEYARD -> ZoneTransitionReason.PUT_INTO_GRAVEYARD;
             case BATTLEFIELD_TO_EXILE -> ZoneTransitionReason.EXILED_FROM_BATTLEFIELD;
+            case BATTLEFIELD_TO_HAND -> ZoneTransitionReason.RETURNED_TO_HAND;
             case GRAVEYARD_TO_EXILE -> ZoneTransitionReason.EXILED_FROM_GRAVEYARD;
             case GRAVEYARD_TO_BATTLEFIELD -> ZoneTransitionReason.RETURNED_TO_BATTLEFIELD;
             case GRAVEYARD_TO_HAND -> ZoneTransitionReason.RETURNED_TO_HAND;
@@ -83,6 +85,9 @@ final class ZoneTransitionClassifier {
         }
         if ("Battlefield".equals(from) && "Exile".equals(to)) {
             return Kind.BATTLEFIELD_TO_EXILE;
+        }
+        if ("Battlefield".equals(from) && "Hand".equals(to)) {
+            return Kind.BATTLEFIELD_TO_HAND;
         }
         if ("Graveyard".equals(from) && "Exile".equals(to)) {
             return Kind.GRAVEYARD_TO_EXILE;

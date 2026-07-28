@@ -30,6 +30,7 @@ final class ZoneEventProjector {
             case LEGEND_RULE -> "Legend rule: the old " + name + " is put into the graveyard";
             case BATTLEFIELD_TO_GRAVEYARD -> name + " is put into the graveyard";
             case BATTLEFIELD_TO_EXILE -> name + " is exiled";
+            case BATTLEFIELD_TO_HAND -> name + " is returned to hand";
             case GRAVEYARD_TO_EXILE -> name + " is exiled from the graveyard";
             case GRAVEYARD_TO_BATTLEFIELD ->
                     name + " returns from the graveyard to the battlefield" + tappedSuffix;

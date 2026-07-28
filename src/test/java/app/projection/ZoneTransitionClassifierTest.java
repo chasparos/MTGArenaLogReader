@@ -27,6 +27,9 @@ class ZoneTransitionClassifierTest {
         assertEquals(
                 ZoneTransitionClassifier.Kind.BATTLEFIELD_TO_GRAVEYARD,
                 classifier.classify("Battlefield", "Graveyard", "", false, false));
+        assertEquals(
+                ZoneTransitionClassifier.Kind.BATTLEFIELD_TO_HAND,
+                classifier.classify("Battlefield", "Hand", "", false, false));
     }
 
     @Test
@@ -44,6 +47,9 @@ class ZoneTransitionClassifierTest {
         assertEquals(
                 ZoneTransitionReason.COUNTERED,
                 classifier.reason(ZoneTransitionClassifier.Kind.COUNTERED));
+        assertEquals(
+                ZoneTransitionReason.RETURNED_TO_HAND,
+                classifier.reason(ZoneTransitionClassifier.Kind.BATTLEFIELD_TO_HAND));
         assertEquals(
                 ZoneTransitionReason.UNKNOWN,
                 classifier.reason(ZoneTransitionClassifier.Kind.GENERIC));

@@ -1,56 +1,116 @@
 package devtools;
 
-// hello copilot. I want this to be a small one button tool widget
-// that places a always on top button on the screen that copies
-// "latest snapshot.zip" and "latest test results.log" to the clipboard as files when clicked.
-// I want to have it work to paste those files into the chatgpt ui.
-// It saves me having to manually find the files and copy them to the clipboard. I want it to be a small java swing app that is always on top and has a single button. When clicked, it should copy the two files to the clipboard as files. I want it to work on windows and mac. I want it to be a single java file that can be compiled and run with javac and java.
-// Implement this please
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
+import java.awt.Dimension;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
 
+/** One-click helper for attaching the latest snapshot and test log to ChatGPT. */
+public final class ChatGptPayloadButton {
+    private static final String SNAPSHOT_PREFIX = "latest snapshot";
+    private static final String TEST_RESULTS_PREFIX = "latest test results";
 
-public class ChatGptPayloadButton {
-    public static void main(String[] args) {
-        javax.swing.SwingUtilities.invokeLater(() -> {
-            javax.swing.JFrame frame = new javax.swing.JFrame("ChatGPT Payload Button");
-            frame.setDefaultCloseOperation(javax.swing.JFrame.EXIT_ON_CLOSE);
-            frame.setAlwaysOnTop(true);
-            javax.swing.JButton button = new javax.swing.JButton("Copy Files to Clipboard");
-            button.addActionListener(e -> copyFilesToClipboard());
-            frame.getContentPane().add(button);
-            frame.pack();
-            frame.setVisible(true);
-        });
+    private ChatGptPayloadButton() {
     }
 
-    private static void copyFilesToClipboard() {
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(ChatGptPayloadButton::showWidget);
+    }
+
+    private static void showWidget() {
+        JFrame frame = new JFrame();
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setAlwaysOnTop(true);
+        frame.setUndecorated(true);
+
+        JButton button = new JButton("Copy snapshot + tests");
+        button.setPreferredSize(new Dimension(240, 72));
+        button.setFocusable(false);
+        button.addActionListener(event -> copyFilesToClipboard(button));
+
+        frame.setContentPane(button);
+        frame.pack();
+        frame.setLocationByPlatform(true);
+        frame.setVisible(true);
+    }
+
+    private static void copyFilesToClipboard(JButton button) {
         try {
-            java.awt.datatransfer.Clipboard clipboard = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
-            java.awt.datatransfer.Transferable transferable = new java.awt.datatransfer.Transferable() {
-                @Override
-                public java.awt.datatransfer.DataFlavor[] getTransferDataFlavors() {
-                    return new java.awt.datatransfer.DataFlavor[]{java.awt.datatransfer.DataFlavor.javaFileListFlavor};
-                }
+            Path searchDirectory = Path.of("").toAbsolutePath().normalize();
+            Path snapshot = findLatest(searchDirectory, SNAPSHOT_PREFIX, ".zip");
+            Path testResults = findLatest(searchDirectory, TEST_RESULTS_PREFIX, ".log");
+            List<File> files = List.of(snapshot.toFile(), testResults.toFile());
 
-                @Override
-                public boolean isDataFlavorSupported(java.awt.datatransfer.DataFlavor flavor) {
-                    return flavor.equals(java.awt.datatransfer.DataFlavor.javaFileListFlavor);
-                }
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            clipboard.setContents(new FileListTransferable(files), null);
+            button.setText("Copied 2 files");
+        } catch (Exception exception) {
+            button.setText("Files not found");
+            exception.printStackTrace();
+        }
+    }
 
-                @Override
-                public Object getTransferData(java.awt.datatransfer.DataFlavor flavor) throws java.awt.datatransfer.UnsupportedFlavorException {
-                    if (flavor.equals(java.awt.datatransfer.DataFlavor.javaFileListFlavor)) {
-                        java.util.List<java.io.File> files = new java.util.ArrayList<>();
-                        files.add(new java.io.File("latest snapshot.zip"));
-                        files.add(new java.io.File("latest test results.log"));
-                        return files;
-                    } else {
-                        throw new java.awt.datatransfer.UnsupportedFlavorException(flavor);
-                    }
-                }
-            };
-            clipboard.setContents(transferable, null);
-        } catch (Exception ex) {
-            ex.printStackTrace();
+    private static Path findLatest(Path directory, String prefix, String suffix) throws IOException {
+        try (Stream<Path> paths = Files.list(directory)) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return name.startsWith(prefix) && name.endsWith(suffix);
+                    })
+                    .max(Comparator.comparingLong(ChatGptPayloadButton::lastModified))
+                    .map(Path::toAbsolutePath)
+                    .map(Path::normalize)
+                    .orElseThrow(() -> new IOException(
+                            "No " + prefix + "*" + suffix + " file found in " + directory));
+        }
+    }
+
+    private static long lastModified(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException ignored) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+    private record FileListTransferable(List<File> files) implements Transferable {
+        private FileListTransferable {
+            files = List.copyOf(files);
+            if (files.size() != 2 || files.stream().anyMatch(file -> !file.isFile())) {
+                throw new IllegalArgumentException("Clipboard payload must contain two existing files");
+            }
+        }
+
+        @Override
+        public DataFlavor[] getTransferDataFlavors() {
+            return new DataFlavor[]{DataFlavor.javaFileListFlavor};
+        }
+
+        @Override
+        public boolean isDataFlavorSupported(DataFlavor flavor) {
+            return DataFlavor.javaFileListFlavor.equals(flavor);
+        }
+
+        @Override
+        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+            if (!isDataFlavorSupported(flavor)) {
+                throw new UnsupportedFlavorException(flavor);
+            }
+            return files;
         }
     }
 }
