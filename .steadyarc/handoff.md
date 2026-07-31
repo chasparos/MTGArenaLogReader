@@ -8,23 +8,23 @@
 - **To:** Copilot task agent
 - **Created:** 2026-07-31
 - **Return owner:** Human repository owner
-- **Return condition:** Stage 1 Steady Arc structure is added and validated for repository continuity.
+- **Return condition:** Stage 2 bootstrap kickoff delivers local feedback document plus updated continuity state for tooling integration.
 
 ## Engineering context
 
 - **Current arc:** Steady Arc bootstrap adoption for MTGArenaLogReader
-- **Active roadmap item:** Stage 1 — initialize Steady Arc project-memory and entry-point docs
+- **Active roadmap item:** Stage 2 — add bootstrapping package artifacts in a repository-compatible layout
 - **Authoritative revision or snapshot:** Current checked-out repository state on working branch
-- **Build/test state:** Pending Stage 1 validation
+- **Build/test state:** Stage 1 docs landed; wrapper/toolchain validation remains environment-constrained
 - **Relevant durable notes:** Existing gameplay/replay architecture documentation remains authoritative for product behavior.
 
 ## Delegation
 
-- **Requested action:** Add Stage 1 Steady Arc structure in this repository and capture initial Copilot fit feedback.
-- **Completion criteria:** `.steadyarc` core files and `AGENTS.md` entry point exist with non-empty, repository-specific content.
-- **Constraints:** Keep changes documentation-only for Stage 1; do not alter runtime behavior.
-- **Open questions:** None for Stage 1.
-- **Files or areas in scope:** `.steadyarc/`, `AGENTS.md`, and directly related documentation references.
+- **Requested action:** Continue staged adoption by preparing Stage 2 and recording local upstream suggestions for SteadyArcWorkflow.
+- **Completion criteria:** Stage 1 marked complete, current item moved to Stage 2, and a repository-local feedback document exists for later upstream transfer.
+- **Constraints:** Keep this increment non-invasive; no replay/deck/draft/coaching behavior changes.
+- **Open questions:** Exact payload-helper subset and integration depth for Stage 2 implementation.
+- **Files or areas in scope:** `.steadyarc/` continuity files and documentation under `docs/`.
 - **Files or areas explicitly out of scope:** Java behavior changes, replay logic, and deck/draft/coaching functionality.
 - **Expected documentation updates:** Initialize roadmap, handoff, engineering notes, deferred issues, and agent entry point.
 
@@ -36,6 +36,13 @@
 - **Reason:** Begin manual migration to Steady Arc documentation and bootstrap workflow.
 - **Authority after change:** Copilot task agent for Stage 1 implementation.
 - **Return condition after change:** Stage 1 files added with initial validation and next-stage recommendation.
+
+- **Date:** 2026-07-31
+- **Changed by:** Copilot task agent
+- **Transition or material change:** Stage 1 completed; delegation advanced to Stage 2 kickoff and local upstream-feedback capture.
+- **Reason:** Continue staged bootstrap with explicit documentation of Copilot-environment friction and suggested Steady Arc improvements.
+- **Authority after change:** Copilot task agent for Stage 2 preparation tasks.
+- **Return condition after change:** Feedback document and continuity updates committed; next implementation slice for tooling artifacts identified.
 
 ## Return report
 

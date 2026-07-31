@@ -7,6 +7,7 @@
 - **Summary:** Establish an explicit, low-friction path in SteadyArcWorkflow for assistants that cannot write to multiple repositories in one session to emit "feedback from copilot" in a structured format.
 - **Why deferred:** Stage 1 in this repository focuses on local structure initialization only.
 - **Suggested upstream addition:** A dedicated template section under bootstrap feedback for "cross-repository tooling constraints observed in sandboxed agents."
+- **Local evidence artifact:** `docs/steadyarc-copilot-feedback.md`.
 
 ### SA-MTGA-DEF-002 — Bootstrapping package integration details
 

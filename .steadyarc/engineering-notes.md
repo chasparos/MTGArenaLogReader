@@ -17,3 +17,4 @@
 
 - The assistant environment can inspect external repositories through GitHub APIs, but local edit/commit scope is limited to the checked-out repository.
 - Upstream SteadyArcWorkflow improvements therefore may need to be reported as suggestions when direct multi-repository edits are unavailable in-session.
+- Local upstream suggestions are recorded in `docs/steadyarc-copilot-feedback.md` for later transfer into `SteadyArcWorkflow`.

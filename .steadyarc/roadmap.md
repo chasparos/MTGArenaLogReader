@@ -6,22 +6,25 @@ Adopt Steady Arc workflow structure in MTGArenaLogReader without disrupting exis
 
 ## Ordered items
 
-- [ ] Stage 1 — Initialize project-memory files and Codex/Copilot entry point.
+- [x] Stage 1 — Initialize project-memory files and Codex/Copilot entry point.
 - [ ] Stage 2 — Add bootstrapping package artifacts (launcher/tooling scaffolding) in a repository-compatible layout.
 - [ ] Stage 3 — Integrate and validate bootstrap workflow steps against repository-local build/test commands.
 - [ ] Stage 4 — Refine based on friction found during real Copilot/Codex usage and upstream feedback.
 
 ## Current item
 
-**Stage 1 — Initialize project-memory files and entry point**
+**Stage 2 — Add bootstrapping package artifacts in repository-compatible layout**
 
 ### Completion criteria
 
-- `.steadyarc/handoff.md`, `.steadyarc/roadmap.md`, `.steadyarc/engineering-notes.md`, and `.steadyarc/deferred-issues.md` exist and are non-empty.
-- `AGENTS.md` exists and routes an assistant to current state before implementation.
-- Existing repository product documentation remains intact and authoritative for runtime behavior.
+- Add staged bootstrap artifacts with minimal disruption:
+  - `RunWidget.ps1` (repository-local launcher),
+  - payload helper Java package under a dedicated tooling namespace.
+- Add or restore required Maven wrapper metadata so repository-local launcher prerequisites are explicit and actionable.
+- Preserve runtime application behavior and keep bootstrap additions isolated to tooling/documentation paths.
+- Capture and keep local upstream feedback notes in `docs/steadyarc-copilot-feedback.md`.
 
 ### Notes
 
-- This stage intentionally avoids runtime code changes.
-- Follow-up stages will add the bootstrapping package and validation mechanics.
+- Stage 1 completed with `.steadyarc` initialization and `AGENTS.md`.
+- Stage 2 focuses on introducing tooling artifacts and prerequisite hygiene before deeper workflow integration.
