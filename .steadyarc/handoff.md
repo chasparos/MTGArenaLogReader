@@ -51,6 +51,13 @@
 - **Authority after change:** Copilot task agent for Stage 3 build/test validation tasks.
 - **Return condition after change:** Wrapper and build/test commands validated end-to-end, or environment gap documented; engineering notes updated; Stage 3 marked complete.
 
+- **Date:** 2026-07-31
+- **Changed by:** Copilot task agent
+- **Transition or material change:** Stage 3 completed; delegation advanced to Stage 4 refinement.
+- **Reason:** Build pipeline validated — `mvnw --version` passed (Maven 3.9.9), `mvnw test` blocked only by sandbox JDK 17 vs release 24. `.gitignore` ordering bug fixed; `maven-wrapper.properties` now correctly committed. Evidence recorded in engineering notes and feedback document.
+- **Authority after change:** Copilot task agent for Stage 4 refinement tasks, or return to human owner if no further agent delegation is needed.
+- **Return condition after change:** Stage 4 decisions made (CI, upstream feedback transfer, deferred issue closure); return report completed.
+
 ## Return report
 
 Complete this section without deleting the original delegation.

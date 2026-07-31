@@ -20,6 +20,14 @@
 - `src/main/java/app/tools/steadyarc/BootstrapInfo.java` — compile-time project identity constants for bootstrap tooling. No startup path dependency; tooling surface only.
 - `.mvn/wrapper/maven-wrapper.properties` — restores `mvnw` / `mvnw.cmd` to runnable state.
 
+## Stage 3 validation evidence (2026-07-31)
+
+- `./mvnw --version` **passed**: Maven 3.9.9 downloaded and executed successfully.
+- `./mvnw test` **blocked at compilation**: sandbox JDK is 17.0.19 (Temurin); `pom.xml` requires `maven.compiler.release=24`. Compilation error: `release version 24 not supported`.
+- `mvnw` required `chmod +x` in the sandbox; permission was not preserved in the clone.
+- `.gitignore` had an ordering bug (`/.mvn/` ignored the directory after the `!` exceptions, making them inert). Fixed with a graduated pattern so `maven-wrapper.properties` is correctly tracked.
+- **Open gap for Stage 4:** Validate `./mvnw test` passes with JDK 24+ (in a compatible environment or via CI).
+
 ## Copilot fit notes (initial)
 
 - The assistant environment can inspect external repositories through GitHub APIs, but local edit/commit scope is limited to the checked-out repository.

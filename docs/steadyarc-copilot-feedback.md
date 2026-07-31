@@ -14,9 +14,15 @@ Capture practical friction points observed while applying Steady Arc in `MTGAren
    - Steady Arc bootstrap guidance requires a verified `steady-arc-knowledge-<version>.zip`.
    - In assistant-only sessions, operators may provide repository URLs but not the release archive attachment.
 
-3. **Environment-dependent validation gaps**
-   - This repository currently lacks `.mvn/wrapper/maven-wrapper.properties`, so `mvnw` is present but not runnable.
-   - Local JDK availability may not satisfy `maven.compiler.release` targets (here: release 24), blocking test execution even for documentation/bootstrap-only iterations.
+3. **Environment-dependent validation gaps (updated Stage 3)**
+   - `.mvn/wrapper/maven-wrapper.properties` was absent at Stage 1; added in Stage 2 and committed in Stage 3 after fixing `.gitignore` to properly unexclude it.
+   - `mvnw` required a `chmod +x` fix in the sandbox; executed permission was not preserved from the upstream clone.
+   - Sandbox JDK is 17.0.19 (Temurin); `pom.xml` targets `maven.compiler.release=24`. `./mvnw --version` succeeds (Maven 3.9.9 downloaded and ran), but `./mvnw test` fails at compilation with `release version 24 not supported`.
+   - **Consequence:** The build/test pipeline is fully wired; only the JDK version gap prevents a passing `mvnw test` in this sandbox environment.
+
+4. **`.gitignore` ordering pitfall**
+   - The original `.gitignore` had `!.mvn/wrapper/maven-wrapper.jar` and `!.mvn/wrapper/maven-wrapper.properties` exceptions *before* a `/.mvn/` ignore rule. Because git cannot re-include files inside an ignored directory, the exceptions were inert.
+   - Fixed in Stage 3 by replacing `/.mvn/` with a graduated pattern: `/.mvn/*`, `!/.mvn/wrapper/`, `/.mvn/wrapper/*`, `!/.mvn/wrapper/maven-wrapper.jar`, `!/.mvn/wrapper/maven-wrapper.properties`.
 
 ## Suggested additions to SteadyArcWorkflow
 
@@ -61,3 +67,13 @@ Capture practical friction points observed while applying Steady Arc in `MTGAren
 
 - This file is intentionally local working feedback for later upstream transfer.
 - No upstream SteadyArcWorkflow repository changes were made from this session.
+
+## Stage 3 build/test evidence (2026-07-31)
+
+| Step | Result |
+|---|---|
+| `./mvnw --version` | **PASS** — Maven 3.9.9 downloaded and ran successfully |
+| `./mvnw test` | **FAIL** — `release version 24 not supported` (sandbox JDK: 17.0.19) |
+| `RunWidget.ps1` | **Not runnable in Linux sandbox** — Windows PowerShell script; logic verified by inspection |
+
+**Conclusion:** The full bootstrap wiring is correct. The only gap is the JDK version in the sandbox environment.

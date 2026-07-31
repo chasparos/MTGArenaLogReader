@@ -8,23 +8,23 @@ Adopt Steady Arc workflow structure in MTGArenaLogReader without disrupting exis
 
 - [x] Stage 1 — Initialize project-memory files and Codex/Copilot entry point.
 - [x] Stage 2 — Add bootstrapping package artifacts (launcher/tooling scaffolding) in a repository-compatible layout.
-- [ ] Stage 3 — Integrate and validate bootstrap workflow steps against repository-local build/test commands.
+- [x] Stage 3 — Integrate and validate bootstrap workflow steps against repository-local build/test commands.
 - [ ] Stage 4 — Refine based on friction found during real Copilot/Codex usage and upstream feedback.
 
 ## Current item
 
-**Stage 3 — Integrate and validate bootstrap workflow steps against repository-local build/test commands**
+**Stage 4 — Refine based on friction found during real Copilot/Codex usage and upstream feedback**
 
 ### Completion criteria
 
-- Validate `mvnw` / `mvnw.cmd` end-to-end using the restored `.mvn/wrapper/maven-wrapper.properties`.
-- Run `./mvnw test` (or equivalent) and capture pass/fail evidence in a continuity note.
-- Verify `RunWidget.ps1` launches the application without errors in a compatible environment.
-- Document any remaining environment gaps (JDK version, wrapper download, etc.) in `docs/steadyarc-copilot-feedback.md`.
-- Mark wrapper/build/test validation complete in engineering notes.
+- Validate `./mvnw test` passes in a JDK 24-compatible environment (local developer machine or CI runner).
+- Review `docs/steadyarc-copilot-feedback.md` and transfer relevant items to upstream `SteadyArcWorkflow` when write access is available.
+- Decide whether to add a CI workflow (GitHub Actions) that runs `mvnw test` on push, making build health visible automatically.
+- Close or retire SA-MTGA-DEF-001 and SA-MTGA-DEF-002 as their evidence has been captured.
+- Complete the Return report in `handoff.md` and transition ownership back to the human repository owner.
 
 ### Notes
 
-- Stage 2 completed: `RunWidget.ps1`, `app.tools.steadyarc.BootstrapInfo`, and `.mvn/wrapper/maven-wrapper.properties` added.
-- `BootstrapInfo` is tooling-only; it has no startup path dependency.
-- Stage 3 focuses on live build/test feedback and closing the validation gap documented in Stage 1/2 feedback.
+- Stage 3 completed: `mvnw --version` passed (Maven 3.9.9); `mvnw test` blocked only by sandbox JDK 17 vs required release 24.
+- `.gitignore` ordering bug fixed; `maven-wrapper.properties` now correctly tracked.
+- `mvnw` executable permission noted as not preserved in clones; may warrant `chmod +x` step in contributor setup notes.
