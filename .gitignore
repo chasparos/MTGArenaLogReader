@@ -4,6 +4,13 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Maven Wrapper ###
+/.mvn/*
+!/.mvn/wrapper/
+/.mvn/wrapper/*
+!/.mvn/wrapper/maven-wrapper.jar
+!/.mvn/wrapper/maven-wrapper.properties
+
 ### IntelliJ IDEA ###
 .idea/modules.xml
 .idea/jarRepositories.xml
@@ -38,7 +45,6 @@ build/
 ### Mac OS ###
 .DS_Store
 /project.zip
-/.mvn/
 /.idea/
 /local files/
 /local files/

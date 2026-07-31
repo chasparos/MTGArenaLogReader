@@ -7,6 +7,12 @@ tracking, draft assistance, export, and manual coaching tools.
 The maintained architectural overview is
 [`docs/architecture/current-state.md`](docs/architecture/current-state.md).
 
+## Workflow continuity
+
+This repository now includes Steady Arc project-memory files under `.steadyarc/`
+for ownership handoff, roadmap continuity, durable engineering notes, and deferred
+issues. Agent entry instructions are in `AGENTS.md`.
+
 ## Pipeline
 
 ```
