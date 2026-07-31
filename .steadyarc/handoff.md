@@ -44,6 +44,13 @@
 - **Authority after change:** Copilot task agent for Stage 2 preparation tasks.
 - **Return condition after change:** Feedback document and continuity updates committed; next implementation slice for tooling artifacts identified.
 
+- **Date:** 2026-07-31
+- **Changed by:** Copilot task agent
+- **Transition or material change:** Stage 2 completed; delegation advanced to Stage 3 validation.
+- **Reason:** Bootstrap artifacts added — `RunWidget.ps1`, `app.tools.steadyarc.BootstrapInfo`, and `.mvn/wrapper/maven-wrapper.properties`. No product behavior changed.
+- **Authority after change:** Copilot task agent for Stage 3 build/test validation tasks.
+- **Return condition after change:** Wrapper and build/test commands validated end-to-end, or environment gap documented; engineering notes updated; Stage 3 marked complete.
+
 ## Return report
 
 Complete this section without deleting the original delegation.
