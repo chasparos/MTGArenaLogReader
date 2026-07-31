@@ -25,8 +25,14 @@
 - `./mvnw --version` **passed**: Maven 3.9.9 downloaded and executed successfully.
 - `./mvnw test` **blocked at compilation**: sandbox JDK is 17.0.19 (Temurin); `pom.xml` requires `maven.compiler.release=24`. Compilation error: `release version 24 not supported`.
 - `mvnw` required `chmod +x` in the sandbox; permission was not preserved in the clone.
-- `.gitignore` had an ordering bug (`/.mvn/` ignored the directory after the `!` exceptions, making them inert). Fixed with a graduated pattern so `maven-wrapper.properties` is correctly tracked.
-- **Open gap for Stage 4:** Validate `./mvnw test` passes with JDK 24+ (in a compatible environment or via CI).
+- `.gitignore` had an ordering bug (`/.mvnw/` ignored the directory after the `!` exceptions, making them inert). Fixed with a graduated pattern so `maven-wrapper.properties` is correctly tracked.
+
+## Stage 4 refinements (added 2026-07-31)
+
+- Added `.github/workflows/ci.yml` — runs `./mvnw test` with JDK 24 (Temurin) on every push and pull request. This closes the `mvnw test` validation gap from Stage 3 by running in a compatible JDK environment automatically.
+- SA-MTGA-DEF-001 and SA-MTGA-DEF-002 closed; evidence fully captured.
+- `docs/steadyarc-copilot-feedback.md` ready for upstream transfer to SteadyArcWorkflow.
+- Steady Arc bootstrap arc complete. Handoff returned to human repository owner.
 
 ## Copilot fit notes (initial)
 

@@ -67,6 +67,7 @@ Capture practical friction points observed while applying Steady Arc in `MTGAren
 
 - This file is intentionally local working feedback for later upstream transfer.
 - No upstream SteadyArcWorkflow repository changes were made from this session.
+- **Bootstrap arc complete (Stage 4):** CI workflow added; all four stages delivered.
 
 ## Stage 3 build/test evidence (2026-07-31)
 
@@ -77,3 +78,9 @@ Capture practical friction points observed while applying Steady Arc in `MTGAren
 | `RunWidget.ps1` | **Not runnable in Linux sandbox** — Windows PowerShell script; logic verified by inspection |
 
 **Conclusion:** The full bootstrap wiring is correct. The only gap is the JDK version in the sandbox environment.
+
+## Stage 4 resolution (2026-07-31)
+
+- Added `.github/workflows/ci.yml`: runs `./mvnw test` with JDK 24 (Temurin) on every push and pull request.
+- This closes the JDK mismatch gap — CI will validate the build in the correct environment automatically.
+- SA-MTGA-DEF-001 and SA-MTGA-DEF-002 closed.
