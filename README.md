@@ -4,6 +4,12 @@ Java/Swing prototype that tails MTG Arena's `Player.log`, filters interesting en
 creates typed log messages, asynchronously enriches messages with Scryfall card data,
 and displays a copyable parallel log.
 
+## Workflow continuity
+
+This repository now includes Steady Arc project-memory files under `.steadyarc/`
+for ownership handoff, roadmap continuity, durable engineering notes, and deferred
+issues. Agent entry instructions are in `AGENTS.md`.
+
 ## Pipeline
 
 ```
