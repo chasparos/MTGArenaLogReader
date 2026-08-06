@@ -6,28 +6,29 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
 
-/** Compact fixed-width filter control whose selected state never changes its geometry. */
+/** Compact content-sized filter control with geometry reserved for icon, selection mark, and optional count. */
 final class FilterChip extends JToggleButton {
+    private static final int CHECK_SPACE = 18;
+    private static final int COUNT_SPACE = 28;
     private final String baseLabel;
-    private final int fixedWidth;
+    private final boolean countCapable;
+    private Dimension stableSize;
     private Long count;
 
-    FilterChip(String label) {
-        this(label, null, 92);
-    }
-
-    FilterChip(String label, Icon icon, int fixedWidth) {
+    FilterChip(String label) { this(label, null, false); }
+    FilterChip(String label, Icon icon) { this(label, icon, false); }
+    FilterChip(String label, Icon icon, boolean countCapable) {
         super(label, icon);
         this.baseLabel = label;
-        this.fixedWidth = fixedWidth;
+        this.countCapable = countCapable;
         setOpaque(false);
         setContentAreaFilled(false);
         setBorderPainted(false);
         setFocusPainted(false);
         setRolloverEnabled(true);
-        setHorizontalAlignment(SwingConstants.CENTER);
+        setHorizontalAlignment(SwingConstants.LEFT);
         setIconTextGap(5);
-        setMargin(new Insets(3, 7, 3, 7));
+        setMargin(new Insets(3, CHECK_SPACE + 4, 3, countCapable ? COUNT_SPACE + 5 : 8));
         setFont(getFont().deriveFont(Font.BOLD, 11f));
         getAccessibleContext().setAccessibleName(label);
         getModel().addChangeListener(event -> updateAccessibleState());
@@ -47,7 +48,11 @@ final class FilterChip extends JToggleButton {
     }
 
     @Override public Dimension getPreferredSize() {
-        return new Dimension(fixedWidth, 28);
+        if (stableSize == null) {
+            Dimension natural = super.getPreferredSize();
+            stableSize = new Dimension(natural.width + 4, 28);
+        }
+        return new Dimension(stableSize);
     }
 
     @Override public Dimension getMinimumSize() { return getPreferredSize(); }
@@ -75,14 +80,15 @@ final class FilterChip extends JToggleButton {
             if (isSelected()) {
                 g.setColor(AppColors.color("Label.foreground", Color.WHITE));
                 g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g.drawLine(6, getHeight() / 2, 9, getHeight() / 2 + 3);
-                g.drawLine(9, getHeight() / 2 + 3, 14, getHeight() / 2 - 3);
+                int cy = getHeight() / 2;
+                g.drawLine(7, cy, 10, cy + 3);
+                g.drawLine(10, cy + 3, 15, cy - 3);
             }
         } finally {
             g.dispose();
         }
         super.paintComponent(graphics);
-        if (count != null) paintCount(graphics);
+        if (countCapable && count != null) paintCount(graphics);
     }
 
     private void paintCount(Graphics graphics) {
@@ -92,14 +98,16 @@ final class FilterChip extends JToggleButton {
             Font font = getFont().deriveFont(Font.PLAIN, 9f);
             g.setFont(font);
             FontMetrics metrics = g.getFontMetrics();
-            int width = Math.max(16, metrics.stringWidth(value) + 7);
-            int height = 14;
-            int x = getWidth() - width - 4;
-            int y = 3;
-            g.setColor(new Color(0, 0, 0, 145));
-            g.fillRoundRect(x, y, width, height, height, height);
-            g.setColor(Color.WHITE);
-            g.drawString(value, x + (width - metrics.stringWidth(value)) / 2, y + 11);
+            int width = Math.max(15, metrics.stringWidth(value) + 6);
+            int height = 13;
+            int x = getWidth() - width - 5;
+            int baseline = (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent();
+            int y = baseline - metrics.getAscent() - 1;
+            Color foreground = AppColors.color("Label.foreground", Color.WHITE);
+            g.setColor(new Color(foreground.getRed(), foreground.getGreen(), foreground.getBlue(), 28));
+            g.fillRoundRect(x, y, width, height, 8, 8);
+            g.setColor(new Color(foreground.getRed(), foreground.getGreen(), foreground.getBlue(), 175));
+            g.drawString(value, x + (width - metrics.stringWidth(value)) / 2, baseline);
         } finally {
             g.dispose();
         }

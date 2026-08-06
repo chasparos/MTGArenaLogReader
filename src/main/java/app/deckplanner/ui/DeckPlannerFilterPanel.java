@@ -13,11 +13,13 @@ import java.util.*;
 /** Click-first, wrapping filter controls bound to a widget-independent {@link DeckPlannerFilterModel}. */
 public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
     private static final List<String> DEFAULT_FORMATS = List.of("standard", "alchemy", "historic", "timeless", "explorer", "brawl");
-    private static final int FILTER_WIDTH = 410;
+    private static final int FILTER_WIDTH = 330;
     private final DeckPlannerFilterModel model;
     private final JComboBox<String> formatBox;
     private final Map<CardColor, FilterChip> colorChips = new EnumMap<>(CardColor.class);
-    private final FilterChip colorlessChip = new FilterChip("Colorless", new SvgIcon("/svg/artifact.svg", 14), 94);
+    private final FilterChip colorlessChip = new FilterChip("Colorless", new SvgIcon("/svg/c.svg", 14));
+    private final FilterChip phyrexianChip = new FilterChip("Phyrexian", new SvgIcon("/svg/p.svg", 14));
+    private final JTextField tagFilter = new JTextField();
     private final Map<BaseCardType, FilterChip> typeChips = new EnumMap<>(BaseCardType.class);
     private final Map<SemanticTag, FilterChip> tagChips = new LinkedHashMap<>();
     private final ManaValueRangeControl manaRange = new ManaValueRangeControl();
@@ -48,28 +50,36 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         add(section("Format", formatBox));
         JPanel colors = flow();
         for (CardColor color : CardColor.values()) {
-            FilterChip chip = new FilterChip(title(color.name()), new SvgIcon("/svg/" + color.symbol().toLowerCase(Locale.ROOT) + ".svg", 14), 82);
+            FilterChip chip = new FilterChip(title(color.name()), new SvgIcon("/svg/" + color.symbol().toLowerCase(Locale.ROOT) + ".svg", 14));
             colorChips.put(color, chip);
             colors.add(chip);
         }
         colors.add(colorlessChip);
-        add(section("Colors", colors));
+        colors.add(phyrexianChip);
 
         JPanel semantics = flow();
-        JRadioButton printed = compactRadio("Printed colors");
-        JRadioButton identity = compactRadio("Color identity");
+        JRadioButton printed = manaRadio("Printed", "/svg/watermark-colorpie.svg");
+        JRadioButton identity = manaRadio("Identity", "/svg/watermark-mtg.svg");
         ButtonGroup sourceGroup = new ButtonGroup(); sourceGroup.add(printed); sourceGroup.add(identity);
-        JRadioButton inclusive = compactRadio("Inclusive");
-        JRadioButton exact = compactRadio("Exact");
+        JRadioButton inclusive = manaRadio("Inclusive", "/svg/counter-plus.svg");
+        JRadioButton exact = manaRadio("Exact", "/svg/counter-pin.svg");
         ButtonGroup modeGroup = new ButtonGroup(); modeGroup.add(inclusive); modeGroup.add(exact);
         semantics.add(printed); semantics.add(identity); semantics.add(inclusive); semantics.add(exact);
+        JPanel colorSection = new JPanel();
+        colorSection.setOpaque(false);
+        colorSection.setLayout(new BoxLayout(colorSection, BoxLayout.Y_AXIS));
+        colors.setAlignmentX(Component.LEFT_ALIGNMENT);
+        semantics.setAlignmentX(Component.LEFT_ALIGNMENT);
+        colorSection.add(colors);
+        colorSection.add(Box.createVerticalStrut(2));
+        colorSection.add(semantics);
         semantics.putClientProperty("printed", printed); semantics.putClientProperty("identity", identity);
         semantics.putClientProperty("inclusive", inclusive); semantics.putClientProperty("exact", exact);
-        add(section("Color matching", semantics));
+        add(section("Colors", colorSection));
 
         JPanel types = flow();
         for (BaseCardType type : BaseCardType.values()) {
-            FilterChip chip = new FilterChip(title(type.name()), typeIcon(type), 116);
+            FilterChip chip = new FilterChip(title(type.name()), typeIcon(type));
             typeChips.put(type, chip);
             types.add(chip);
         }
@@ -77,12 +87,19 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
 
         add(section("Mana value", manaRange));
 
+        tagFilter.putClientProperty("JTextField.placeholderText", "Filter tags…");
+        tagFilter.setToolTipText("Filter the visible tag list by name");
+        tagFilter.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        add(section("Tags", tagFilter));
+
         Map<TagCategory, List<SemanticTag>> byCategory = new EnumMap<>(TagCategory.class);
-        for (SemanticTag tag : new TreeSet<>(tags)) byCategory.computeIfAbsent(tag.category(), ignored -> new ArrayList<>()).add(tag);
+        for (SemanticTag tag : new TreeSet<>(tags)) {
+            if (!tag.equals(CardTagRules.PHYREXIAN_MANA)) byCategory.computeIfAbsent(tag.category(), ignored -> new ArrayList<>()).add(tag);
+        }
         for (Map.Entry<TagCategory, List<SemanticTag>> entry : byCategory.entrySet()) {
             JPanel tagPanel = flow();
             for (SemanticTag tag : entry.getValue()) {
-                FilterChip chip = new FilterChip(tag.label(), tagIcon(entry.getKey()), 116);
+                FilterChip chip = new FilterChip(tag.label(), tagIcon(entry.getKey()), true);
                 tagChips.put(tag, chip);
                 tagPanel.add(chip);
             }
@@ -116,6 +133,12 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         formatBox.addActionListener(event -> { if (!syncing) model.setFormat((String) formatBox.getSelectedItem()); });
         colorChips.forEach((color, chip) -> chip.addActionListener(event -> { if (!syncing) model.toggleColor(color); }));
         colorlessChip.addActionListener(event -> { if (!syncing) model.setIncludeColorless(colorlessChip.isSelected()); });
+        phyrexianChip.addActionListener(event -> { if (!syncing) model.toggleTag(CardTagRules.PHYREXIAN_MANA); });
+        tagFilter.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent event) { filterVisibleTags(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent event) { filterVisibleTags(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent event) { filterVisibleTags(); }
+        });
         typeChips.forEach((type, chip) -> chip.addActionListener(event -> { if (!syncing) model.toggleBaseType(type); }));
         tagChips.forEach((tag, chip) -> chip.addActionListener(event -> { if (!syncing) model.toggleTag(tag); }));
         JPanel semantics = (JPanel) getClientProperty("semantics");
@@ -138,6 +161,7 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
             CardFilterState filters = state.filters();
             colorChips.forEach((color, chip) -> chip.setSelected(filters.colors().contains(color)));
             colorlessChip.setSelected(filters.includeColorless());
+            phyrexianChip.setSelected(filters.selectedTags().contains(CardTagRules.PHYREXIAN_MANA));
             typeChips.forEach((type, chip) -> chip.setSelected(filters.baseTypes().contains(type)));
             tagChips.forEach((tag, chip) -> chip.setSelected(filters.selectedTags().contains(tag)));
             JPanel semantics = (JPanel) getClientProperty("semantics");
@@ -170,12 +194,26 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         return panel;
     }
 
-    private JRadioButton compactRadio(String label) {
-        JRadioButton button = new JRadioButton(label);
+    private JRadioButton manaRadio(String label, String iconPath) {
+        JRadioButton button = new JRadioButton(label, new SvgIcon(iconPath, 13));
         button.setOpaque(false);
-        button.setMargin(new Insets(1, 2, 1, 4));
-        button.setFont(button.getFont().deriveFont(11f));
+        button.setFocusPainted(false);
+        button.setMargin(new Insets(2, 4, 2, 6));
+        button.setIconTextGap(4);
+        button.setFont(button.getFont().deriveFont(Font.BOLD, 10.5f));
         return button;
+    }
+
+    private void filterVisibleTags() {
+        String query = tagFilter.getText() == null ? "" : tagFilter.getText().strip().toLowerCase(Locale.ROOT);
+        tagChips.forEach((tag, chip) -> {
+            boolean matches = query.isEmpty() || tag.label().toLowerCase(Locale.ROOT).contains(query)
+                    || tag.key().toLowerCase(Locale.ROOT).contains(query)
+                    || tag.category().name().toLowerCase(Locale.ROOT).contains(query);
+            chip.setVisible(matches || chip.isSelected());
+        });
+        revalidate();
+        repaint();
     }
 
     private void applyControlColors() {
@@ -186,6 +224,7 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         colorChips.get(CardColor.RED).setForeground(new Color(0xE76F51));
         colorChips.get(CardColor.GREEN).setForeground(new Color(0x72B879));
         colorlessChip.setForeground(new Color(0xC8CDD3));
+        phyrexianChip.setForeground(new Color(0xB99AE8));
     }
 
     private Icon typeIcon(BaseCardType type) {

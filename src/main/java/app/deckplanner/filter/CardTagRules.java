@@ -11,7 +11,8 @@ import java.util.regex.Pattern;
 
 /** Deterministic semantic tag rules for Deck Planner tag schema version 1. */
 public final class CardTagRules {
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
+    public static final SemanticTag PHYREXIAN_MANA = new SemanticTag(TagCategory.CONCEPT, "phyrexian-mana", "Phyrexian");
     private static final Pattern MILL = Pattern.compile("\\bmill(?:s|ed|ing)?\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern SACRIFICE = Pattern.compile("\\bsacrific(?:e|es|ed|ing)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern TARGET = Pattern.compile("\\btargets?\\b", Pattern.CASE_INSENSITIVE);
@@ -24,6 +25,7 @@ public final class CardTagRules {
                 .filter(value -> value != null && !value.isBlank())
                 .map(value -> new SemanticTag(TagCategory.KEYWORD, normalize(value), value.strip()))
                 .sorted().forEach(result::add);
+        addIf(result, hasPhyrexianMana(card), TagCategory.CONCEPT, "phyrexian-mana", "Phyrexian");
         String text = combinedOracleText(card);
         addIf(result, MILL.matcher(text).find(), TagCategory.ACTION, "mill", "Mill");
         addIf(result, SACRIFICE.matcher(text).find(), TagCategory.ACTION, "sacrifice", "Sacrifice");
@@ -35,6 +37,18 @@ public final class CardTagRules {
         addZone(result, text, "hand");
         addZone(result, text, "battlefield");
         return Collections.unmodifiableSet(new LinkedHashSet<>(result));
+    }
+
+
+    private static boolean hasPhyrexianMana(CardInfo card) {
+        if (containsPhyrexianSymbol(card.getManaCost())) return true;
+        if (card.getCardFaces() != null) for (CardFaceInfo face : card.getCardFaces()) {
+            if (face != null && containsPhyrexianSymbol(face.getManaCost())) return true;
+        }
+        return false;
+    }
+    private static boolean containsPhyrexianSymbol(String manaCost) {
+        return manaCost != null && Pattern.compile("\\{(?:W|U|B|R|G)/P}", Pattern.CASE_INSENSITIVE).matcher(manaCost).find();
     }
 
     private void addZone(Set<SemanticTag> tags, String text, String zone) {

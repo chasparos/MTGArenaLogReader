@@ -168,3 +168,9 @@ The DP-05 interaction pass uses `PreviewDeckPlannerWorkspace.ps1`. The harness o
 - Color/type/tag controls use bundled MTG SVG symbols and theme-semantic surfaces; color controls also use recognizable W/U/B/R/G accents.
 - Mana value uses a dual-handle discrete 0 through 7+ control. The full 0–7+ span maps to no mana filter, while a 7+ upper bound maps to the model's open high range.
 - Tag-cloud counts are faceted against the currently selected tag layer. Selecting a tag therefore immediately recounts every remaining refinement against the narrowed result set.
+
+### 2026-08-06 — DP-05 filter-control refinement
+- Returned the filter rail to a compact 350 px workspace width; wrapping controls create additional rows instead of clipping.
+- Filter chips now size once from their own label/icon while reserving permanent selection-mark space and optional count space.
+- Restored visible check-mark selection state, softened inline tag counts, and added tag-list text filtering for large future tag vocabularies.
+- Color controls now include W/U/B/R/G, colorless, and a separate Phyrexian-mana refinement derived from card/face mana costs; Phyrexian remains a semantic mana-symbol filter, not a color.

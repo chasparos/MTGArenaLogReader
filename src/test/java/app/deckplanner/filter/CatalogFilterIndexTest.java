@@ -46,13 +46,18 @@ class CatalogFilterIndexTest {
                 "This creature has a handlike claw and a battlefield promotion.", List.of());
         CatalogFilterIndex index = index(tagged, falsePositive);
         Map<SemanticTag, Long> cloud = index.tagCloud(CardFilterState.empty());
-        assertEquals(1, CardTagRules.VERSION);
+        assertEquals(2, CardTagRules.VERSION);
         assertEquals(1L, cloud.get(new SemanticTag(TagCategory.ACTION, "mill", "Mill")));
         assertEquals(1L, cloud.get(new SemanticTag(TagCategory.ACTION, "sacrifice", "Sacrifice")));
         assertEquals(1L, cloud.get(new SemanticTag(TagCategory.CONCEPT, "all-creatures", "All creatures")));
         assertEquals(1L, cloud.get(new SemanticTag(TagCategory.ZONE, "graveyard", "Graveyard")));
         assertEquals(1L, cloud.get(new SemanticTag(TagCategory.KEYWORD, "flashback", "Flashback")));
         assertFalse(index.cards().get(1).tags().stream().anyMatch(tag -> tag.key().equals("hand")));
+
+        CardInfo phyrexian = card("phyrexian", List.of("W"), List.of("W"), "Creature — Rabbit", 2.0,
+                "Vigilance", List.of());
+        phyrexian.setManaCost("{1}{W/P}");
+        assertTrue(index(phyrexian).cards().getFirst().tags().contains(CardTagRules.PHYREXIAN_MANA));
     }
 
     @Test void manaValuesUseTopLevelLayoutAwareScryfallValueAndRetainFractions() {

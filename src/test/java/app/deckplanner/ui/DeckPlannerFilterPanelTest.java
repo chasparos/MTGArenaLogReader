@@ -37,6 +37,10 @@ class DeckPlannerFilterPanelTest {
             assertEquals("Selected", blue.getAccessibleContext().getAccessibleDescription());
             assertEquals(before, blue.getPreferredSize());
             assertTrue(blue.isFocusable());
+            assertTrue(blue.getMargin().left >= 18, "chip geometry must reserve visible check-mark space");
+            assertNotNull(findButton(panel.get(), "Green"));
+            assertNotNull(findButton(panel.get(), "Colorless"));
+            assertNotNull(findButton(panel.get(), "Phyrexian"));
 
             AbstractButton tag = findButton(panel.get(), "Mill");
             String label = tag.getText();
@@ -47,6 +51,24 @@ class DeckPlannerFilterPanelTest {
         });
         assertEquals(Set.of(CardColor.BLUE), model.state().filters().colors());
         assertTrue(panel.get().getScrollableTracksViewportWidth());
+    }
+
+    @Test void tagSearchFiltersLargeCloudWithoutChangingChipGeometry() throws Exception {
+        DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
+        SemanticTag rabbit = new SemanticTag(TagCategory.CONCEPT, "rabbit", "Rabbit");
+        SemanticTag dragon = new SemanticTag(TagCategory.CONCEPT, "dragon", "Dragon");
+        AtomicReference<DeckPlannerFilterPanel> panel = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> panel.set(new DeckPlannerFilterPanel(model, Set.of(rabbit, dragon))));
+        SwingUtilities.invokeAndWait(() -> {
+            JTextField field = findComponent(panel.get(), JTextField.class);
+            AbstractButton rabbitChip = findButton(panel.get(), "Rabbit");
+            AbstractButton dragonChip = findButton(panel.get(), "Dragon");
+            Dimension rabbitSize = rabbitChip.getPreferredSize();
+            field.setText("rabbit");
+            assertTrue(rabbitChip.isVisible());
+            assertFalse(dragonChip.isVisible());
+            assertEquals(rabbitSize, rabbitChip.getPreferredSize());
+        });
     }
 
     @Test void manaRangeControlMapsSevenPlusToTheOpenHighModelRange() throws Exception {
