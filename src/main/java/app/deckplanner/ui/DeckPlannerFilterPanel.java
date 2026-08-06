@@ -18,6 +18,7 @@ public final class DeckPlannerFilterPanel extends JPanel {
     private final FilterChip colorlessChip = new FilterChip("Colorless");
     private final Map<BaseCardType, FilterChip> typeChips = new EnumMap<>(BaseCardType.class);
     private final Map<SemanticTag, FilterChip> tagChips = new LinkedHashMap<>();
+    private final Map<SemanticTag, String> tagLabels = new LinkedHashMap<>();
     private final JSpinner manaMinimum = new JSpinner(new SpinnerNumberModel(0.0, 0.0, 30.0, 0.5));
     private final JSpinner manaMaximum = new JSpinner(new SpinnerNumberModel(30.0, 0.0, 30.0, 0.5));
     private boolean syncing;
@@ -86,7 +87,10 @@ public final class DeckPlannerFilterPanel extends JPanel {
         for (Map.Entry<TagCategory, List<SemanticTag>> entry : byCategory.entrySet()) {
             JPanel tagPanel = flow();
             for (SemanticTag tag : entry.getValue()) {
-                FilterChip chip = new FilterChip(tag.label()); tagChips.put(tag, chip); tagPanel.add(chip);
+                FilterChip chip = new FilterChip(tag.label());
+                tagChips.put(tag, chip);
+                tagLabels.put(tag, tag.label());
+                tagPanel.add(chip);
             }
             add(section(title(entry.getKey().name()), tagPanel));
         }
@@ -95,6 +99,21 @@ public final class DeckPlannerFilterPanel extends JPanel {
         reset.setActionCommand("reset");
         add(Box.createVerticalStrut(8)); add(reset);
         putClientProperty("semantics", semantics); putClientProperty("mana", mana); putClientProperty("reset", reset);
+    }
+
+    /** Updates visible refinement counts without changing the selected tag state. */
+    public void setTagCloud(Map<SemanticTag, Long> counts) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setTagCloud(counts));
+            return;
+        }
+        Map<SemanticTag, Long> effective = counts == null ? Map.of() : counts;
+        tagChips.forEach((tag, chip) -> {
+            long count = Math.max(0L, effective.getOrDefault(tag, 0L));
+            chip.setText(tagLabels.get(tag) + "  " + count);
+            chip.setEnabled(count > 0L || chip.isSelected());
+            chip.setToolTipText(count + (count == 1L ? " matching card" : " matching cards"));
+        });
     }
 
     private void bindActions() {

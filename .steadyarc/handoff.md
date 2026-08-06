@@ -138,3 +138,10 @@ DP-04 human review found three presentation corrections: stale background pixels
 - Added a reusable restartable filter coordinator with debounce support, generation-based stale-result suppression, cancellation, off-EDT computation, and EDT-only delivery.
 - Added explicit theme-aware loading, empty, partial-cache, offline, and failure treatments.
 - This slice does not yet wire the coordinator to production navigation or catalog refresh progress; it establishes the interaction-quality boundary and focused tests.
+
+## 2026-08-06 — DP-05 workspace composition continuation
+
+- Composed the widget-independent filter model, click-first controls, restartable coordinator, explicit result states, and responsive browser into a reusable `DeckPlannerWorkspace`.
+- Filter results and tag-cloud counts now update together; tag chips expose live counts and disable zero-count refinements unless already selected.
+- Partial/offline content remains browsable with an explicit status banner; loading, empty, and failure states use the dedicated state surface.
+- Production navigation, catalog acquisition/refresh progress, and DP-06 consideration persistence remain out of scope.

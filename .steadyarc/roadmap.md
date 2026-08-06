@@ -100,7 +100,7 @@ Acceptance evidence:
 
 ### DP-05 — Filter controls and interaction quality (active)
 
-Current slice: widget-independent filter interaction model and reusable click-first controls.
+Current slice: integrated reusable workspace with live tag counts and asynchronous result-state composition.
 
 Add appealing click-first controls for format, colors, base types, mana range, collection status, and categorized tags, with clear active states and fast reset/navigation.
 

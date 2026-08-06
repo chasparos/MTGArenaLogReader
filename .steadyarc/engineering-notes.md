@@ -152,3 +152,7 @@
 - Result listeners are always delivered on the EDT.
 - Availability is independent of filtering outcome: READY, PARTIAL_CACHE, and OFFLINE can accompany loading/content/empty/failure states.
 - Explicit empty, loading, offline, partial-cache, and failed-result treatments are reusable and theme-aware.
+
+## DP-05 workspace composition
+
+`DeckPlannerWorkspace` is the integration boundary for the filter model, asynchronous coordinator, state treatment, and card browser. It accepts an already-built immutable `CatalogFilterIndex` and caller-owned executors; it does not fetch catalogs or own application navigation. Result cards use catalog planning identity and preferred-printing name. Tag-chip counts come from the coordinator's pre-tag-layer cloud and therefore remain useful refinement counts while tags are selected.
