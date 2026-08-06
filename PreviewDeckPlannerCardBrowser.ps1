@@ -10,7 +10,14 @@ if (-not (Test-Path -LiteralPath $mavenWrapper -PathType Leaf)) {
 }
 
 Set-Location $repoRoot
-& $mavenWrapper -q -DskipTests -Dexec.mainClass=devtools.DeckPlannerCardBrowserPreview exec:java
+$mavenArguments = @(
+    "-q"
+    "-DskipTests"
+    "-Dexec.mainClass=devtools.DeckPlannerCardBrowserPreview"
+    "exec:java"
+)
+
+& $mavenWrapper @mavenArguments
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
