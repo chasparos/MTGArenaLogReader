@@ -145,3 +145,9 @@ DP-04 human review found three presentation corrections: stale background pixels
 - Filter results and tag-cloud counts now update together; tag chips expose live counts and disable zero-count refinements unless already selected.
 - Partial/offline content remains browsable with an explicit status banner; loading, empty, and failure states use the dedicated state surface.
 - Production navigation, catalog acquisition/refresh progress, and DP-06 consideration persistence remain out of scope.
+
+## 2026-08-06 — DP-05 human-review workspace continuation
+
+- Added a standalone composed-workspace preview with a representative synthetic catalog, delayed images, live filters/tag counts, and READY/PARTIAL/OFFLINE availability controls.
+- Added a repository-owned direct-Java launcher and structural EDT test.
+- DP-05 remains active pending human review of rapid filter interaction, keyboard focus, reset behavior, explicit result states, and responsive browser stability.

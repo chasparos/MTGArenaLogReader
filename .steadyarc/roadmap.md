@@ -100,7 +100,7 @@ Acceptance evidence:
 
 ### DP-05 — Filter controls and interaction quality (active)
 
-Current slice: integrated reusable workspace with live tag counts and asynchronous result-state composition.
+Current slice: human review of the composed filter workspace and explicit result states.
 
 Add appealing click-first controls for format, colors, base types, mana range, collection status, and categorized tags, with clear active states and fast reset/navigation.
 
