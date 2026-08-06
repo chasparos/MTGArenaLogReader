@@ -112,3 +112,15 @@
 - The responsive browser uses a reusable `CardView` Swing component rendered through `CellRendererPane`; it does not create one heavyweight child hierarchy per catalog entry.
 - `CardBrowserPanel` remains authoritative for responsive bounds, viewport materialization, hit testing, focus, selection, and repaint regions.
 - `CardView` receives immutable display state immediately before paint. Cached `BufferedImage` instances are drawn as inputs only; interaction overlays are painted afterward and never written into the cache image.
+
+
+## 2026-08-06 — DP-04 human review harness
+
+- `DeckPlannerCardBrowserPreview` is a standalone devtools surface, not production navigation. It exercises responsive resize, viewport scheduling, delayed image arrival, scrolling, mouse selection, and keyboard focus/selection.
+- `PreviewDeckPlannerCardBrowser.ps1` is the supported human-session entry point; review criteria are recorded in `docs/guides/deck-planner-card-browser-review.md`.
+
+
+## 2026-08-06 — DP-04 human review harness
+
+- `DeckPlannerCardBrowserPreview` is a standalone devtools surface, not production navigation. It exercises responsive resize, viewport scheduling, delayed image arrival, scrolling, mouse selection, and keyboard focus/selection.
+- `PreviewDeckPlannerCardBrowser.ps1` is the supported human-session entry point; review criteria are recorded in `docs/guides/deck-planner-card-browser-review.md`.

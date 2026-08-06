@@ -93,3 +93,17 @@
 - Hover, selection, and focus remain transient overlays and never mutate shared cached images.
 - Added focused rendering coverage for placeholder stability and cached-image immutability.
 - DP-04 remains active pending human review of rendered fixtures and a decision on completion/return.
+
+
+## 2026-08-06 — DP-04 human-review harness continuation
+
+- Added a standalone preview surface and PowerShell launcher for the required human visual/interaction pass.
+- Added a durable review checklist for narrow/normal/wide resize, scrolling, placeholders, delayed images, mouse/keyboard state, and flicker/EDT responsiveness.
+- DP-04 remains active until the human review is reported; production navigation and DP-05 controls remain out of scope.
+
+
+## 2026-08-06 — DP-04 human-review harness continuation
+
+- Added a standalone preview surface and PowerShell launcher for the required human visual/interaction pass.
+- Added a durable review checklist for narrow/normal/wide resize, scrolling, placeholders, delayed images, mouse/keyboard state, and flicker/EDT responsiveness.
+- DP-04 remains active until the human review is reported; production navigation and DP-05 controls remain out of scope.
