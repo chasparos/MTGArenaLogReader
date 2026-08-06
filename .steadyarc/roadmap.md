@@ -87,6 +87,8 @@ Completion evidence (2026-08-06):
 
 ### DP-04 — Responsive card browser and asynchronous images (active)
 
+Current slice: responsive Swing browser panel with stable placeholders, viewport-driven asynchronous image requests, targeted repaint, and persistent logical selection/focus.
+
 Create the Deck Planner frame/workspace, responsive card layout, reusable `CardView`, and viewport-aware image scheduling.
 
 Acceptance evidence:

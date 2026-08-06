@@ -79,3 +79,11 @@
 
 - Responsive card placement is specified by a pure layout model so resize, hit testing, and scroll-anchor calculations can be tested without constructing a Swing frame.
 - Image request selection is likewise a side-effect-free viewport contract. Visible cards are mandatory; only a small directional prefetch margin may be added. Network/disk/decode execution remains delegated to the asynchronous image cache.
+
+
+## 2026-08-06 â DP-04 Swing browser panel
+
+- `CardBrowserPanel` is EDT-confined for model mutation and Swing state changes.
+- Image sources return `CompletableFuture<Optional<BufferedImage>>`; completion is marshalled back to the EDT and repaints only the affected card bounds.
+- The panel delegates responsive geometry and image-window selection to `CardGridLayout` and `ViewportImageWindow`.
+- Cached images are never mutated for hover, selection, or focus; overlays are painted by the containing panel.

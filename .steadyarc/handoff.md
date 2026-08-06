@@ -47,3 +47,13 @@
 - **Unresolved issues:** No DP-03 design blocker remains. DP-04 requires explicit activation and rendered/human visual evidence beyond structural tests.
 - **Recommended next action:** Apply and validate this return patch, review DP-03, then explicitly activate DP-04 for the responsive card browser and asynchronous image scheduling.
 - **Ownership after return:** Human repository owner.
+
+
+## Activity amendment â DP-04 interactive panel slice
+
+- **Date:** 2026-08-06
+- **Changed by:** Codex
+- **Transition or material change:** Added the first concrete Swing card-browser surface over the validated layout and viewport models.
+- **Scope:** Stable placeholders, responsive card painting, mouse/keyboard selection and focus, viewport-driven asynchronous image requests, EDT completion, and affected-region repaint.
+- **Still out of scope:** Production frame wiring, concrete `CardImageCache` adapter, cancellation/deprioritization policy beyond generation invalidation, ownership overlays, filter widgets, and rendered human visual evidence.
+- **Authority after change:** Codex remains active on bounded DP-04 slices.
