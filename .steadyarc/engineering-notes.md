@@ -144,3 +144,11 @@
 - Double-clicking a card adds it to the under-consideration set without changing selection. Double-clicking a selected chip adds every selected card. Clicking a visible consideration badge removes that card.
 - Badge hit targets are derived from the same geometry used for painting so interaction and rendering cannot drift apart.
 - The selected chip is a larger bottom-edge badge using neutral gray at 80% opacity; the circular consideration badge remains anchored to the top-right edge.
+
+## DP-05 asynchronous filter coordination
+
+- Expensive filtering and tag-count work is restartable and runs off the EDT.
+- Each interaction change increments a generation, cancels scheduled/running work where possible, and suppresses stale completions even when cancellation cannot interrupt the underlying computation.
+- Result listeners are always delivered on the EDT.
+- Availability is independent of filtering outcome: READY, PARTIAL_CACHE, and OFFLINE can accompany loading/content/empty/failure states.
+- Explicit empty, loading, offline, partial-cache, and failed-result treatments are reusable and theme-aware.

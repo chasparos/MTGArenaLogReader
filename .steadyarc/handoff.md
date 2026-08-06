@@ -132,3 +132,9 @@ DP-04 human review found three presentation corrections: stale background pixels
 - **Authority after change:** Codex is activated for bounded DP-05 implementation.
 - **Current slice:** Widget-independent filter interaction model and reusable click-first controls for format, color semantics, base types, mana range, semantic tags, and reset.
 - **Still out of scope:** DP-06 persistence, AI export, production navigation, and ownership-dependent collection filtering until authoritative quantities are available.
+
+## 2026-08-06 — DP-05 asynchronous results continuation
+
+- Added a reusable restartable filter coordinator with debounce support, generation-based stale-result suppression, cancellation, off-EDT computation, and EDT-only delivery.
+- Added explicit theme-aware loading, empty, partial-cache, offline, and failure treatments.
+- This slice does not yet wire the coordinator to production navigation or catalog refresh progress; it establishes the interaction-quality boundary and focused tests.
