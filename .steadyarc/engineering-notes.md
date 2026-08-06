@@ -93,3 +93,8 @@
 
 - `CardBrowserPanel` treats the current viewport window as the authoritative decoded-image demand set. Pending futures outside that set are cancelled, and completions that race after cancellation are ignored rather than cached or painted.
 - Browser selection and keyboard focus are logical card-identity state, not row/index state. Reordering or narrowing a result set remaps retained identities to their new indices.
+
+## DP-04 image-source and fixture evidence
+
+- The card browser resolves stable planning identities to enriched `CardInfo` before crossing the shared `CardImageCache` boundary; the panel itself remains independent of catalog/cache implementation details.
+- `DeckPlannerCardBrowserFixtures` writes deterministic 360x640, 760x640, and 1280x640 PNGs under `target/rendered-fixtures/deck-planner` for human responsive-layout review; generated evidence is not committed.

@@ -67,3 +67,12 @@
 - **Scope:** Cancel pending image futures when cards leave the request window, ignore late off-window completions, and preserve selection/focus by stable card identity when result ordering changes.
 - **Still out of scope:** Production `CardImageCache` adapter, frame wiring, rendered fixture/human visual evidence, filter widgets, and ownership overlays.
 - **Authority after change:** Codex remains active on bounded DP-04 slices.
+
+## Activity amendment — DP-04 cache adapter and fixture slice
+
+- **Date:** 2026-08-06
+- **Changed by:** Codex
+- **Transition or material change:** Added a stable-identity adapter to the shared `CardImageCache` boundary and deterministic narrow/normal/wide placeholder fixture generation.
+- **Scope:** Resolve browser identities to authoritative enriched `CardInfo`, delegate image loading asynchronously, and produce PNG fixtures for human responsive-layout review.
+- **Still out of scope:** Application frame/navigation wiring, human visual approval, filter widgets, and ownership overlays.
+- **Authority after change:** Codex remains active on bounded DP-04 slices.
