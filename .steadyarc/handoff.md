@@ -2,30 +2,30 @@
 
 ## State
 
-- **Status:** Returned
-- **Handoff ID:** SA-MTGA-DECK-PLANNER-003
+- **Status:** Active
+- **Handoff ID:** SA-MTGA-DECK-PLANNER-004
 - **From:** Human repository owner
 - **To:** Codex
 - **Created:** 2026-08-06
 - **Return owner:** Human repository owner
-- **Return condition:** DP-03 delivers immutable catalog filtering, deterministic/versioned categorized tags, structured-filter-derived tag counts, focused tests, and passing validation.
+- **Return condition:** DP-04 delivers the responsive Swing card-browser foundation, viewport-aware image request scheduling, focused tests, and passing validation.
 
 ## Engineering context
 
 - **Current arc:** Deck Planner
-- **Active roadmap item:** DP-03 complete; DP-04 is next and not activated
+- **Active roadmap item:** DP-04 active
 - **Authoritative baseline:** DP-01 complete; DP-02 parser/model/persistence/observer implemented with 171 passing tests at source commit `a3e9d3b2646087b500a0d422d16f707a9c671be4`.
 - **Material upstream limitation:** Current production Arena logs do not publish an authoritative complete owned-card map even after Collection and Deck Builder interactions. Ownership-dependent product behavior is deferred in `SA-MTGA-DEF-003`.
 - **Relevant durable constraints:** Scryfall catalog metadata may drive filtering and semantic tags. It cannot establish collection ownership. DP-03 must operate correctly with collection quantity unknown.
 
 ## Delegation
 
-- **Requested action:** Move collection-dependent functions/tasks to deferred issues and continue with the next Deck Planner roadmap item.
+- **Requested action:** Proceed to DP-04 after successful DP-03 validation.
 - **Completion criteria:** Color/color-identity semantics, base types, mana ranges, semantic tags, structured filtering, selected-tag AND behavior, and pre-tag-layer cloud counts are deterministic and tested.
-- **Current authority:** Implement and validate DP-03 only. DP-04 and later items remain inactive except for roadmap/deferred dependency annotations.
+- **Current authority:** Implement and validate DP-04 only. DP-05 and later items remain inactive except for roadmap/deferred dependency annotations.
 - **Constraints:** Do not add ownership inference or block catalog filtering on collection data. Keep the filter model independent of future Swing widgets.
-- **Files or areas in scope:** Deck Planner filter/index models and tests, plus Steady Arc roadmap/handoff/deferred memory.
-- **Files or areas explicitly out of scope:** Responsive browser UI, image scheduling, filter widgets, consideration persistence, AI export, and visual validation.
+- **Files or areas in scope:** Deck Planner responsive layout, component-browser foundation, viewport-aware image scheduling, focused tests, and Steady Arc continuity memory.
+- **Files or areas explicitly out of scope:** Filter widgets, ownership-dependent overlays, consideration persistence, AI export, and release integration.
 
 ## Activity amendments
 

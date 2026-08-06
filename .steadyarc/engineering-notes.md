@@ -73,3 +73,9 @@
 - Structured filter groups combine with AND semantics. Base-type selections are OR within the base-type group because a multi-face card can satisfy any selected base type.
 - Selected semantic tags are an additional global AND layer. Multiple selections from the same tag category are also AND; categories do not imply an OR shortcut.
 - Deck Planner mana-value filtering uses Scryfall's top-level `cmc`, preserving fractional values. Scryfall's top-level value is treated as the layout-aware value for split, adventure, transform, and modal cards. Missing or invalid values normalize to zero, including lands whose payload omits `cmc`.
+
+
+### DP-04 responsive browser foundation
+
+- Responsive card placement is specified by a pure layout model so resize, hit testing, and scroll-anchor calculations can be tested without constructing a Swing frame.
+- Image request selection is likewise a side-effect-free viewport contract. Visible cards are mandatory; only a small directional prefetch margin may be added. Network/disk/decode execution remains delegated to the asynchronous image cache.
