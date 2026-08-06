@@ -8,6 +8,14 @@ import java.util.List;
 /** Pure responsive layout model for Deck Planner card components. */
 public final class CardGridLayout {
     public static final double CARD_ASPECT = 63.0 / 88.0;
+    public static final int READABLE_MINIMUM_CARD_WIDTH = 220;
+    public static final int READABLE_MAXIMUM_CARD_WIDTH = 320;
+
+    /** Standard readable browser layout used by production and review surfaces. */
+    public static CardGridLayout readableDefaults() {
+        return new CardGridLayout(READABLE_MINIMUM_CARD_WIDTH, READABLE_MAXIMUM_CARD_WIDTH,
+                18, 22, 20);
+    }
 
     private final int minimumCardWidth;
     private final int maximumCardWidth;

@@ -4,6 +4,8 @@ import app.deckplanner.ui.CardBrowserPanel;
 import app.deckplanner.ui.CardBrowserScrollPane;
 import app.deckplanner.ui.CardGridLayout;
 import app.deckplanner.ui.ViewportImageWindow;
+import app.settings.ThemeService;
+import app.ui.AppColors;
 
 import javax.swing.*;
 import java.awt.*;
@@ -27,6 +29,7 @@ public final class DeckPlannerCardBrowserPreview {
     private DeckPlannerCardBrowserPreview() { }
 
     public static void main(String[] args) {
+        new ThemeService().applySaved();
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame("Deck Planner Card Browser Review");
             frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
@@ -40,7 +43,7 @@ public final class DeckPlannerCardBrowserPreview {
     public static JComponent createContent() {
         assertEdt();
         CardBrowserPanel browser = new CardBrowserPanel(
-                new CardGridLayout(140, 210, 16, 18, 18),
+                CardGridLayout.readableDefaults(),
                 new ViewportImageWindow(240),
                 DeckPlannerCardBrowserPreview::requestPreviewImage);
         CardBrowserScrollPane scrollPane = new CardBrowserScrollPane(browser);
@@ -51,6 +54,11 @@ public final class DeckPlannerCardBrowserPreview {
         instructions.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
 
         JPanel content = new JPanel(new BorderLayout());
+        content.setOpaque(true);
+        content.setBackground(AppColors.color("Panel.background", new Color(0x24272C)));
+        instructions.setOpaque(true);
+        instructions.setBackground(content.getBackground());
+        instructions.setForeground(AppColors.color("Label.foreground", Color.WHITE));
         content.add(instructions, BorderLayout.NORTH);
         content.add(scrollPane, BorderLayout.CENTER);
         return content;

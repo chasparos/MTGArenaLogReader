@@ -107,3 +107,5 @@
 - Added a standalone preview surface and PowerShell launcher for the required human visual/interaction pass.
 - Added a durable review checklist for narrow/normal/wide resize, scrolling, placeholders, delayed images, mouse/keyboard state, and flicker/EDT responsiveness.
 - DP-04 remains active until the human review is reported; production navigation and DP-05 controls remain out of scope.
+
+DP-04 human review found three presentation corrections: stale background pixels, default Swing scrollbars, and undersized cards. The current return patch addresses all three with theme-semantic clearing, explicit `AppScrollBarUI`, and 220–320 px readable card defaults. Re-run the preview after applying and confirm the selected theme, scrollbar appearance, and rules-text readability.

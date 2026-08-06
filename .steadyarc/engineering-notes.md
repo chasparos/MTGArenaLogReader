@@ -124,3 +124,8 @@
 
 - `DeckPlannerCardBrowserPreview` is a standalone devtools surface, not production navigation. It exercises responsive resize, viewport scheduling, delayed image arrival, scrolling, mouse selection, and keyboard focus/selection.
 - `PreviewDeckPlannerCardBrowser.ps1` is the supported human-session entry point; review criteria are recorded in `docs/guides/deck-planner-card-browser-review.md`.
+
+### 2026-08-06 — DP-04 human review corrections
+- Card browser renderer surfaces now clear their paint clip explicitly using the active semantic `Viewport.background`/`App.surface` color, preventing stale rows after resize and result replacement.
+- `CardBrowserScrollPane` installs the shared `AppScrollBarUI` on both axes and applies semantic scroll-pane/viewport colors even in standalone review harnesses.
+- The standard readable card layout is 220–320 px wide with the existing 63:88 aspect ratio; narrow windows use one centered card rather than shrinking below readable width.

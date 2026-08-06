@@ -23,6 +23,21 @@ class CardGridLayoutTest {
         assertEquals(-1, normal.indexAt(0, 0));
     }
 
+    @Test void readableDefaultsKeepCardsLargeEnoughForRulesText() {
+        CardGridLayout readable = CardGridLayout.readableDefaults();
+        CardGridLayout.Result narrow = readable.layout(12, 360);
+        CardGridLayout.Result normal = readable.layout(12, 900);
+        CardGridLayout.Result wide = readable.layout(12, 1280);
+
+        assertEquals(1, narrow.columns());
+        assertTrue(narrow.cardWidth() >= CardGridLayout.READABLE_MINIMUM_CARD_WIDTH);
+        assertTrue(normal.cardWidth() >= CardGridLayout.READABLE_MINIMUM_CARD_WIDTH);
+        assertTrue(wide.cardWidth() >= CardGridLayout.READABLE_MINIMUM_CARD_WIDTH);
+        assertTrue(narrow.cardWidth() <= CardGridLayout.READABLE_MAXIMUM_CARD_WIDTH);
+        assertTrue(normal.cardWidth() <= CardGridLayout.READABLE_MAXIMUM_CARD_WIDTH);
+        assertTrue(wide.cardWidth() <= CardGridLayout.READABLE_MAXIMUM_CARD_WIDTH);
+    }
+
     @Test void resizeKeepsLogicalItemOrderAndProducesStableRows() {
         CardGridLayout.Result before = layout.layout(10, 800);
         CardGridLayout.Result after = layout.layout(10, 510);

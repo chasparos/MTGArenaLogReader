@@ -1,5 +1,7 @@
 package app.deckplanner.ui;
 
+import app.ui.AppColors;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -62,7 +64,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         setFocusable(true);
         add(rendererPane);
         setOpaque(true);
-        setBackground(new Color(22, 24, 28));
+        refreshThemeColors();
         addMouseListener(new MouseAdapter() {
             @Override public void mousePressed(MouseEvent event) {
                 requestFocusInWindow();
@@ -217,8 +219,28 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         });
     }
 
+    @Override public void updateUI() {
+        super.updateUI();
+        refreshThemeColors();
+    }
+
+    private void refreshThemeColors() {
+        setBackground(AppColors.color("Viewport.background",
+                AppColors.color("App.surface", new Color(0x24272C))));
+    }
+
     @Override protected void paintComponent(Graphics graphics) {
-        super.paintComponent(graphics);
+        // Clear the complete clip explicitly. The browser is a renderer surface rather than a
+        // normal child hierarchy, so relying on incidental parent/viewport painting leaves stale
+        // rows visible after resize or result replacement on some look-and-feels.
+        Graphics2D background = (Graphics2D) graphics.create();
+        try {
+            background.setColor(getBackground());
+            Rectangle clip = background.getClipBounds();
+            background.fillRect(clip.x, clip.y, clip.width, clip.height);
+        } finally {
+            background.dispose();
+        }
         ensureLayout();
         Graphics2D g = (Graphics2D) graphics.create();
         try {

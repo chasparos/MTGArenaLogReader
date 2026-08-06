@@ -3,12 +3,15 @@ package app.deckplanner.ui;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.SwingUtilities;
+import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -112,6 +115,31 @@ class CardBrowserPanelTest {
             assertEquals(0, holder[0].selectedIndex());
             assertEquals("b", holder[0].selectedCard().orElseThrow().identity());
         });
+    }
+
+    @Test void clearsRendererBackgroundWithThemeColor() throws Exception {
+        AtomicReference<Integer> painted = new AtomicReference<>();
+        AtomicReference<Integer> expected = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardBrowserPanel panel = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> CompletableFuture.completedFuture(Optional.empty()));
+            panel.setSize(240, 180);
+            panel.setCards(List.of());
+            BufferedImage image = new BufferedImage(240, 180, BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = image.createGraphics();
+            try {
+                graphics.setColor(Color.MAGENTA);
+                graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+                panel.paint(graphics);
+            } finally {
+                graphics.dispose();
+            }
+            painted.set(image.getRGB(120, 90));
+            expected.set(panel.getBackground().getRGB());
+        });
+        assertEquals(expected.get(), painted.get());
     }
 
 }

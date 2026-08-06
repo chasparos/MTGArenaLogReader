@@ -1,5 +1,8 @@
 package app.deckplanner.ui;
 
+import app.ui.AppColors;
+import app.ui.AppScrollBarUI;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
@@ -20,7 +23,12 @@ public final class CardBrowserScrollPane extends JScrollPane {
     public CardBrowserScrollPane(CardBrowserPanel browser) {
         super(java.util.Objects.requireNonNull(browser));
         this.browser = browser;
-        getVerticalScrollBar().setUnitIncrement(32);
+        setBorder(BorderFactory.createEmptyBorder());
+        setBackground(AppColors.color("ScrollPane.background", browser.getBackground()));
+        getViewport().setOpaque(true);
+        getViewport().setBackground(AppColors.color("Viewport.background", browser.getBackground()));
+        installApplicationScrollBars();
+        getVerticalScrollBar().setUnitIncrement(48);
         getViewport().addChangeListener(event -> viewportChanged());
         getViewport().addComponentListener(new ComponentAdapter() {
             @Override public void componentResized(ComponentEvent event) {
@@ -28,6 +36,23 @@ public final class CardBrowserScrollPane extends JScrollPane {
                 SwingUtilities.invokeLater(() -> restore(retained));
             }
         });
+    }
+
+
+    @Override public void updateUI() {
+        super.updateUI();
+        if (browser != null) {
+            setBackground(AppColors.color("ScrollPane.background", browser.getBackground()));
+            getViewport().setBackground(AppColors.color("Viewport.background", browser.getBackground()));
+            installApplicationScrollBars();
+        }
+    }
+
+    private void installApplicationScrollBars() {
+        getVerticalScrollBar().setUI(new AppScrollBarUI());
+        getHorizontalScrollBar().setUI(new AppScrollBarUI());
+        getVerticalScrollBar().setPreferredSize(new Dimension(11, 0));
+        getHorizontalScrollBar().setPreferredSize(new Dimension(0, 11));
     }
 
     public CardBrowserPanel browser() {

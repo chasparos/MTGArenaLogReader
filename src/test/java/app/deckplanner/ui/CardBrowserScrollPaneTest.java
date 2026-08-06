@@ -1,5 +1,6 @@
 package app.deckplanner.ui;
 
+import app.ui.AppScrollBarUI;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
@@ -8,10 +9,24 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CardBrowserScrollPaneTest {
+    @Test void usesApplicationScrollbarAndThemeViewportBackground() throws Exception {
+        AtomicReference<CardBrowserScrollPane> reference = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardBrowserPanel browser = panel();
+            reference.set(new CardBrowserScrollPane(browser));
+        });
+
+        CardBrowserScrollPane pane = reference.get();
+        assertInstanceOf(AppScrollBarUI.class, pane.getVerticalScrollBar().getUI());
+        assertInstanceOf(AppScrollBarUI.class, pane.getHorizontalScrollBar().getUI());
+        assertEquals(pane.browser().getBackground(), pane.getViewport().getBackground());
+    }
+
     @Test
     void preservesLogicalTopCardAcrossResponsiveResize() throws Exception {
         CardBrowserScrollPane[] holder = new CardBrowserScrollPane[1];
