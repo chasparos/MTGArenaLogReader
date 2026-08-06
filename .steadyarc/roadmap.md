@@ -85,9 +85,7 @@ Completion evidence (2026-08-06):
 - Selected tags use global AND semantics, including selections within the same category. Tag-cloud counts are calculated after structured filtering and before the selected-tag layer.
 - Local validation passed: 174 tests, zero failures/errors/skips at source commit `41a86e54c6c1d77b6003096f7b79ef3d9134b8e8`; the final acceptance-tightening patch adds focused mana-policy and same-category tests for the next validation run.
 
-### DP-04 — Responsive card browser and asynchronous images (active)
-
-Current slice: standalone human-review harness for responsive layout, asynchronous image arrival, scrolling, focus, and selection.
+### DP-04 — Responsive card browser and asynchronous images (complete)
 
 Create the Deck Planner frame/workspace, responsive card layout, reusable `CardView`, and viewport-aware image scheduling.
 
@@ -100,7 +98,9 @@ Acceptance evidence:
 - The panel performs element layout and hit testing, supports mouse and keyboard focus/selection, and paints hover/selection/focus/ownership overlays without mutating cached card images.
 - Rendered-fixture evidence covers narrow, normal, and wide viewports; a human visual pass confirms responsiveness and interaction feel.
 
-### DP-05 — Filter controls and interaction quality
+### DP-05 — Filter controls and interaction quality (active)
+
+Current slice: widget-independent filter interaction model and reusable click-first controls.
 
 Add appealing click-first controls for format, colors, base types, mana range, collection status, and categorized tags, with clear active states and fast reset/navigation.
 
@@ -147,7 +147,7 @@ Acceptance evidence:
 
 ## Current planning decisions
 
-- DP-01 and DP-03 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-04 is active and must remain independent of collection availability.
+- DP-01, DP-03, and DP-04 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-05 is active and must keep collection-status controls disabled or explicitly unavailable while ownership remains unknown.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.

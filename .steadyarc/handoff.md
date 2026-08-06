@@ -3,29 +3,29 @@
 ## State
 
 - **Status:** Active
-- **Handoff ID:** SA-MTGA-DECK-PLANNER-004
+- **Handoff ID:** SA-MTGA-DECK-PLANNER-005
 - **From:** Human repository owner
 - **To:** Codex
 - **Created:** 2026-08-06
 - **Return owner:** Human repository owner
-- **Return condition:** DP-04 delivers the responsive Swing card-browser foundation, viewport-aware image request scheduling, focused tests, and passing validation.
+- **Return condition:** DP-05 delivers the filter interaction model, click-first controls, explicit catalog states, focused tests, and passing validation.
 
 ## Engineering context
 
 - **Current arc:** Deck Planner
-- **Active roadmap item:** DP-04 active
+- **Active roadmap item:** DP-05 active
 - **Authoritative baseline:** DP-01 complete; DP-02 parser/model/persistence/observer implemented with 171 passing tests at source commit `a3e9d3b2646087b500a0d422d16f707a9c671be4`.
 - **Material upstream limitation:** Current production Arena logs do not publish an authoritative complete owned-card map even after Collection and Deck Builder interactions. Ownership-dependent product behavior is deferred in `SA-MTGA-DEF-003`.
 - **Relevant durable constraints:** Scryfall catalog metadata may drive filtering and semantic tags. It cannot establish collection ownership. DP-03 must operate correctly with collection quantity unknown.
 
 ## Delegation
 
-- **Requested action:** Proceed to DP-04 after successful DP-03 validation.
+- **Requested action:** Proceed to DP-05 after human approval of DP-04.
 - **Completion criteria:** Color/color-identity semantics, base types, mana ranges, semantic tags, structured filtering, selected-tag AND behavior, and pre-tag-layer cloud counts are deterministic and tested.
-- **Current authority:** Implement and validate DP-04 only. DP-05 and later items remain inactive except for roadmap/deferred dependency annotations.
+- **Current authority:** Implement and validate DP-05 only. DP-06 and later items remain inactive except for roadmap/deferred dependency annotations.
 - **Constraints:** Do not add ownership inference or block catalog filtering on collection data. Keep the filter model independent of future Swing widgets.
-- **Files or areas in scope:** Deck Planner responsive layout, component-browser foundation, viewport-aware image scheduling, focused tests, and Steady Arc continuity memory.
-- **Files or areas explicitly out of scope:** Filter widgets, ownership-dependent overlays, consideration persistence, AI export, and release integration.
+- **Files or areas in scope:** Deck Planner filter state, controls, interaction quality, explicit catalog states, focused tests, and Steady Arc continuity memory.
+- **Files or areas explicitly out of scope:** Consideration persistence, AI export, production navigation/release integration, and any ownership inference from non-authoritative data.
 
 ## Activity amendments
 
@@ -123,3 +123,12 @@ DP-04 human review found three presentation corrections: stale background pixels
 - Card double-click adds only that card to consideration without changing selection; selected-chip double-click adds the full selected set; consideration-badge click removes one card.
 - The selected chip is enlarged, neutral gray at 80% opacity, and anchored flush to the bottom card edge.
 - DP-04 remains active pending one more human interaction pass.
+
+## Activity amendment — DP-04 approval and DP-05 activation
+
+- **Date:** 2026-08-06
+- **Changed by:** Human repository owner
+- **Transition or material change:** Human visual and interaction review approved DP-04 after responsive layout, stable identity, theme, scrollbar, readable sizing, standard selection, and consideration badge amendments.
+- **Authority after change:** Codex is activated for bounded DP-05 implementation.
+- **Current slice:** Widget-independent filter interaction model and reusable click-first controls for format, color semantics, base types, mana range, semantic tags, and reset.
+- **Still out of scope:** DP-06 persistence, AI export, production navigation, and ownership-dependent collection filtering until authoritative quantities are available.
