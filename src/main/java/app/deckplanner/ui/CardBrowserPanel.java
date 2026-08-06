@@ -36,15 +36,11 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         }
     }
 
-    private static final Color PLACEHOLDER = new Color(38, 42, 48);
-    private static final Color PLACEHOLDER_EDGE = new Color(86, 92, 101);
-    private static final Color SELECTED = new Color(255, 196, 64);
-    private static final Color FOCUSED = new Color(112, 184, 255);
-    private static final Color HOVERED = new Color(255, 255, 255, 120);
-
     private final CardGridLayout gridLayout;
     private final ViewportImageWindow imageWindow;
     private final ImageSource imageSource;
+    private final CellRendererPane rendererPane = new CellRendererPane();
+    private final CardView cardView = new CardView();
     private final Map<String, BufferedImage> images = new LinkedHashMap<>();
     private final Map<String, CompletableFuture<Optional<BufferedImage>>> pending = new LinkedHashMap<>();
     private java.util.Set<String> requestedIdentities = java.util.Set.of();
@@ -64,6 +60,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         this.imageWindow = java.util.Objects.requireNonNull(imageWindow);
         this.imageSource = java.util.Objects.requireNonNull(imageSource);
         setFocusable(true);
+        add(rendererPane);
         setOpaque(true);
         setBackground(new Color(22, 24, 28));
         addMouseListener(new MouseAdapter() {
@@ -239,41 +236,14 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     private void paintCard(Graphics2D g, int index, Rectangle bounds) {
         BrowserCard card = cards.get(index);
-        BufferedImage image = images.get(card.identity());
-        if (image == null) {
-            g.setColor(PLACEHOLDER);
-            g.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 14, 14);
-            g.setColor(PLACEHOLDER_EDGE);
-            g.drawRoundRect(bounds.x, bounds.y, bounds.width - 1, bounds.height - 1, 14, 14);
-            g.setColor(Color.WHITE);
-            FontMetrics metrics = g.getFontMetrics();
-            String label = ellipsize(card.name(), metrics, Math.max(20, bounds.width - 20));
-            g.drawString(label, bounds.x + (bounds.width - metrics.stringWidth(label)) / 2,
-                    bounds.y + bounds.height / 2);
-        } else {
-            g.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height, null);
-        }
-        if (index == hoveredIndex) stroke(g, bounds, HOVERED, 2f);
-        if (index == selectedIndex) stroke(g, bounds, SELECTED, 4f);
-        if (hasFocus() && index == focusedIndex) stroke(g, bounds, FOCUSED, 2f);
-    }
-
-    private static void stroke(Graphics2D g, Rectangle bounds, Color color, float width) {
-        Stroke old = g.getStroke();
-        g.setStroke(new BasicStroke(width));
-        g.setColor(color);
-        int inset = Math.max(1, Math.round(width / 2));
-        g.drawRoundRect(bounds.x + inset, bounds.y + inset,
-                bounds.width - inset * 2 - 1, bounds.height - inset * 2 - 1, 14, 14);
-        g.setStroke(old);
-    }
-
-    private static String ellipsize(String text, FontMetrics metrics, int width) {
-        if (metrics.stringWidth(text) <= width) return text;
-        String suffix = "…";
-        int end = text.length();
-        while (end > 0 && metrics.stringWidth(text.substring(0, end) + suffix) > width) end--;
-        return text.substring(0, end) + suffix;
+        cardView.configure(
+                card.name(),
+                images.get(card.identity()),
+                index == hoveredIndex,
+                index == selectedIndex,
+                hasFocus() && index == focusedIndex);
+        rendererPane.paintComponent(g, cardView, this,
+                bounds.x, bounds.y, bounds.width, bounds.height, true);
     }
 
     @Override public void invalidate() {

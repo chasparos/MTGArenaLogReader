@@ -87,7 +87,7 @@ Completion evidence (2026-08-06):
 
 ### DP-04 — Responsive card browser and asynchronous images (active)
 
-Current slice: automatic viewport coordination and logical scroll-anchor preservation across responsive resize and filtered-result replacement.
+Current slice: reusable Swing CardView rendering with browser-owned responsive layout, hit testing, and interaction overlays.
 
 Create the Deck Planner frame/workspace, responsive card layout, reusable `CardView`, and viewport-aware image scheduling.
 

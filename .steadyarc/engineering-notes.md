@@ -105,3 +105,10 @@
 - `CardBrowserScrollPane` owns viewport change notifications instead of requiring callers to manually forward every scroll event.
 - Scroll position is represented by stable card identity plus a vertical pixel offset, then resolved against the current responsive layout. This preserves the logical top card across width changes and filtered-result replacement when that card remains present.
 - Anchor restoration and viewport-driven image scheduling are EDT-confined; missing anchors degrade to the current viewport rather than guessing a replacement identity.
+
+
+## 2026-08-06 — Deck Planner reusable card views
+
+- The responsive browser uses a reusable `CardView` Swing component rendered through `CellRendererPane`; it does not create one heavyweight child hierarchy per catalog entry.
+- `CardBrowserPanel` remains authoritative for responsive bounds, viewport materialization, hit testing, focus, selection, and repaint regions.
+- `CardView` receives immutable display state immediately before paint. Cached `BufferedImage` instances are drawn as inputs only; interaction overlays are painted afterward and never written into the cache image.

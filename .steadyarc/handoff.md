@@ -84,3 +84,12 @@
 - Added `CardBrowserScrollPane` to forward viewport changes, preserve anchor across responsive resize, and replace filtered card results without jumping when the anchor survives.
 - Added focused EDT tests for resize and filtered-result anchor retention.
 - DP-04 remains active; next review should decide whether this completes the browser foundation after human fixture review or whether a reusable card-view component is still required before DP-05 activation.
+
+
+## 2026-08-06 — DP-04 reusable CardView continuation
+
+- Added a reusable lightweight `CardView` Swing component for stable placeholder/image presentation.
+- `CardBrowserPanel` now renders card component views through `CellRendererPane` while retaining responsive layout, hit testing, selection/focus state, and targeted repaint ownership.
+- Hover, selection, and focus remain transient overlays and never mutate shared cached images.
+- Added focused rendering coverage for placeholder stability and cached-image immutability.
+- DP-04 remains active pending human review of rendered fixtures and a decision on completion/return.
