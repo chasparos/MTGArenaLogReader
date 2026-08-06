@@ -24,6 +24,7 @@ public final class LogLineFilter {
             "Draft.Notify",
             "EventPlayerDraftMakePick",
             "EventSetDeckV3",
+            "PlayerInventory.GetPlayerCardsV3",
             "ResultReason_"
     );
 

@@ -1,24 +1,148 @@
 # Steady Arc Roadmap
 
-## Active Engineering Arc
+## Active Engineering Arc — Deck Planner
 
-Adopt Steady Arc workflow structure in MTGArenaLogReader without disrupting existing product architecture, tests, or contributor flow.
+Build a responsive Swing workspace for discovering cards legal in a chosen MTG Arena format, narrowing them through structured and semantic filters, collecting candidates under consideration, incorporating collection ownership when Arena logs provide authoritative evidence, and exporting those candidates to an LLM with authoritative card rules.
+
+## Accepted product constraints
+
+- The catalog contains cards satisfying both `game:arena` and the selected Scryfall format-legality predicate. Catalog identity must be stable across alternate printings and Arena IDs.
+- Scryfall metadata supplements catalog and rules information; it never overrides Arena-observed ownership or gameplay truth.
+- Catalog and image prefetch are restartable, rate-limited, observable, and never block the Swing event-dispatch thread (EDT).
+- Card presentation uses Swing component views. The planner owns responsive card layout, viewport-aware materialization, hit testing, focus, and selection. Selection/hover/focus/ownership states are painted as lightweight overlays by the containing panel.
+- Use Swing's repaint coalescing. Do not introduce a game-loop renderer, direct canvas, or continuously repainted backing surface.
+- Collection quantity is a tri-state integer contract: `-1` unknown, `0` authoritatively known absent, and positive values the authoritatively observed number of copies.
+- Normal filters include color/color identity, base card type, and mana-value range. Semantic tags are categorized and apply as an additional filter layer.
+- The filtered result produces a tag cloud with counts derived from that result before the tag layer is applied, so users can see useful refinements instead of only already-selected tags.
+- Cards can be added to a persistent "Under consideration" workspace.
+- AI export uses a versioned, token-conscious text protocol, includes authoritative rules for every considered card, and ends with exactly: `What deck would you build with these cards?`
 
 ## Ordered items
 
-- [x] Stage 1 — Initialize project-memory files and Codex/Copilot entry point.
-- [x] Stage 2 — Add bootstrapping package artifacts (launcher/tooling scaffolding) in a repository-compatible layout.
-- [x] Stage 3 — Integrate and validate bootstrap workflow steps against repository-local build/test commands.
-- [x] Stage 4 — Refine based on friction found during real Copilot/Codex usage and upstream feedback.
+### DP-01 — Catalog and enrichment foundation (complete)
 
-## Arc complete
+Define a format catalog service that pages Scryfall with a query equivalent to `game:arena legal:<format>`, normalizes duplicate printings to a documented planning identity, and passes cards sequentially through a reusable enrichment/cache boundary.
 
-All four bootstrap stages delivered. The active engineering arc for Steady Arc adoption is complete.
+Acceptance evidence:
 
-**Summary of delivered work:**
-- Stage 1: `.steadyarc/` continuity files, `AGENTS.md` entry point.
-- Stage 2: `RunWidget.ps1`, `BootstrapInfo.java`, `.mvn/wrapper/maven-wrapper.properties`.
-- Stage 3: `.gitignore` ordering fixed, `maven-wrapper.properties` correctly committed, `mvnw` permissions corrected, build evidence captured.
-- Stage 4: `.github/workflows/ci.yml` (JDK 24 CI), deferred issues closed, feedback document completed, handoff returned.
+- Query construction and pagination tests cover multiple pages, `has_more`, cancellation, retryable failures, and Scryfall request spacing.
+- A format snapshot records format, fetch time, schema/catalog version, completion state, and per-card enrichment outcome; interrupted runs resume without corrupting the last complete snapshot.
+- Every accepted catalog entry has Arena availability evidence, format legality, stable Scryfall identity, Arena ID where Scryfall supplies it, rules metadata, filter fields, and image references.
+- Existing message-driven `InformationCollector` behavior remains intact; bulk ingestion reuses extracted enrichment primitives rather than manufacturing fake log messages.
 
-**Next arc** (if initiated): upstream transfer of `docs/steadyarc-copilot-feedback.md` content to `SteadyArcWorkflow`, or feature/product work as directed by the human repository owner.
+Completion evidence (2026-08-06):
+
+- `ScryfallClient` exposes the constrained `game:arena legal:<format>` paged source and distinguishes retryable HTTP 429/5xx failures from terminal failures.
+- `FormatCatalogService` processes pages/cards sequentially, supports cancellation, exponential retry, progress events, and payload-level Arena/legality validation.
+- `FormatCatalogRepository` retains resumable staging runs and atomically publishes timestamped, schema-versioned snapshots with per-printing outcomes.
+- `CatalogCardIdentity` groups alternate printings by Oracle identity while retaining every Scryfall/Arena printing; preferred printing selection is deterministic.
+- `CardEnrichmentService` is shared by live `InformationCollector` and bulk catalog ingestion.
+- Support-relay `maven-test` passed: 164 tests, zero failures/errors/skips.
+
+### DP-02 — Arena collection observation (active; live evidence pending)
+
+Discover and parse the authoritative Arena log response(s) that expose owned card quantities, then persist a provenance-bearing collection snapshot keyed by Arena card identity.
+
+Acceptance evidence:
+
+- Focused fixtures distinguish a complete snapshot from deltas, deck contents, cosmetics inventory, and unrelated inventory messages.
+- `-1`, `0`, and positive quantities round-trip through model and persistence tests without conflation.
+- Zero is emitted only when a complete authoritative snapshot proves absence; incomplete or never-observed data remains `-1`.
+- Snapshot provenance includes source record/sequence and observation time, and stale-session behavior is specified.
+
+Implementation evidence (2026-08-06):
+
+- `ArenaCollectionLogParser` recognizes explicit `PlayerInventory.GetPlayerCardsV3` responses and structurally equivalent non-empty bare maps whose keys are positive Arena IDs and values are positive integer copy counts.
+- Empty objects, generic `InventoryInfo`, decks, mixed named/numeric maps, zero/negative values, and fractional values are rejected and cannot replace the current snapshot.
+- `ArenaCollectionRepository` atomically publishes complete positive-entry snapshots. Before a complete snapshot, quantities are `-1`; after one, omitted IDs are `0`; present IDs retain their positive counts.
+- Provenance records observation time, raw-record sequence, and explicit-vs-bare source shape. A caller-supplied freshness window converts stale observations back to `-1` without deleting audit history.
+- Raw observation is wired before gameplay parsing; unsupported delta-like records do not mutate collection state.
+- Support-relay `maven-test` passed: 171 tests, zero failures/errors/skips.
+
+Remaining acceptance evidence:
+
+- Capture a sanitized record from the current Arena `Player.log` and confirm that its framing reaches `ArenaCollectionObserver`. Direct read access to the live log was denied to the sandbox account while Arena was active.
+
+### DP-03 — Filter index and categorized tag cloud
+
+Build immutable/filterable indexes over the completed catalog. Define normalized categories for colors, base types, mana value, oracle keywords, zones, mechanics/actions, and compound concepts such as `all creatures`.
+
+Acceptance evidence:
+
+- Color behavior explicitly covers colorless, multicolor, exact-vs-inclusive color matching, and color identity.
+- Base-type extraction handles multi-face cards and type lines containing supertypes/subtypes.
+- Mana ranges handle lands, split/adventure/modal cards, and fractional/exceptional values consistently.
+- Tag rules are deterministic and versioned; tests cover `mill`, `sacrifice`, `target`, zone terms, printed keywords, and `all creatures` without naïve substring false positives.
+- Structured filters combine predictably, selected tags add an AND layer, same-category multi-selection semantics are documented, and tag-cloud counts are computed from the structured-filter result.
+
+### DP-04 — Responsive card browser and asynchronous images
+
+Create the Deck Planner frame/workspace, responsive card layout, reusable `CardView`, and viewport-aware image scheduling.
+
+Acceptance evidence:
+
+- Only visible cards plus a small directional prefetch margin request decoded images; requests are cancelled or deprioritized when cards leave that window.
+- Network, disk, decoding, scaling, catalog filtering, and tag counting run off the EDT; Swing mutation and repaint requests run on the EDT.
+- Resize recomputes columns and card bounds without losing logical selection or scroll anchor.
+- Card views preserve card aspect ratio, show stable placeholders, and repaint only affected regions when images arrive.
+- The panel performs element layout and hit testing, supports mouse and keyboard focus/selection, and paints hover/selection/focus/ownership overlays without mutating cached card images.
+- Rendered-fixture evidence covers narrow, normal, and wide viewports; a human visual pass confirms responsiveness and interaction feel.
+
+### DP-05 — Filter controls and interaction quality
+
+Add appealing click-first controls for format, colors, base types, mana range, collection status, and categorized tags, with clear active states and fast reset/navigation.
+
+Acceptance evidence:
+
+- Filter state is a model independent of widgets and has deterministic unit tests.
+- Rapid toggling, resizing, and scrolling do not queue stale result/image work or freeze the EDT.
+- Empty, loading, partially cached, offline, and failed-catalog states have explicit UI treatments.
+- Keyboard traversal and visible focus are supported; color is not the sole indication of state.
+
+### DP-06 — Under consideration workspace
+
+Persist an ordered set of candidate cards and expose add/remove/clear/reorder interactions without losing the active browser filters.
+
+Acceptance evidence:
+
+- Membership survives restart and catalog refresh through stable identity mapping.
+- Duplicate-printing behavior is defined and tested.
+- Browser and consideration views remain synchronized, including overlays and collection counts.
+- Empty and stale/unresolvable candidate states remain recoverable.
+
+### DP-07 — Authoritative AI deck-building protocol
+
+Create `MTGA_DECK_BUILD_REQUEST_V1`, following the established authoritative/provenance discipline of game reconstruction exports while using a deck-planning-specific schema.
+
+Acceptance evidence:
+
+- Payload includes target format, consideration quantity/membership, collection quantity with unknown distinguished from zero, stable identities, name, mana cost/value, type line, complete oracle text, colors/color identity, power/toughness/loyalty/defense when applicable, keywords, produced mana, and every relevant face of multi-face cards.
+- Repeated values use a compact alias/table mechanism where it saves tokens without making rules ambiguous.
+- Export is deterministic, escapes delimiters/newlines, states that supplied card data is authoritative, forbids substitution/invented rules, and separates observed facts from strategic inference.
+- Golden tests cover ordinary, token-producing, split/adventure, transform/modal, and metadata-incomplete cards plus the `-1/0/positive` collection states.
+- The final request text is exactly `What deck would you build with these cards?`
+
+### DP-08 — Integration, performance, and release evidence
+
+Wire navigation/startup lifecycle, background service shutdown, persistence migration, and end-to-end validation.
+
+Acceptance evidence:
+
+- Full Maven tests pass on the supported JDK.
+- Integration fixture demonstrates format selection → resumable catalog population → filtering/tag refinement → consideration → deterministic AI export.
+- Performance evidence records EDT responsiveness, time to first usable catalog view, scroll behavior with a full target-format catalog, image-cache hit behavior, and bounded memory/cache growth.
+- Human visual validation covers normal interaction and the required loading/offline/error states.
+
+## Current planning decisions
+
+- DP-01 is complete. DP-02 is implemented but remains active until a current real-log collection record validates the wire shape.
+- Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
+- Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
+- `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.
+
+## Out of scope for the first arc
+
+- Automatically submitting or importing a deck into Arena.
+- AI-generated card facts that are absent from authoritative metadata.
+- Full deck legality/sideboard validation or automated mana-base optimization unless promoted as a later bounded item.
+- Live collaborative/cloud synchronization.

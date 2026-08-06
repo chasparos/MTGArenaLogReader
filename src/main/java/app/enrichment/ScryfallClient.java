@@ -1,6 +1,9 @@
 package app.enrichment;
 
 import app.draft.model.DraftSet;
+import app.deckplanner.catalog.CardCatalogPage;
+import app.deckplanner.catalog.CardCatalogSource;
+import app.deckplanner.catalog.CardCatalogSourceException;
 import app.model.card.CardInfo;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -21,7 +24,7 @@ import java.util.Set;
 /** Small client for Scryfall card lookups, including Arena variant aliases.
  * <p><strong>Architectural role:</strong> This type belongs to the optional enrichment boundary; external metadata may supplement but never replace Arena-observed truth.</p>
  */
-public final class ScryfallClient implements AutoCloseable {
+public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
     private final Gson gson;
     private final UnirestInstance unirest;
     private final CardAliasRegistry aliases = new CardAliasRegistry();
@@ -172,6 +175,60 @@ public final class ScryfallClient implements AutoCloseable {
             }
         } while (nextPage != null && !nextPage.isBlank());
         return List.copyOf(result);
+    }
+
+    @Override
+    public CardCatalogPage firstPage(String normalizedFormat) {
+        if (normalizedFormat == null
+                || !normalizedFormat.matches("[a-z0-9_]+")) {
+            throw new IllegalArgumentException(
+                    "Invalid normalized Scryfall format: " + normalizedFormat);
+        }
+        HttpResponse<String> response = unirest
+                .get("https://api.scryfall.com/cards/search")
+                .queryString("q", formatCatalogQuery(normalizedFormat))
+                .queryString("unique", "prints")
+                .queryString("order", "set")
+                .asString();
+        return parseCatalogPage(response, "format=" + normalizedFormat);
+    }
+
+    @Override
+    public CardCatalogPage nextPage(String cursor) {
+        if (cursor == null || cursor.isBlank()
+                || !cursor.startsWith("https://api.scryfall.com/")) {
+            throw new IllegalArgumentException("Invalid Scryfall page cursor");
+        }
+        pauseForScryfall();
+        return parseCatalogPage(unirest.get(cursor).asString(), "catalog page");
+    }
+
+    public static String formatCatalogQuery(String normalizedFormat) {
+        if (normalizedFormat == null
+                || !normalizedFormat.matches("[a-z0-9_]+")) {
+            throw new IllegalArgumentException(
+                    "Invalid normalized Scryfall format: " + normalizedFormat);
+        }
+        return "game:arena legal:" + normalizedFormat;
+    }
+
+    private CardCatalogPage parseCatalogPage(
+            HttpResponse<String> response, String lookup) {
+        int status = response.getStatus();
+        if (status < 200 || status >= 300) {
+            throw new CardCatalogSourceException(
+                    "Scryfall HTTP " + status + " for " + lookup,
+                    status == 429 || status >= 500);
+        }
+        JsonObject page = JsonParser.parseString(response.getBody()).getAsJsonObject();
+        List<CardInfo> cards = new ArrayList<>();
+        for (JsonElement element : page.getAsJsonArray("data")) {
+            if (!element.isJsonObject()) continue;
+            CardInfo card = gson.fromJson(element, CardInfo.class);
+            if (card != null) cards.add(card);
+        }
+        String cursor = bool(page, "has_more") ? string(page, "next_page") : null;
+        return new CardCatalogPage(cards, cursor);
     }
 
     private void pauseForScryfall() {

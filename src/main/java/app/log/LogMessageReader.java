@@ -20,6 +20,7 @@ public final class LogMessageReader implements Runnable, AutoCloseable {
     private final BlockingQueue<RawLogEntry> input;
     private final BlockingQueue<LogMessageInterface> enrichmentQueue;
     private final LogMessageParser parser;
+    private final Consumer<RawLogEntry> rawObserver;
     private final Consumer<Throwable> errorHandler;
     private final AtomicBoolean running = new AtomicBoolean(true);
 
@@ -27,9 +28,18 @@ public final class LogMessageReader implements Runnable, AutoCloseable {
                             BlockingQueue<LogMessageInterface> enrichmentQueue,
                             Gson gson,
                             Consumer<Throwable> errorHandler) {
+        this(input, enrichmentQueue, gson, ignored -> { }, errorHandler);
+    }
+
+    public LogMessageReader(BlockingQueue<RawLogEntry> input,
+                            BlockingQueue<LogMessageInterface> enrichmentQueue,
+                            Gson gson,
+                            Consumer<RawLogEntry> rawObserver,
+                            Consumer<Throwable> errorHandler) {
         this.input = input;
         this.enrichmentQueue = enrichmentQueue;
         this.parser = new LogMessageParser(gson);
+        this.rawObserver = rawObserver;
         this.errorHandler = errorHandler;
     }
 
@@ -38,6 +48,7 @@ public final class LogMessageReader implements Runnable, AutoCloseable {
         while (running.get()) {
             try {
                 RawLogEntry raw = input.take();
+                rawObserver.accept(raw);
                 enrichmentQueue.put(parser.parse(raw));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();

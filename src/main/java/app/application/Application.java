@@ -7,6 +7,11 @@ import app.deck.tracking.DeckTracker;
 import app.deck.tracking.DeckTrackerListener;
 import app.deck.ui.DeckTrackerFrame;
 import app.draft.export.DraftAiExporter;
+import app.deckplanner.catalog.FormatCatalogRepository;
+import app.deckplanner.catalog.FormatCatalogService;
+import app.deckplanner.collection.ArenaCollectionLogParser;
+import app.deckplanner.collection.ArenaCollectionObserver;
+import app.deckplanner.collection.ArenaCollectionRepository;
 import app.draft.export.DraftSetRankingExporter;
 import app.draft.catalog.DraftSetCatalogService;
 import app.draft.model.DraftUiModel;
@@ -23,6 +28,7 @@ import app.model.log.ModelObject;
 import app.model.log.LogMessageInterface;
 import app.model.log.RawLogEntry;
 import app.enrichment.CardCache;
+import app.enrichment.CardEnrichmentService;
 import app.enrichment.CardImageCache;
 import app.enrichment.InformationCollector;
 import app.enrichment.ScryfallClient;
@@ -78,6 +84,18 @@ public final class Application implements AutoCloseable {
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "card-cache"));
     private final CardImageCache cardImageCache = new CardImageCache(
             Path.of(System.getProperty("user.home"), ".arena-log-viewer", "images"));
+    private final CardEnrichmentService cardEnrichment = new CardEnrichmentService(
+            scryfallClient, cardCache, Duration.ofMillis(110));
+    private final FormatCatalogRepository formatCatalogRepository =
+            new FormatCatalogRepository(gson, Path.of(
+                    System.getProperty("user.home"), ".arena-log-viewer", "format-catalog"));
+    private final FormatCatalogService formatCatalogService = new FormatCatalogService(
+            scryfallClient, formatCatalogRepository, cardEnrichment::acceptCatalogCard);
+    private final ArenaCollectionRepository arenaCollectionRepository =
+            new ArenaCollectionRepository(Path.of(
+                    System.getProperty("user.home"), ".arena-log-viewer", "arena-collection"));
+    private final ArenaCollectionObserver arenaCollectionObserver =
+            new ArenaCollectionObserver(new ArenaCollectionLogParser(), arenaCollectionRepository);
 
     private LogTailReader logTailReader;
     private LogMessageReader logMessageReader;
@@ -118,6 +136,7 @@ public final class Application implements AutoCloseable {
                 filteredLogQueue,
                 enrichmentQueue,
                 gson,
+                arenaCollectionObserver,
                 this::reportError);
         pipelineExecutor.submit(logMessageReader);
 
@@ -125,9 +144,7 @@ public final class Application implements AutoCloseable {
         informationCollector = new InformationCollector(
                 enrichmentQueue,
                 uiQueue,
-                scryfallClient,
-                cardCache,
-                Duration.ofMillis(110),
+                cardEnrichment,
                 restExecutor,
                 this::reportError);
         pipelineExecutor.submit(informationCollector);
@@ -251,6 +268,8 @@ public final class Application implements AutoCloseable {
         scryfallClient.close();
         if (deckCache != null) deckCache.close();
         if (coachingRepository != null) coachingRepository.close();
+        formatCatalogRepository.close();
+        arenaCollectionRepository.close();
         cardCache.close();
     }
 }
