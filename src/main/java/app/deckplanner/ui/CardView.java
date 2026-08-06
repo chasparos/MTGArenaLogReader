@@ -10,6 +10,8 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Rectangle;
+import java.awt.Font;
 import java.awt.Stroke;
 import java.awt.image.BufferedImage;
 
@@ -79,37 +81,49 @@ public final class CardView extends JComponent {
     }
 
 
+    static Rectangle selectedBadgeBounds(int width, int height) {
+        int badgeHeight = 36;
+        int badgeWidth = Math.min(Math.max(132, width - 34), 190);
+        return new Rectangle(Math.max(0, (width - badgeWidth) / 2), Math.max(0, height - badgeHeight), badgeWidth, badgeHeight);
+    }
+
+    static Rectangle considerationBadgeBounds(int width) {
+        int size = 38;
+        return new Rectangle(Math.max(0, width - size), 0, size, size);
+    }
+
     private static void paintSelectedBadge(Graphics2D g, int width, int height) {
-        Color background = AppColors.color("Component.accentColor", new Color(0xD9A441));
-        Color foreground = AppColors.color("Label.foreground", Color.BLACK);
+        Rectangle badge = selectedBadgeBounds(width, height);
+        Color background = new Color(82, 86, 92, 204);
+        Color foreground = new Color(250, 250, 250);
         String text = "selected";
+        Font oldFont = g.getFont();
+        g.setFont(oldFont.deriveFont(Font.BOLD, Math.max(13f, oldFont.getSize2D() + 2f)));
         FontMetrics metrics = g.getFontMetrics();
-        int icon = 15;
-        int padding = 8;
-        int badgeWidth = icon + 5 + metrics.stringWidth(text) + padding * 2;
-        int badgeHeight = Math.max(24, metrics.getHeight() + 8);
-        int x = Math.max(4, (width - badgeWidth) / 2);
-        int y = Math.max(4, height - badgeHeight - 8);
+        int icon = 20;
+        int contentWidth = icon + 7 + metrics.stringWidth(text);
+        int contentX = badge.x + (badge.width - contentWidth) / 2;
         g.setColor(background);
-        g.fillRoundRect(x, y, badgeWidth, badgeHeight, badgeHeight, badgeHeight);
-        g.setColor(AppColors.blend(background, Color.BLACK, .28f));
-        g.drawRoundRect(x, y, badgeWidth - 1, badgeHeight - 1, badgeHeight, badgeHeight);
-        SVG.paintTinted(g, "/svg/tap.svg", x + padding, y + (badgeHeight - icon) / 2, icon, icon, foreground);
+        g.fillRoundRect(badge.x, badge.y, badge.width, badge.height + 8, badge.height, badge.height);
+        g.setColor(new Color(25, 25, 25, 180));
+        g.drawRoundRect(badge.x, badge.y, badge.width - 1, badge.height + 7, badge.height, badge.height);
+        SVG.paintTinted(g, "/svg/tap.svg", contentX, badge.y + (badge.height - icon) / 2, icon, icon, foreground);
         g.setColor(foreground);
-        g.drawString(text, x + padding + icon + 5, y + (badgeHeight - metrics.getHeight()) / 2 + metrics.getAscent());
+        g.drawString(text, contentX + icon + 7,
+                badge.y + (badge.height - metrics.getHeight()) / 2 + metrics.getAscent());
+        g.setFont(oldFont);
     }
 
     private static void paintConsiderationBadge(Graphics2D g, int width) {
-        int size = 34;
-        int x = Math.max(4, width - size - 7);
-        int y = 7;
+        Rectangle badge = considerationBadgeBounds(width);
         Color background = AppColors.color("Component.focusColor", new Color(0x6B55B5));
         Color foreground = AppColors.color("Label.foreground", Color.WHITE);
         g.setColor(background);
-        g.fillOval(x, y, size, size);
+        g.fillOval(badge.x, badge.y, badge.width, badge.height);
         g.setColor(AppColors.blend(background, Color.BLACK, .3f));
-        g.drawOval(x, y, size - 1, size - 1);
-        SVG.paintTinted(g, "/svg/chaos.svg", x + 7, y + 7, size - 14, size - 14, foreground);
+        g.drawOval(badge.x, badge.y, badge.width - 1, badge.height - 1);
+        SVG.paintTinted(g, "/svg/chaos.svg", badge.x + 8, badge.y + 8,
+                badge.width - 16, badge.height - 16, foreground);
     }
 
     private static void stroke(Graphics2D g, int width, int height, Color color, float strokeWidth) {

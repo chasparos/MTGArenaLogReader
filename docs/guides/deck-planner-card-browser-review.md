@@ -11,9 +11,11 @@ Review at narrow, normal, and wide window widths. Confirm:
 - columns and card bounds recompute without overlap, clipping, or a jump to unrelated cards;
 - fast scrolling keeps placeholders stable and does not visibly load far-off cards;
 - delayed images replace only their own placeholders;
-- mouse hover, click selection, keyboard arrows, Space selection, and focus are visible;
-- resizing and result movement preserve logical selection and scroll position;
+- mouse hover, plain replacement selection, Ctrl toggle, Shift range, Ctrl+Shift additive range, keyboard arrows/Space, and focus are visible;
+- resizing and result movement preserve logical selection, range anchor behavior, and scroll position;
 - no persistent flicker, long EDT stall, or corrupted shared image is visible.
+
+- double-clicking a card adds it to consideration without selecting it, double-clicking a selected chip adds all selected cards, and clicking a consideration badge removes that card;
 
 Record any failed observation before DP-04 is marked complete. Production navigation and filter controls remain later roadmap work.
 

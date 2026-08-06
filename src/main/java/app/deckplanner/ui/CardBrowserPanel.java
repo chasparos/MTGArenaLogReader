@@ -52,8 +52,11 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private List<BrowserCard> cards = List.of();
     private CardGridLayout.Result layoutResult;
     private final LinkedHashSet<String> selectedIdentities = new LinkedHashSet<>();
-    private Set<String> underConsiderationIdentities = Set.of();
+    private final LinkedHashSet<String> underConsiderationIdentities = new LinkedHashSet<>();
     private int selectedIndex = -1;
+    private int selectionAnchorIndex = -1;
+    private LinkedHashSet<String> selectionBeforeClick = new LinkedHashSet<>();
+    private int selectedIndexBeforeClick = -1;
     private int focusedIndex = -1;
     private int hoveredIndex = -1;
     private int previousViewportY;
@@ -72,7 +75,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         addMouseListener(new MouseAdapter() {
             @Override public void mousePressed(MouseEvent event) {
                 requestFocusInWindow();
-                selectAt(event.getX(), event.getY());
+                handleMousePressed(event);
             }
             @Override public void mouseExited(MouseEvent event) {
                 setHoveredIndex(-1);
@@ -100,11 +103,10 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         this.cards = List.copyOf(cards == null ? List.of() : cards);
         Set<String> available = this.cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
         selectedIdentities.retainAll(available);
-        underConsiderationIdentities = underConsiderationIdentities.stream()
-                .filter(available::contains)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        underConsiderationIdentities.retainAll(available);
         selectedIndex = indexOfIdentity(selectedIdentity);
         if (selectedIndex < 0) selectedIndex = lastSelectedIndex();
+        selectionAnchorIndex = selectedIndex;
         focusedIndex = indexOfIdentity(focusedIdentity);
         hoveredIndex = -1;
         requestedIdentities = java.util.Set.of();
@@ -136,23 +138,39 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         Set<String> previous = Set.copyOf(selectedIdentities);
         selectedIdentities.clear();
         selectedIndex = -1;
+        selectionAnchorIndex = -1;
         repaintIdentities(previous);
     }
 
     public void setUnderConsiderationIdentities(Set<String> identities) {
         assertEdt();
-        Set<String> previous = underConsiderationIdentities;
+        Set<String> previous = Set.copyOf(underConsiderationIdentities);
         Set<String> available = cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
-        underConsiderationIdentities = identities == null ? Set.of() : identities.stream()
-                .filter(available::contains)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        underConsiderationIdentities.clear();
+        if (identities != null) identities.stream().filter(available::contains).forEach(underConsiderationIdentities::add);
         LinkedHashSet<String> changed = new LinkedHashSet<>(previous);
         changed.addAll(underConsiderationIdentities);
         repaintIdentities(changed);
     }
 
     public Set<String> underConsiderationIdentities() {
-        return underConsiderationIdentities;
+        return Collections.unmodifiableSet(new LinkedHashSet<>(underConsiderationIdentities));
+    }
+
+    public void addUnderConsiderationIdentities(java.util.Collection<String> identities) {
+        assertEdt();
+        if (identities == null) return;
+        Set<String> available = cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
+        LinkedHashSet<String> changed = new LinkedHashSet<>();
+        for (String identity : identities) {
+            if (available.contains(identity) && underConsiderationIdentities.add(identity)) changed.add(identity);
+        }
+        repaintIdentities(changed);
+    }
+
+    public void removeUnderConsiderationIdentity(String identity) {
+        assertEdt();
+        if (identity != null && underConsiderationIdentities.remove(identity)) repaintIndex(indexOfIdentity(identity));
     }
 
     /** Captures the first card intersecting the viewport plus its vertical pixel offset. */
@@ -216,24 +234,76 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         }));
     }
 
-    private void selectAt(int x, int y) {
+    private void handleMousePressed(MouseEvent event) {
         ensureLayout();
-        int index = layoutResult.indexAt(x, y);
+        int index = layoutResult.indexAt(event.getX(), event.getY());
         if (index < 0) return;
+        Rectangle bounds = layoutResult.bounds().get(index);
+        int localX = event.getX() - bounds.x;
+        int localY = event.getY() - bounds.y;
+        String identity = cards.get(index).identity();
+
+        if (event.getClickCount() == 1) {
+            selectionBeforeClick = new LinkedHashSet<>(selectedIdentities);
+            selectedIndexBeforeClick = selectedIndex;
+        }
+
+        if (underConsiderationIdentities.contains(identity)
+                && CardView.considerationBadgeBounds(bounds.width).contains(localX, localY)) {
+            if (event.getClickCount() == 1) removeUnderConsiderationIdentity(identity);
+            return;
+        }
+        if (selectedIdentities.contains(identity)
+                && CardView.selectedBadgeBounds(bounds.width, bounds.height).contains(localX, localY)) {
+            if (event.getClickCount() >= 2) addUnderConsiderationIdentities(selectedIdentities);
+            return;
+        }
+        if (event.getClickCount() >= 2) {
+            restoreSelectionBeforeClick();
+            addUnderConsiderationIdentities(List.of(identity));
+            focusedIndex = index;
+            repaintIndex(index);
+            return;
+        }
+
         int oldFocused = focusedIndex;
         focusedIndex = index;
-        toggleSelection(index);
+        applySelection(index, event.isControlDown(), event.isShiftDown());
         repaintIndex(oldFocused);
         repaintIndex(index);
     }
 
+    private void restoreSelectionBeforeClick() {
+        LinkedHashSet<String> changed = new LinkedHashSet<>(selectedIdentities);
+        changed.addAll(selectionBeforeClick);
+        selectedIdentities.clear();
+        selectedIdentities.addAll(selectionBeforeClick);
+        selectedIndex = selectedIndexBeforeClick;
+        selectionAnchorIndex = selectedIndex;
+        repaintIdentities(changed);
+    }
 
-    private void toggleSelection(int index) {
+    private void applySelection(int index, boolean control, boolean shift) {
         if (index < 0 || index >= cards.size()) return;
-        String identity = cards.get(index).identity();
-        if (!selectedIdentities.remove(identity)) selectedIdentities.add(identity);
-        selectedIndex = selectedIdentities.contains(identity) ? index : lastSelectedIndex();
-        repaintIndex(index);
+        LinkedHashSet<String> before = new LinkedHashSet<>(selectedIdentities);
+        if (shift) {
+            int anchor = selectionAnchorIndex >= 0 ? selectionAnchorIndex : (selectedIndex >= 0 ? selectedIndex : index);
+            if (!control) selectedIdentities.clear();
+            int from = Math.min(anchor, index);
+            int to = Math.max(anchor, index);
+            for (int current = from; current <= to; current++) selectedIdentities.add(cards.get(current).identity());
+        } else if (control) {
+            String identity = cards.get(index).identity();
+            if (!selectedIdentities.remove(identity)) selectedIdentities.add(identity);
+            selectionAnchorIndex = index;
+        } else {
+            selectedIdentities.clear();
+            selectedIdentities.add(cards.get(index).identity());
+            selectionAnchorIndex = index;
+        }
+        selectedIndex = selectedIdentities.contains(cards.get(index).identity()) ? index : lastSelectedIndex();
+        before.addAll(selectedIdentities);
+        repaintIdentities(before);
     }
 
     private int lastSelectedIndex() {
@@ -265,18 +335,28 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "up");
         getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "down");
         getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "select");
+        getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK), "toggle-select");
+        getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.SHIFT_DOWN_MASK), "range-select");
+        getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), "add-range-select");
         getActionMap().put("left", new AbstractAction() { @Override public void actionPerformed(ActionEvent e) { moveFocus(-1); }});
         getActionMap().put("right", new AbstractAction() { @Override public void actionPerformed(ActionEvent e) { moveFocus(1); }});
         getActionMap().put("up", new AbstractAction() { @Override public void actionPerformed(ActionEvent e) { ensureLayout(); moveFocus(-layoutResult.columns()); }});
         getActionMap().put("down", new AbstractAction() { @Override public void actionPerformed(ActionEvent e) { ensureLayout(); moveFocus(layoutResult.columns()); }});
-        getActionMap().put("select", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) {
-                if (focusedIndex < 0) return;
-                toggleSelection(focusedIndex);
-            }
-        });
+        getActionMap().put("select", selectionAction(false, false));
+        getActionMap().put("toggle-select", selectionAction(true, false));
+        getActionMap().put("range-select", selectionAction(false, true));
+        getActionMap().put("add-range-select", selectionAction(true, true));
     }
 
+
+    private Action selectionAction(boolean control, boolean shift) {
+        return new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent event) {
+                if (focusedIndex < 0) return;
+                applySelection(focusedIndex, control, shift);
+            }
+        };
+    }
     @Override public void updateUI() {
         super.updateUI();
         refreshThemeColors();

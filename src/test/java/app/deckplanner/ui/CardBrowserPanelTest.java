@@ -134,7 +134,8 @@ class CardBrowserPanelTest {
             holder[0].dispatchEvent(new java.awt.event.MouseEvent(holder[0],
                     java.awt.event.MouseEvent.MOUSE_PRESSED, 1L, 0, 20, 20, 1, false));
             holder[0].dispatchEvent(new java.awt.event.MouseEvent(holder[0],
-                    java.awt.event.MouseEvent.MOUSE_PRESSED, 2L, 0, 125, 20, 1, false));
+                    java.awt.event.MouseEvent.MOUSE_PRESSED, 2L, java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    125, 20, 1, false));
             holder[0].setUnderConsiderationIdentities(java.util.Set.of("b", "c", "missing"));
 
             assertEquals(java.util.Set.of("a", "b"), holder[0].selectedIdentities());
@@ -174,6 +175,58 @@ class CardBrowserPanelTest {
             expected.set(panel.getBackground().getRGB());
         });
         assertEquals(expected.get(), painted.get());
+    }
+
+    @Test
+    void followsWindowsSelectionAndConsiderationGestures() throws Exception {
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> CompletableFuture.completedFuture(Optional.empty()));
+            holder[0].setSize(460, 500);
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("a", "Alpha"),
+                    new CardBrowserPanel.BrowserCard("b", "Beta"),
+                    new CardBrowserPanel.BrowserCard("c", "Gamma"),
+                    new CardBrowserPanel.BrowserCard("d", "Delta")));
+
+            press(holder[0], 20, 20, 1, 0);
+            press(holder[0], 235, 20, 1, java.awt.event.InputEvent.CTRL_DOWN_MASK);
+            assertEquals(java.util.Set.of("a", "c"), holder[0].selectedIdentities());
+
+            press(holder[0], 350, 20, 1, java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+            assertEquals(java.util.Set.of("c", "d"), holder[0].selectedIdentities());
+
+            press(holder[0], 20, 20, 1, java.awt.event.InputEvent.CTRL_DOWN_MASK | java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+            assertEquals(java.util.Set.of("a", "b", "c", "d"), holder[0].selectedIdentities());
+
+            // Plain click replaces the previous multi-selection.
+            press(holder[0], 125, 20, 1, 0);
+            assertEquals(java.util.Set.of("b"), holder[0].selectedIdentities());
+
+            // Double-clicking a card adds it to consideration without changing selection.
+            press(holder[0], 235, 20, 1, 0);
+            press(holder[0], 235, 20, 2, 0);
+            assertEquals(java.util.Set.of("b"), holder[0].selectedIdentities());
+            assertEquals(java.util.Set.of("c"), holder[0].underConsiderationIdentities());
+
+            // Double-clicking the selected chip adds all selected cards.
+            press(holder[0], 150, 145, 1, 0);
+            press(holder[0], 150, 145, 2, 0);
+            assertEquals(java.util.Set.of("b", "c"), holder[0].underConsiderationIdentities());
+
+            // Clicking the consideration badge removes that card.
+            press(holder[0], 325, 15, 1, 0);
+            assertEquals(java.util.Set.of("b"), holder[0].underConsiderationIdentities());
+        });
+    }
+
+    private static void press(CardBrowserPanel panel, int x, int y, int clickCount, int modifiers) {
+        panel.dispatchEvent(new java.awt.event.MouseEvent(panel,
+                java.awt.event.MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), modifiers,
+                x, y, clickCount, false));
     }
 
 }

@@ -115,3 +115,11 @@ DP-04 human review found three presentation corrections: stale background pixels
 - Human review requested multi-select before DP-04 closure and distinct compact overlays for selection and under-consideration membership.
 - This slice adds identity-based toggle selection, a separate externally supplied consideration-membership set, a bottom-center tap-symbol `selected` chip, and a circular top-right chaos-symbol badge.
 - Consideration persistence, ordering, and add/remove workspace actions remain DP-06; DP-04 only owns browser display state and interaction.
+
+## 2026-08-06 — DP-04 standard selection gesture amendment
+
+- Human review requested standard Windows list-selection semantics and direct badge actions.
+- This slice changes plain click/Space to replacement selection, Ctrl to toggle, Shift to contiguous range, and Ctrl+Shift to additive range.
+- Card double-click adds only that card to consideration without changing selection; selected-chip double-click adds the full selected set; consideration-badge click removes one card.
+- The selected chip is enlarged, neutral gray at 80% opacity, and anchored flush to the bottom card edge.
+- DP-04 remains active pending one more human interaction pass.

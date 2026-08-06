@@ -136,3 +136,11 @@
 - The browser accepts a separate identity set for under-consideration membership. It is presentation state only in DP-04; persistence and workspace mutation remain DP-06.
 - Selection is rendered as a bottom-center theme-aware chip with `/svg/tap.svg` and the text `selected`, replacing the full-card selection outline.
 - Under-consideration membership is rendered as a circular theme-aware top-right badge using the general MTG `/svg/chaos.svg` symbol.
+
+## 2026-08-06 — DP-04 standard desktop selection and consideration gestures
+
+- Plain click/Space replaces selection, Ctrl toggles one card, Shift replaces selection with the contiguous anchor range, and Ctrl+Shift adds that range.
+- Selection and range anchors remain identity-aware across result replacement; browser selection is still transient DP-04 state.
+- Double-clicking a card adds it to the under-consideration set without changing selection. Double-clicking a selected chip adds every selected card. Clicking a visible consideration badge removes that card.
+- Badge hit targets are derived from the same geometry used for painting so interaction and rendering cannot drift apart.
+- The selected chip is a larger bottom-edge badge using neutral gray at 80% opacity; the circular consideration badge remains anchored to the top-right edge.
