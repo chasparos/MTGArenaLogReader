@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -25,6 +26,13 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         public BrowserCard {
             if (identity == null || identity.isBlank()) throw new IllegalArgumentException("identity required");
             name = name == null || name.isBlank() ? "Unknown card" : name;
+        }
+    }
+
+    /** Logical viewport position that survives responsive relayout and result reordering. */
+    public record ScrollAnchor(String identity, int offsetY) {
+        public ScrollAnchor {
+            if (identity == null || identity.isBlank()) throw new IllegalArgumentException("identity required");
         }
     }
 
@@ -104,6 +112,33 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     public Optional<BrowserCard> selectedCard() {
         return selectedIndex >= 0 ? Optional.of(cards.get(selectedIndex)) : Optional.empty();
+    }
+
+    /** Captures the first card intersecting the viewport plus its vertical pixel offset. */
+    public Optional<ScrollAnchor> captureScrollAnchor(Rectangle viewport) {
+        assertEdt();
+        ensureLayout();
+        if (viewport == null || cards.isEmpty()) return Optional.empty();
+        for (int index = 0; index < layoutResult.bounds().size(); index++) {
+            Rectangle bounds = layoutResult.bounds().get(index);
+            if (bounds.y + bounds.height > viewport.y) {
+                return Optional.of(new ScrollAnchor(cards.get(index).identity(), viewport.y - bounds.y));
+            }
+        }
+        int last = cards.size() - 1;
+        Rectangle bounds = layoutResult.bounds().get(last);
+        return Optional.of(new ScrollAnchor(cards.get(last).identity(), viewport.y - bounds.y));
+    }
+
+    /** Resolves a logical anchor against the current card order and responsive layout. */
+    public OptionalInt resolveScrollAnchorY(ScrollAnchor anchor) {
+        assertEdt();
+        if (anchor == null) return OptionalInt.empty();
+        ensureLayout();
+        int index = indexOfIdentity(anchor.identity());
+        if (index < 0) return OptionalInt.empty();
+        Rectangle bounds = layoutResult.bounds().get(index);
+        return OptionalInt.of(Math.max(0, bounds.y + anchor.offsetY()));
     }
 
     /** Called by the containing scroll pane when its visible rectangle changes. */

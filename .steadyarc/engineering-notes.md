@@ -98,3 +98,10 @@
 
 - The card browser resolves stable planning identities to enriched `CardInfo` before crossing the shared `CardImageCache` boundary; the panel itself remains independent of catalog/cache implementation details.
 - `DeckPlannerCardBrowserFixtures` writes deterministic 360x640, 760x640, and 1280x640 PNGs under `target/rendered-fixtures/deck-planner` for human responsive-layout review; generated evidence is not committed.
+
+
+## DP-04 viewport coordination and scroll anchoring
+
+- `CardBrowserScrollPane` owns viewport change notifications instead of requiring callers to manually forward every scroll event.
+- Scroll position is represented by stable card identity plus a vertical pixel offset, then resolved against the current responsive layout. This preserves the logical top card across width changes and filtered-result replacement when that card remains present.
+- Anchor restoration and viewport-driven image scheduling are EDT-confined; missing anchors degrade to the current viewport rather than guessing a replacement identity.

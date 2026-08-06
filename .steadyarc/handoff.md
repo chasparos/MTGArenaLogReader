@@ -76,3 +76,11 @@
 - **Scope:** Resolve browser identities to authoritative enriched `CardInfo`, delegate image loading asynchronously, and produce PNG fixtures for human responsive-layout review.
 - **Still out of scope:** Application frame/navigation wiring, human visual approval, filter widgets, and ownership overlays.
 - **Authority after change:** Codex remains active on bounded DP-04 slices.
+
+
+## 2026-08-06 — DP-04 scroll coordinator continuation
+
+- Added `CardBrowserPanel.ScrollAnchor` capture/resolution using stable identity plus viewport offset.
+- Added `CardBrowserScrollPane` to forward viewport changes, preserve anchor across responsive resize, and replace filtered card results without jumping when the anchor survives.
+- Added focused EDT tests for resize and filtered-result anchor retention.
+- DP-04 remains active; next review should decide whether this completes the browser foundation after human fixture review or whether a reusable card-view component is still required before DP-05 activation.
