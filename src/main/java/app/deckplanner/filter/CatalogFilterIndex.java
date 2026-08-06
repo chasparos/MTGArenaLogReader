@@ -25,8 +25,9 @@ public final class CatalogFilterIndex {
                 .filter(card -> card.tags().containsAll(effective.selectedTags())).toList();
     }
     public Map<SemanticTag, Long> tagCloud(CardFilterState state) {
-        CardFilterState structuredOnly = (state == null ? CardFilterState.empty() : state).withoutTags();
-        return cards.stream().filter(card -> matchesStructured(card, structuredOnly))
+        CardFilterState effective = state == null ? CardFilterState.empty() : state;
+        return cards.stream().filter(card -> matchesStructured(card, effective))
+                .filter(card -> card.tags().containsAll(effective.selectedTags()))
                 .flatMap(card -> card.tags().stream()).collect(Collectors.groupingBy(
                         tag -> tag, TreeMap::new, Collectors.counting()));
     }

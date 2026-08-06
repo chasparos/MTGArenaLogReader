@@ -43,7 +43,10 @@ class DeckPlannerWorkspaceTest {
         });
 
         await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
-        assertTrue(onEdt(() -> findButtonText(workspaceRef.get().filters(), "Mill  1")));
+        assertTrue(onEdt(() -> {
+            AbstractButton mill = findButton(workspaceRef.get().filters(), "Mill");
+            return mill != null && "1 matching card".equals(mill.getToolTipText());
+        }));
 
         SwingUtilities.invokeAndWait(() -> model.toggleColor(CardColor.BLUE));
         await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
@@ -87,12 +90,15 @@ class DeckPlannerWorkspaceTest {
         return card;
     }
 
-    private static boolean findButtonText(Container root, String text) {
+    private static AbstractButton findButton(Container root, String text) {
         for (Component component : root.getComponents()) {
-            if (component instanceof AbstractButton button && text.equals(button.getText())) return true;
-            if (component instanceof Container container && findButtonText(container, text)) return true;
+            if (component instanceof AbstractButton button && text.equals(button.getText())) return button;
+            if (component instanceof Container container) {
+                AbstractButton nested = findButton(container, text);
+                if (nested != null) return nested;
+            }
         }
-        return false;
+        return null;
     }
 
     private static boolean containsLabel(Container root, String text) {

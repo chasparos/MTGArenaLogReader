@@ -74,7 +74,7 @@ Acceptance evidence:
 - Base-type extraction handles multi-face cards and type lines containing supertypes/subtypes.
 - Mana ranges handle lands, split/adventure/modal cards, and fractional/exceptional values consistently.
 - Tag rules are deterministic and versioned; tests cover `mill`, `sacrifice`, `target`, zone terms, printed keywords, and `all creatures` without naïve substring false positives.
-- Structured filters combine predictably, selected tags add an AND layer, same-category multi-selection semantics are documented, and tag-cloud counts are computed from the structured-filter result.
+- Structured filters combine predictably, selected tags add an AND layer, same-category multi-selection semantics are documented, and tag-cloud counts are recomputed against the active selected-tag result.
 
 Completion evidence (2026-08-06):
 
@@ -82,7 +82,7 @@ Completion evidence (2026-08-06):
 - Base types are extracted from top-level and face type lines before subtypes, covering modal and other multi-face cards.
 - Mana filtering uses Scryfall's top-level layout-aware `cmc`, preserves fractional values, and normalizes omitted/invalid values to zero; focused tests cover split, adventure, modal, land, fractional, and invalid-range cases.
 - `CardTagRules.VERSION` fixes deterministic schema version 1. Word-aware rules cover printed keywords, mill, sacrifice, target, graveyard/exile/library/hand/battlefield, and `all creatures` while avoiding substring false positives.
-- Selected tags use global AND semantics, including selections within the same category. Tag-cloud counts are calculated after structured filtering and before the selected-tag layer.
+- Selected tags use global AND semantics, including selections within the same category. Tag-cloud counts are calculated after structured filtering and the active selected-tag AND layer so each activation recounts the remaining refinements.
 - Local validation passed: 174 tests, zero failures/errors/skips at source commit `41a86e54c6c1d77b6003096f7b79ef3d9134b8e8`; the final acceptance-tightening patch adds focused mana-policy and same-category tests for the next validation run.
 
 ### DP-04 — Responsive card browser and asynchronous images (complete)
@@ -100,7 +100,7 @@ Acceptance evidence:
 
 ### DP-05 — Filter controls and interaction quality (active)
 
-Current slice: human review of the composed filter workspace and explicit result states.
+Current slice: human-review corrections for wrapping compact MTG-styled controls, dual-handle mana range, and active-tag faceted counts.
 
 Add appealing click-first controls for format, colors, base types, mana range, collection status, and categorized tags, with clear active states and fast reset/navigation.
 

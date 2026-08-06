@@ -2,6 +2,7 @@ package app.deckplanner.ui;
 
 import app.deckplanner.filter.*;
 import app.ui.AppColors;
+import app.ui.SvgIcon;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -9,44 +10,45 @@ import java.awt.*;
 import java.util.List;
 import java.util.*;
 
-/** Click-first filter controls bound to a widget-independent {@link DeckPlannerFilterModel}. */
-public final class DeckPlannerFilterPanel extends JPanel {
+/** Click-first, wrapping filter controls bound to a widget-independent {@link DeckPlannerFilterModel}. */
+public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
     private static final List<String> DEFAULT_FORMATS = List.of("standard", "alchemy", "historic", "timeless", "explorer", "brawl");
+    private static final int FILTER_WIDTH = 410;
     private final DeckPlannerFilterModel model;
     private final JComboBox<String> formatBox;
     private final Map<CardColor, FilterChip> colorChips = new EnumMap<>(CardColor.class);
-    private final FilterChip colorlessChip = new FilterChip("Colorless");
+    private final FilterChip colorlessChip = new FilterChip("Colorless", new SvgIcon("/svg/artifact.svg", 14), 94);
     private final Map<BaseCardType, FilterChip> typeChips = new EnumMap<>(BaseCardType.class);
     private final Map<SemanticTag, FilterChip> tagChips = new LinkedHashMap<>();
-    private final Map<SemanticTag, String> tagLabels = new LinkedHashMap<>();
-    private final JSpinner manaMinimum = new JSpinner(new SpinnerNumberModel(0.0, 0.0, 30.0, 0.5));
-    private final JSpinner manaMaximum = new JSpinner(new SpinnerNumberModel(30.0, 0.0, 30.0, 0.5));
+    private final ManaValueRangeControl manaRange = new ManaValueRangeControl();
     private boolean syncing;
 
     public DeckPlannerFilterPanel(DeckPlannerFilterModel model, Collection<SemanticTag> availableTags) {
         this.model = Objects.requireNonNull(model);
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-        setBorder(new EmptyBorder(12, 12, 12, 12));
+        setBorder(new EmptyBorder(10, 10, 10, 10));
         setOpaque(true);
         formatBox = new JComboBox<>(formatsWithCurrent(model.state().format()).toArray(String[]::new));
-        formatBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+        formatBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         buildControls(availableTags == null ? List.of() : availableTags);
         bindActions();
         model.addListener(state -> SwingUtilities.invokeLater(() -> syncFromModel(state)));
         syncFromModel(model.state());
+        applyControlColors();
     }
 
     @Override public void updateUI() {
         super.updateUI();
         setBackground(AppColors.color("Panel.background", new Color(0x202328)));
         setForeground(AppColors.color("Label.foreground", Color.WHITE));
+        if (colorChips != null) applyControlColors();
     }
 
     private void buildControls(Collection<SemanticTag> tags) {
         add(section("Format", formatBox));
         JPanel colors = flow();
         for (CardColor color : CardColor.values()) {
-            FilterChip chip = new FilterChip(color.name().substring(0, 1) + color.name().substring(1).toLowerCase(Locale.ROOT));
+            FilterChip chip = new FilterChip(title(color.name()), new SvgIcon("/svg/" + color.symbol().toLowerCase(Locale.ROOT) + ".svg", 14), 82);
             colorChips.put(color, chip);
             colors.add(chip);
         }
@@ -54,14 +56,12 @@ public final class DeckPlannerFilterPanel extends JPanel {
         add(section("Colors", colors));
 
         JPanel semantics = flow();
-        JRadioButton printed = new JRadioButton("Card colors");
-        JRadioButton identity = new JRadioButton("Color identity");
+        JRadioButton printed = compactRadio("Printed colors");
+        JRadioButton identity = compactRadio("Color identity");
         ButtonGroup sourceGroup = new ButtonGroup(); sourceGroup.add(printed); sourceGroup.add(identity);
-        JRadioButton inclusive = new JRadioButton("Inclusive");
-        JRadioButton exact = new JRadioButton("Exact");
+        JRadioButton inclusive = compactRadio("Inclusive");
+        JRadioButton exact = compactRadio("Exact");
         ButtonGroup modeGroup = new ButtonGroup(); modeGroup.add(inclusive); modeGroup.add(exact);
-        printed.setActionCommand("source:card"); identity.setActionCommand("source:identity");
-        inclusive.setActionCommand("mode:inclusive"); exact.setActionCommand("mode:exact");
         semantics.add(printed); semantics.add(identity); semantics.add(inclusive); semantics.add(exact);
         semantics.putClientProperty("printed", printed); semantics.putClientProperty("identity", identity);
         semantics.putClientProperty("inclusive", inclusive); semantics.putClientProperty("exact", exact);
@@ -69,39 +69,36 @@ public final class DeckPlannerFilterPanel extends JPanel {
 
         JPanel types = flow();
         for (BaseCardType type : BaseCardType.values()) {
-            FilterChip chip = new FilterChip(title(type.name()));
-            typeChips.put(type, chip); types.add(chip);
+            FilterChip chip = new FilterChip(title(type.name()), typeIcon(type), 116);
+            typeChips.put(type, chip);
+            types.add(chip);
         }
         add(section("Base types", types));
 
-        JPanel mana = flow();
-        mana.add(new JLabel("Minimum")); mana.add(manaMinimum);
-        mana.add(new JLabel("Maximum")); mana.add(manaMaximum);
-        JButton allMana = new JButton("Any mana value");
-        allMana.setActionCommand("mana:any"); mana.add(allMana);
-        mana.putClientProperty("allMana", allMana);
-        add(section("Mana value", mana));
+        add(section("Mana value", manaRange));
 
         Map<TagCategory, List<SemanticTag>> byCategory = new EnumMap<>(TagCategory.class);
         for (SemanticTag tag : new TreeSet<>(tags)) byCategory.computeIfAbsent(tag.category(), ignored -> new ArrayList<>()).add(tag);
         for (Map.Entry<TagCategory, List<SemanticTag>> entry : byCategory.entrySet()) {
             JPanel tagPanel = flow();
             for (SemanticTag tag : entry.getValue()) {
-                FilterChip chip = new FilterChip(tag.label());
+                FilterChip chip = new FilterChip(tag.label(), tagIcon(entry.getKey()), 116);
                 tagChips.put(tag, chip);
-                tagLabels.put(tag, tag.label());
                 tagPanel.add(chip);
             }
             add(section(title(entry.getKey().name()), tagPanel));
         }
-        JButton reset = new JButton("Reset filters");
+        JButton reset = new JButton("Reset filters", new SvgIcon("/svg/untap.svg", 14));
         reset.setAlignmentX(Component.LEFT_ALIGNMENT);
         reset.setActionCommand("reset");
-        add(Box.createVerticalStrut(8)); add(reset);
-        putClientProperty("semantics", semantics); putClientProperty("mana", mana); putClientProperty("reset", reset);
+        reset.setMaximumSize(new Dimension(150, 30));
+        add(Box.createVerticalStrut(6));
+        add(reset);
+        putClientProperty("semantics", semantics);
+        putClientProperty("reset", reset);
     }
 
-    /** Updates visible refinement counts without changing the selected tag state. */
+    /** Updates visible faceted counts without changing selected tag state or chip geometry. */
     public void setTagCloud(Map<SemanticTag, Long> counts) {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> setTagCloud(counts));
@@ -110,9 +107,8 @@ public final class DeckPlannerFilterPanel extends JPanel {
         Map<SemanticTag, Long> effective = counts == null ? Map.of() : counts;
         tagChips.forEach((tag, chip) -> {
             long count = Math.max(0L, effective.getOrDefault(tag, 0L));
-            chip.setText(tagLabels.get(tag) + "  " + count);
+            chip.setCount(count);
             chip.setEnabled(count > 0L || chip.isSelected());
-            chip.setToolTipText(count + (count == 1L ? " matching card" : " matching cards"));
         });
     }
 
@@ -127,52 +123,113 @@ public final class DeckPlannerFilterPanel extends JPanel {
         ((JRadioButton) semantics.getClientProperty("identity")).addActionListener(e -> { if (!syncing) model.setColorSource(ColorSource.COLOR_IDENTITY); });
         ((JRadioButton) semantics.getClientProperty("inclusive")).addActionListener(e -> { if (!syncing) model.setColorMatchMode(ColorMatchMode.INCLUSIVE); });
         ((JRadioButton) semantics.getClientProperty("exact")).addActionListener(e -> { if (!syncing) model.setColorMatchMode(ColorMatchMode.EXACT); });
-        manaMinimum.addChangeListener(e -> applyMana()); manaMaximum.addChangeListener(e -> applyMana());
-        JPanel mana = (JPanel) getClientProperty("mana");
-        ((JButton) mana.getClientProperty("allMana")).addActionListener(e -> { if (!syncing) model.setManaValueRange(null); });
+        manaRange.setRangeListener((minimum, maximum) -> {
+            if (syncing) return;
+            if (minimum == 0 && maximum == ManaValueRangeControl.MAX_BUCKET) model.setManaValueRange(null);
+            else model.setManaValueRange(new ManaValueRange(minimum, maximum == ManaValueRangeControl.MAX_BUCKET ? 30 : maximum));
+        });
         ((JButton) getClientProperty("reset")).addActionListener(e -> model.resetFilters());
-    }
-
-    private void applyMana() {
-        if (syncing) return;
-        double min = ((Number) manaMinimum.getValue()).doubleValue();
-        double max = ((Number) manaMaximum.getValue()).doubleValue();
-        if (min <= max) model.setManaValueRange(new ManaValueRange(min, max));
     }
 
     private void syncFromModel(DeckPlannerFilterModel.State state) {
         syncing = true;
         try {
             formatBox.setSelectedItem(state.format());
-            CardFilterState f = state.filters();
-            colorChips.forEach((color, chip) -> chip.setSelected(f.colors().contains(color)));
-            colorlessChip.setSelected(f.includeColorless());
-            typeChips.forEach((type, chip) -> chip.setSelected(f.baseTypes().contains(type)));
-            tagChips.forEach((tag, chip) -> chip.setSelected(f.selectedTags().contains(tag)));
+            CardFilterState filters = state.filters();
+            colorChips.forEach((color, chip) -> chip.setSelected(filters.colors().contains(color)));
+            colorlessChip.setSelected(filters.includeColorless());
+            typeChips.forEach((type, chip) -> chip.setSelected(filters.baseTypes().contains(type)));
+            tagChips.forEach((tag, chip) -> chip.setSelected(filters.selectedTags().contains(tag)));
             JPanel semantics = (JPanel) getClientProperty("semantics");
-            ((JRadioButton) semantics.getClientProperty(f.colorSource() == ColorSource.CARD_COLORS ? "printed" : "identity")).setSelected(true);
-            ((JRadioButton) semantics.getClientProperty(f.colorMatchMode() == ColorMatchMode.INCLUSIVE ? "inclusive" : "exact")).setSelected(true);
-            if (f.manaValueRange() == null) { manaMinimum.setValue(0.0); manaMaximum.setValue(30.0); }
-            else { manaMinimum.setValue(f.manaValueRange().minimum()); manaMaximum.setValue(f.manaValueRange().maximum()); }
-        } finally { syncing = false; }
+            ((JRadioButton) semantics.getClientProperty(filters.colorSource() == ColorSource.CARD_COLORS ? "printed" : "identity")).setSelected(true);
+            ((JRadioButton) semantics.getClientProperty(filters.colorMatchMode() == ColorMatchMode.INCLUSIVE ? "inclusive" : "exact")).setSelected(true);
+            ManaValueRange range = filters.manaValueRange();
+            manaRange.setRange(range == null ? 0 : bucket(range.minimum()), range == null ? ManaValueRangeControl.MAX_BUCKET : bucket(range.maximum()));
+        } finally {
+            syncing = false;
+        }
     }
 
     private JPanel section(String title, Component content) {
-        JPanel panel = new JPanel(new BorderLayout(0, 6));
-        panel.setOpaque(false); panel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel label = new JLabel(title); label.setFont(label.getFont().deriveFont(Font.BOLD));
-        panel.add(label, BorderLayout.NORTH); panel.add(content, BorderLayout.CENTER);
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, content.getPreferredSize().height + 30));
-        panel.setBorder(new EmptyBorder(0, 0, 10, 0));
+        JPanel panel = new JPanel(new BorderLayout(0, 4));
+        panel.setOpaque(false);
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel label = new JLabel(title);
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+        panel.add(label, BorderLayout.NORTH);
+        panel.add(content, BorderLayout.CENTER);
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        panel.setBorder(new EmptyBorder(0, 0, 8, 0));
         return panel;
     }
 
-    private JPanel flow() { JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4)); p.setOpaque(false); return p; }
-    private List<String> formatsWithCurrent(String current) {
-        LinkedHashSet<String> formats = new LinkedHashSet<>(); formats.add(current); formats.addAll(DEFAULT_FORMATS); return List.copyOf(formats);
+    private JPanel flow() {
+        JPanel panel = new JPanel(new WrapLayout(FlowLayout.LEFT, 5, 4));
+        panel.setOpaque(false);
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return panel;
     }
+
+    private JRadioButton compactRadio(String label) {
+        JRadioButton button = new JRadioButton(label);
+        button.setOpaque(false);
+        button.setMargin(new Insets(1, 2, 1, 4));
+        button.setFont(button.getFont().deriveFont(11f));
+        return button;
+    }
+
+    private void applyControlColors() {
+        if (colorChips.isEmpty()) return;
+        colorChips.get(CardColor.WHITE).setForeground(new Color(0xF6E7C1));
+        colorChips.get(CardColor.BLUE).setForeground(new Color(0x62B5E5));
+        colorChips.get(CardColor.BLACK).setForeground(new Color(0xB9A7C8));
+        colorChips.get(CardColor.RED).setForeground(new Color(0xE76F51));
+        colorChips.get(CardColor.GREEN).setForeground(new Color(0x72B879));
+        colorlessChip.setForeground(new Color(0xC8CDD3));
+    }
+
+    private Icon typeIcon(BaseCardType type) {
+        String resource = switch (type) {
+            case CREATURE -> "/svg/creature.svg";
+            case ARTIFACT -> "/svg/artifact.svg";
+            case ENCHANTMENT -> "/svg/enchantment.svg";
+            case INSTANT -> "/svg/instant.svg";
+            case SORCERY -> "/svg/sorcery.svg";
+            case LAND -> "/svg/land.svg";
+            case PLANESWALKER -> "/svg/planeswalker.svg";
+            case BATTLE -> "/svg/chaos.svg";
+        };
+        return new SvgIcon(resource, 14);
+    }
+
+    private Icon tagIcon(TagCategory category) {
+        return new SvgIcon(switch (category) {
+            case KEYWORD -> "/svg/rarity.svg";
+            case ACTION -> "/svg/tap.svg";
+            case ZONE -> "/svg/land.svg";
+            case CONCEPT -> "/svg/chaos.svg";
+        }, 13);
+    }
+
+    private int bucket(double value) {
+        return Math.max(0, Math.min(ManaValueRangeControl.MAX_BUCKET, (int) Math.round(value)));
+    }
+
+    private List<String> formatsWithCurrent(String current) {
+        LinkedHashSet<String> formats = new LinkedHashSet<>();
+        formats.add(current);
+        formats.addAll(DEFAULT_FORMATS);
+        return List.copyOf(formats);
+    }
+
     private static String title(String value) {
         String lower = value.toLowerCase(Locale.ROOT).replace('_', ' ');
         return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
     }
+
+    @Override public Dimension getPreferredScrollableViewportSize() { return new Dimension(FILTER_WIDTH, 640); }
+    @Override public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 28; }
+    @Override public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) { return Math.max(28, visibleRect.height - 28); }
+    @Override public boolean getScrollableTracksViewportWidth() { return true; }
+    @Override public boolean getScrollableTracksViewportHeight() { return false; }
 }

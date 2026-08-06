@@ -85,7 +85,7 @@ class CatalogFilterIndexTest {
         assertThrows(IllegalArgumentException.class, () -> new ManaValueRange(0, Double.POSITIVE_INFINITY));
     }
 
-    @Test void selectedTagsAreAnAndLayerButCloudIgnoresTheTagLayer() {
+    @Test void selectedTagsAreAnAndLayerAndCloudRecountsAgainstTheActiveTagLayer() {
         CardInfo both = card("both", List.of("B"), List.of("B"), "Sorcery", 2.0,
                 "Target player mills two cards.", List.of());
         CardInfo millOnly = card("mill", List.of("B"), List.of("B"), "Sorcery", 2.0,
@@ -95,11 +95,16 @@ class CatalogFilterIndexTest {
         CatalogFilterIndex index = index(both, millOnly, targetOnly);
         SemanticTag mill = new SemanticTag(TagCategory.ACTION, "mill", "Mill");
         SemanticTag target = new SemanticTag(TagCategory.ACTION, "target", "Target");
+        CardFilterState millState = new CardFilterState(Set.of(CardColor.BLACK), false, ColorSource.CARD_COLORS,
+                ColorMatchMode.EXACT, Set.of(), null, Set.of(mill));
+        assertEquals(2L, index.tagCloud(millState).get(mill));
+        assertEquals(1L, index.tagCloud(millState).get(target));
+
         CardFilterState state = new CardFilterState(Set.of(CardColor.BLACK), false, ColorSource.CARD_COLORS,
                 ColorMatchMode.EXACT, Set.of(), null, Set.of(mill, target));
         assertEquals(List.of("both"), names(index.filter(state)));
-        assertEquals(2L, index.tagCloud(state).get(mill));
-        assertEquals(2L, index.tagCloud(state).get(target));
+        assertEquals(1L, index.tagCloud(state).get(mill));
+        assertEquals(1L, index.tagCloud(state).get(target));
 
         // Same-category selections remain AND, not OR.
         SemanticTag sacrifice = new SemanticTag(TagCategory.ACTION, "sacrifice", "Sacrifice");

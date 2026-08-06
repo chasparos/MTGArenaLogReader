@@ -21,7 +21,7 @@
 ## Delegation
 
 - **Requested action:** Proceed to DP-05 after human approval of DP-04.
-- **Completion criteria:** Color/color-identity semantics, base types, mana ranges, semantic tags, structured filtering, selected-tag AND behavior, and pre-tag-layer cloud counts are deterministic and tested.
+- **Completion criteria:** Color/color-identity semantics, base types, mana ranges, semantic tags, structured filtering, selected-tag AND behavior, and active-tag faceted cloud counts are deterministic and tested.
 - **Current authority:** Implement and validate DP-05 only. DP-06 and later items remain inactive except for roadmap/deferred dependency annotations.
 - **Constraints:** Do not add ownership inference or block catalog filtering on collection data. Keep the filter model independent of future Swing widgets.
 - **Files or areas in scope:** Deck Planner filter state, controls, interaction quality, explicit catalog states, focused tests, and Steady Arc continuity memory.
@@ -151,3 +151,7 @@ DP-04 human review found three presentation corrections: stale background pixels
 - Added a standalone composed-workspace preview with a representative synthetic catalog, delayed images, live filters/tag counts, and READY/PARTIAL/OFFLINE availability controls.
 - Added a repository-owned direct-Java launcher and structural EDT test.
 - DP-05 remains active pending human review of rapid filter interaction, keyboard focus, reset behavior, explicit result states, and responsive browser stability.
+
+## 2026-08-06 — DP-05 workspace human-review correction
+
+Human review approved the composed behavior but found filter-column clipping, oversized/unstable chip geometry, weak MTG visual language, an unsuitable spinner-based mana range, and tag counts that vanished on rollover and did not recount after tag selection. This bounded correction introduces wrapping compact icon controls, a 0–7+ dual-handle mana selector, stable painted count pills, and active-tag faceted recounting. DP-05 remains active pending rerun of the workspace preview.

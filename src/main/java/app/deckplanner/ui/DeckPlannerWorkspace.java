@@ -58,7 +58,8 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         filterScroll.setBorder(BorderFactory.createEmptyBorder());
         filterScroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
         filterScroll.getViewport().setBackground(filters.getBackground());
-        filterScroll.setPreferredSize(new Dimension(330, 600));
+        filterScroll.setPreferredSize(new Dimension(430, 600));
+        filterScroll.setMinimumSize(new Dimension(390, 300));
 
         availabilityBanner.setOpaque(true);
         availabilityBanner.setBorder(new EmptyBorder(6, 10, 6, 10));
