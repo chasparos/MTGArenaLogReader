@@ -55,19 +55,57 @@ class CatalogFilterIndexTest {
         assertFalse(index.cards().get(1).tags().stream().anyMatch(tag -> tag.key().equals("hand")));
     }
 
+    @Test void manaValuesUseTopLevelLayoutAwareScryfallValueAndRetainFractions() {
+        CardInfo split = card("split", List.of("U", "R"), List.of("U", "R"), "Instant // Sorcery", 7.0,
+                "Draw cards. // Deal damage.", List.of());
+        split.setLayout("split");
+        CardInfo adventure = card("adventure", List.of("G"), List.of("G"), null, 3.0,
+                null, List.of());
+        adventure.setLayout("adventure");
+        CardFaceInfo creature = new CardFaceInfo(); creature.setTypeLine("Creature — Beast");
+        CardFaceInfo spell = new CardFaceInfo(); spell.setTypeLine("Sorcery — Adventure");
+        adventure.setCardFaces(List.of(creature, spell));
+        CardInfo modal = card("modal", List.of("B"), List.of("B"), null, 2.5,
+                null, List.of());
+        modal.setLayout("modal_dfc");
+        CardFaceInfo front = new CardFaceInfo(); front.setTypeLine("Creature — Vampire");
+        CardFaceInfo back = new CardFaceInfo(); back.setTypeLine("Land");
+        modal.setCardFaces(List.of(front, back));
+        CardInfo land = card("land", List.of(), List.of("U"), "Land — Island", null,
+                "{T}: Add {U}.", List.of());
+
+        CatalogFilterIndex index = index(split, adventure, modal, land);
+        assertEquals(List.of("split"), names(index.filter(new CardFilterState(Set.of(), false,
+                ColorSource.CARD_COLORS, ColorMatchMode.INCLUSIVE, Set.of(), new ManaValueRange(7, 7), Set.of()))));
+        assertEquals(List.of("modal"), names(index.filter(new CardFilterState(Set.of(), false,
+                ColorSource.CARD_COLORS, ColorMatchMode.INCLUSIVE, Set.of(), new ManaValueRange(2.5, 2.5), Set.of()))));
+        assertEquals(List.of("land"), names(index.filter(new CardFilterState(Set.of(), false,
+                ColorSource.CARD_COLORS, ColorMatchMode.INCLUSIVE, Set.of(BaseCardType.LAND), new ManaValueRange(0, 0), Set.of()))));
+        assertThrows(IllegalArgumentException.class, () -> new ManaValueRange(-1, 2));
+        assertThrows(IllegalArgumentException.class, () -> new ManaValueRange(0, Double.POSITIVE_INFINITY));
+    }
+
     @Test void selectedTagsAreAnAndLayerButCloudIgnoresTheTagLayer() {
         CardInfo both = card("both", List.of("B"), List.of("B"), "Sorcery", 2.0,
                 "Target player mills two cards.", List.of());
         CardInfo millOnly = card("mill", List.of("B"), List.of("B"), "Sorcery", 2.0,
                 "Mill two cards.", List.of());
-        CatalogFilterIndex index = index(both, millOnly);
+        CardInfo targetOnly = card("target", List.of("B"), List.of("B"), "Instant", 2.0,
+                "Target creature gets -2/-2.", List.of());
+        CatalogFilterIndex index = index(both, millOnly, targetOnly);
         SemanticTag mill = new SemanticTag(TagCategory.ACTION, "mill", "Mill");
         SemanticTag target = new SemanticTag(TagCategory.ACTION, "target", "Target");
         CardFilterState state = new CardFilterState(Set.of(CardColor.BLACK), false, ColorSource.CARD_COLORS,
                 ColorMatchMode.EXACT, Set.of(), null, Set.of(mill, target));
         assertEquals(List.of("both"), names(index.filter(state)));
         assertEquals(2L, index.tagCloud(state).get(mill));
-        assertEquals(1L, index.tagCloud(state).get(target));
+        assertEquals(2L, index.tagCloud(state).get(target));
+
+        // Same-category selections remain AND, not OR.
+        SemanticTag sacrifice = new SemanticTag(TagCategory.ACTION, "sacrifice", "Sacrifice");
+        CardFilterState sameCategory = new CardFilterState(Set.of(), false, ColorSource.CARD_COLORS,
+                ColorMatchMode.INCLUSIVE, Set.of(), null, Set.of(mill, target, sacrifice));
+        assertTrue(index.filter(sameCategory).isEmpty());
     }
 
     private CatalogFilterIndex index(CardInfo... cards) {

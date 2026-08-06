@@ -9,7 +9,6 @@ import java.util.stream.Collectors;
 
 /** Immutable searchable projection of one completed format catalog snapshot. */
 public final class CatalogFilterIndex {
-    private static final Set<String> LAND_LAYOUTS_WITH_ZERO_MV = Set.of("normal", "modal_dfc", "transform", "reversible_card");
     private final List<IndexedCatalogCard> cards;
 
     public CatalogFilterIndex(FormatCatalogRepository.Snapshot snapshot) {
@@ -66,11 +65,16 @@ public final class CatalogFilterIndex {
         String left = typeLine.split("[—-]", 2)[0].toUpperCase(Locale.ROOT);
         for (BaseCardType type : BaseCardType.values()) if (PatternWord.contains(left, type.name())) result.add(type);
     }
+    /**
+     * Uses Scryfall's top-level {@code cmc} exactly as the planning mana value.
+     *
+     * <p>That field already applies Scryfall's layout-aware rules for split, adventure, transform,
+     * and modal cards. Fractional values are retained. Missing or invalid values fall back to zero,
+     * which is also the correct value for lands whose payload omitted {@code cmc}.</p>
+     */
     private double manaValue(CardInfo card) {
-        if (card.getCmc() != null && Double.isFinite(card.getCmc())) return card.getCmc();
-        // Scryfall normally supplies cmc. Lands with omitted CMC are consistently zero.
-        return baseTypes(card).contains(BaseCardType.LAND) && LAND_LAYOUTS_WITH_ZERO_MV.contains(
-                card.getLayout() == null ? "normal" : card.getLayout()) ? 0d : 0d;
+        Double cmc = card.getCmc();
+        return cmc != null && Double.isFinite(cmc) && cmc >= 0d ? cmc : 0d;
     }
     private static final class PatternWord {
         static boolean contains(String text, String word) { return Arrays.asList(text.split("\\s+")).contains(word); }

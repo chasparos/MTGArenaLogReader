@@ -67,3 +67,9 @@
 - Current production client `2026.61.30.13636` did not publish `PlayerInventory.GetPlayerCardsV3` or a complete bare numeric ownership map in detailed `Player.log` captures after Collection browsing, Deck Builder entry, arbitrary owned/unowned card additions, and deck save.
 - Deck save publishes a full `DeckUpsertDeckV3` definition, including unowned cards, so it is explicit negative evidence for using deck membership as ownership.
 - Ownership-dependent Deck Planner behavior is deferred under `SA-MTGA-DEF-003`; catalog filtering and semantic indexing continue independently with collection quantity unknown.
+
+### DP-03 filter semantics
+
+- Structured filter groups combine with AND semantics. Base-type selections are OR within the base-type group because a multi-face card can satisfy any selected base type.
+- Selected semantic tags are an additional global AND layer. Multiple selections from the same tag category are also AND; categories do not imply an OR shortcut.
+- Deck Planner mana-value filtering uses Scryfall's top-level `cmc`, preserving fractional values. Scryfall's top-level value is treated as the layout-aware value for split, adventure, transform, and modal cards. Missing or invalid values normalize to zero, including lands whose payload omits `cmc`.
