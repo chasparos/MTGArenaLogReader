@@ -11,9 +11,11 @@ if (-not (Test-Path -LiteralPath $mavenWrapper -PathType Leaf)) {
 
 Set-Location $repoRoot
 $mavenArguments = @(
-    "-q"
-    "-DskipTests"
-    "-Dexec.mainClass=devtools.DeckPlannerCardBrowserPreview"
+    "--quiet"
+    "--define"
+    "skipTests=true"
+    "--define"
+    "exec.mainClass=devtools.DeckPlannerCardBrowserPreview"
     "exec:java"
 )
 
