@@ -63,4 +63,55 @@ class CardBrowserPanelTest {
 
         assertThrows(IllegalStateException.class, () -> holder[0].setCards(List.of()));
     }
+
+
+    @Test
+    void cancelsRequestsThatLeaveViewportAndIgnoresLateCompletion() throws Exception {
+        CompletableFuture<Optional<BufferedImage>> first = new CompletableFuture<>();
+        CompletableFuture<Optional<BufferedImage>> second = new CompletableFuture<>();
+        AtomicInteger sequence = new AtomicInteger();
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 100, 10, 10, 10),
+                    new ViewportImageWindow(0),
+                    card -> sequence.getAndIncrement() == 0 ? first : second);
+            holder[0].setSize(120, 500);
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("a", "Alpha"),
+                    new CardBrowserPanel.BrowserCard("b", "Beta")));
+            holder[0].updateViewport(new Rectangle(0, 0, 120, 100));
+            holder[0].updateViewport(new Rectangle(0, 170, 120, 100));
+        });
+
+        assertTrue(first.isCancelled(), "off-window request should be cancelled");
+        assertFalse(second.isCancelled());
+        first.complete(Optional.of(new BufferedImage(63, 88, BufferedImage.TYPE_INT_RGB)));
+        second.complete(Optional.empty());
+        SwingUtilities.invokeAndWait(() -> { });
+    }
+
+    @Test
+    void selectionAndFocusFollowStableIdentityWhenCardsReorder() throws Exception {
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> CompletableFuture.completedFuture(Optional.empty()));
+            holder[0].setSize(240, 500);
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("a", "Alpha"),
+                    new CardBrowserPanel.BrowserCard("b", "Beta")));
+            holder[0].dispatchEvent(new java.awt.event.MouseEvent(holder[0],
+                    java.awt.event.MouseEvent.MOUSE_PRESSED, 1L, 0, 125, 20, 1, false));
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("b", "Beta"),
+                    new CardBrowserPanel.BrowserCard("a", "Alpha")));
+            assertEquals(0, holder[0].selectedIndex());
+            assertEquals("b", holder[0].selectedCard().orElseThrow().identity());
+        });
+    }
+
 }

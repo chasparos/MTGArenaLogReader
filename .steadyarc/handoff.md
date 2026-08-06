@@ -57,3 +57,13 @@
 - **Scope:** Stable placeholders, responsive card painting, mouse/keyboard selection and focus, viewport-driven asynchronous image requests, EDT completion, and affected-region repaint.
 - **Still out of scope:** Production frame wiring, concrete `CardImageCache` adapter, cancellation/deprioritization policy beyond generation invalidation, ownership overlays, filter widgets, and rendered human visual evidence.
 - **Authority after change:** Codex remains active on bounded DP-04 slices.
+
+
+## Activity amendment — DP-04 viewport lifecycle slice
+
+- **Date:** 2026-08-06
+- **Changed by:** Codex
+- **Transition or material change:** Tightened the interactive browser's viewport request lifecycle and logical interaction state.
+- **Scope:** Cancel pending image futures when cards leave the request window, ignore late off-window completions, and preserve selection/focus by stable card identity when result ordering changes.
+- **Still out of scope:** Production `CardImageCache` adapter, frame wiring, rendered fixture/human visual evidence, filter widgets, and ownership overlays.
+- **Authority after change:** Codex remains active on bounded DP-04 slices.

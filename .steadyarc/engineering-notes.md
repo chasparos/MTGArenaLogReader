@@ -87,3 +87,9 @@
 - Image sources return `CompletableFuture<Optional<BufferedImage>>`; completion is marshalled back to the EDT and repaints only the affected card bounds.
 - The panel delegates responsive geometry and image-window selection to `CardGridLayout` and `ViewportImageWindow`.
 - Cached images are never mutated for hover, selection, or focus; overlays are painted by the containing panel.
+
+
+### Browser request lifecycle
+
+- `CardBrowserPanel` treats the current viewport window as the authoritative decoded-image demand set. Pending futures outside that set are cancelled, and completions that race after cancellation are ignored rather than cached or painted.
+- Browser selection and keyboard focus are logical card-identity state, not row/index state. Reordering or narrowing a result set remaps retained identities to their new indices.

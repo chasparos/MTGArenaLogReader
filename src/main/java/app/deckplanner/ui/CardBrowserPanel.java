@@ -39,6 +39,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private final ImageSource imageSource;
     private final Map<String, BufferedImage> images = new LinkedHashMap<>();
     private final Map<String, CompletableFuture<Optional<BufferedImage>>> pending = new LinkedHashMap<>();
+    private java.util.Set<String> requestedIdentities = java.util.Set.of();
 
     private List<BrowserCard> cards = List.of();
     private CardGridLayout.Result layoutResult;
@@ -81,12 +82,15 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     public void setCards(List<BrowserCard> cards) {
         assertEdt();
-        this.cards = List.copyOf(cards == null ? List.of() : cards);
+        String selectedIdentity = identityAt(selectedIndex);
+        String focusedIdentity = identityAt(focusedIndex);
         generation++;
-        pending.clear();
-        selectedIndex = normalizeIndex(selectedIndex);
-        focusedIndex = normalizeIndex(focusedIndex);
+        cancelAllPending();
+        this.cards = List.copyOf(cards == null ? List.of() : cards);
+        selectedIndex = indexOfIdentity(selectedIdentity);
+        focusedIndex = indexOfIdentity(focusedIdentity);
         hoveredIndex = -1;
+        requestedIdentities = java.util.Set.of();
         relayout();
     }
 
@@ -109,6 +113,10 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         int direction = Integer.compare(viewport.y, previousViewportY);
         previousViewportY = viewport.y;
         var window = imageWindow.select(layoutResult.bounds(), viewport, direction);
+        java.util.LinkedHashSet<String> nextRequested = new java.util.LinkedHashSet<>();
+        for (int index : window.requestedIndices()) nextRequested.add(cards.get(index).identity());
+        cancelRequestsOutside(nextRequested);
+        requestedIdentities = java.util.Set.copyOf(nextRequested);
         long requestGeneration = generation;
         for (int index : window.requestedIndices()) requestImage(index, requestGeneration);
     }
@@ -121,9 +129,13 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         future.whenComplete((image, error) -> SwingUtilities.invokeLater(() -> {
             if (requestGeneration != generation) return;
             pending.remove(card.identity());
+            if (!requestedIdentities.contains(card.identity())) return;
             if (error == null && image != null && image.isPresent()) {
                 images.put(card.identity(), image.get());
-                if (index < layoutResult.bounds().size()) repaint(layoutResult.bounds().get(index));
+                int currentIndex = indexOfIdentity(card.identity());
+                if (currentIndex >= 0 && currentIndex < layoutResult.bounds().size()) {
+                    repaint(layoutResult.bounds().get(currentIndex));
+                }
             }
         }));
     }
@@ -248,6 +260,35 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             layoutResult = gridLayout.layout(cards.size(), width);
             setPreferredSize(layoutResult.preferredSize());
         }
+    }
+
+    private void cancelRequestsOutside(java.util.Set<String> retained) {
+        var iterator = pending.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (retained.contains(entry.getKey())) continue;
+            entry.getValue().cancel(true);
+            iterator.remove();
+        }
+    }
+
+    private void cancelAllPending() {
+        for (CompletableFuture<Optional<BufferedImage>> future : pending.values()) {
+            future.cancel(true);
+        }
+        pending.clear();
+    }
+
+    private String identityAt(int index) {
+        return index >= 0 && index < cards.size() ? cards.get(index).identity() : null;
+    }
+
+    private int indexOfIdentity(String identity) {
+        if (identity == null) return -1;
+        for (int index = 0; index < cards.size(); index++) {
+            if (identity.equals(cards.get(index).identity())) return index;
+        }
+        return -1;
     }
 
     private int normalizeIndex(int index) {
