@@ -129,3 +129,10 @@
 - Card browser renderer surfaces now clear their paint clip explicitly using the active semantic `Viewport.background`/`App.surface` color, preventing stale rows after resize and result replacement.
 - `CardBrowserScrollPane` installs the shared `AppScrollBarUI` on both axes and applies semantic scroll-pane/viewport colors even in standalone review harnesses.
 - The standard readable card layout is 220–320 px wide with the existing 63:88 aspect ratio; narrow windows use one centered card rather than shrinking below readable width.
+
+## 2026-08-06 — DP-04 multi-select and consideration badges
+
+- Browser selection is an ordered identity set. Mouse click and keyboard Space toggle one card without clearing prior selections; selection survives reorder/filter replacement for identities that remain present.
+- The browser accepts a separate identity set for under-consideration membership. It is presentation state only in DP-04; persistence and workspace mutation remain DP-06.
+- Selection is rendered as a bottom-center theme-aware chip with `/svg/tap.svg` and the text `selected`, replacing the full-card selection outline.
+- Under-consideration membership is rendered as a circular theme-aware top-right badge using the general MTG `/svg/chaos.svg` symbol.

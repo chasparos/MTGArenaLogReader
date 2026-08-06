@@ -109,3 +109,9 @@
 - DP-04 remains active until the human review is reported; production navigation and DP-05 controls remain out of scope.
 
 DP-04 human review found three presentation corrections: stale background pixels, default Swing scrollbars, and undersized cards. The current return patch addresses all three with theme-semantic clearing, explicit `AppScrollBarUI`, and 220–320 px readable card defaults. Re-run the preview after applying and confirm the selected theme, scrollbar appearance, and rules-text readability.
+
+## 2026-08-06 — DP-04 multi-select and badge amendment
+
+- Human review requested multi-select before DP-04 closure and distinct compact overlays for selection and under-consideration membership.
+- This slice adds identity-based toggle selection, a separate externally supplied consideration-membership set, a bottom-center tap-symbol `selected` chip, and a circular top-right chaos-symbol badge.
+- Consideration persistence, ordering, and add/remove workspace actions remain DP-06; DP-04 only owns browser display state and interaction.

@@ -117,6 +117,40 @@ class CardBrowserPanelTest {
         });
     }
 
+
+    @Test
+    void supportsIdentityBasedMultiSelectionAndConsiderationMembership() throws Exception {
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> CompletableFuture.completedFuture(Optional.empty()));
+            holder[0].setSize(240, 500);
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("a", "Alpha"),
+                    new CardBrowserPanel.BrowserCard("b", "Beta"),
+                    new CardBrowserPanel.BrowserCard("c", "Gamma")));
+            holder[0].dispatchEvent(new java.awt.event.MouseEvent(holder[0],
+                    java.awt.event.MouseEvent.MOUSE_PRESSED, 1L, 0, 20, 20, 1, false));
+            holder[0].dispatchEvent(new java.awt.event.MouseEvent(holder[0],
+                    java.awt.event.MouseEvent.MOUSE_PRESSED, 2L, 0, 125, 20, 1, false));
+            holder[0].setUnderConsiderationIdentities(java.util.Set.of("b", "c", "missing"));
+
+            assertEquals(java.util.Set.of("a", "b"), holder[0].selectedIdentities());
+            assertEquals(List.of("a", "b"), holder[0].selectedCards().stream()
+                    .map(CardBrowserPanel.BrowserCard::identity).toList());
+            assertEquals(java.util.Set.of("b", "c"), holder[0].underConsiderationIdentities());
+
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("c", "Gamma"),
+                    new CardBrowserPanel.BrowserCard("b", "Beta"),
+                    new CardBrowserPanel.BrowserCard("a", "Alpha")));
+            assertEquals(java.util.Set.of("a", "b"), holder[0].selectedIdentities());
+            assertEquals(java.util.Set.of("b", "c"), holder[0].underConsiderationIdentities());
+        });
+    }
+
     @Test void clearsRendererBackgroundWithThemeColor() throws Exception {
         AtomicReference<Integer> painted = new AtomicReference<>();
         AtomicReference<Integer> expected = new AtomicReference<>();

@@ -11,6 +11,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
@@ -49,6 +51,8 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     private List<BrowserCard> cards = List.of();
     private CardGridLayout.Result layoutResult;
+    private final LinkedHashSet<String> selectedIdentities = new LinkedHashSet<>();
+    private Set<String> underConsiderationIdentities = Set.of();
     private int selectedIndex = -1;
     private int focusedIndex = -1;
     private int hoveredIndex = -1;
@@ -94,7 +98,13 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         generation++;
         cancelAllPending();
         this.cards = List.copyOf(cards == null ? List.of() : cards);
+        Set<String> available = this.cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
+        selectedIdentities.retainAll(available);
+        underConsiderationIdentities = underConsiderationIdentities.stream()
+                .filter(available::contains)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         selectedIndex = indexOfIdentity(selectedIdentity);
+        if (selectedIndex < 0) selectedIndex = lastSelectedIndex();
         focusedIndex = indexOfIdentity(focusedIdentity);
         hoveredIndex = -1;
         requestedIdentities = java.util.Set.of();
@@ -111,6 +121,38 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     public Optional<BrowserCard> selectedCard() {
         return selectedIndex >= 0 ? Optional.of(cards.get(selectedIndex)) : Optional.empty();
+    }
+
+    public Set<String> selectedIdentities() {
+        return Collections.unmodifiableSet(new LinkedHashSet<>(selectedIdentities));
+    }
+
+    public List<BrowserCard> selectedCards() {
+        return cards.stream().filter(card -> selectedIdentities.contains(card.identity())).toList();
+    }
+
+    public void clearSelection() {
+        assertEdt();
+        Set<String> previous = Set.copyOf(selectedIdentities);
+        selectedIdentities.clear();
+        selectedIndex = -1;
+        repaintIdentities(previous);
+    }
+
+    public void setUnderConsiderationIdentities(Set<String> identities) {
+        assertEdt();
+        Set<String> previous = underConsiderationIdentities;
+        Set<String> available = cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
+        underConsiderationIdentities = identities == null ? Set.of() : identities.stream()
+                .filter(available::contains)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        LinkedHashSet<String> changed = new LinkedHashSet<>(previous);
+        changed.addAll(underConsiderationIdentities);
+        repaintIdentities(changed);
+    }
+
+    public Set<String> underConsiderationIdentities() {
+        return underConsiderationIdentities;
     }
 
     /** Captures the first card intersecting the viewport plus its vertical pixel offset. */
@@ -178,13 +220,32 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         ensureLayout();
         int index = layoutResult.indexAt(x, y);
         if (index < 0) return;
-        int oldSelected = selectedIndex;
         int oldFocused = focusedIndex;
-        selectedIndex = index;
         focusedIndex = index;
-        repaintIndex(oldSelected);
+        toggleSelection(index);
         repaintIndex(oldFocused);
         repaintIndex(index);
+    }
+
+
+    private void toggleSelection(int index) {
+        if (index < 0 || index >= cards.size()) return;
+        String identity = cards.get(index).identity();
+        if (!selectedIdentities.remove(identity)) selectedIdentities.add(identity);
+        selectedIndex = selectedIdentities.contains(identity) ? index : lastSelectedIndex();
+        repaintIndex(index);
+    }
+
+    private int lastSelectedIndex() {
+        int last = -1;
+        for (int index = 0; index < cards.size(); index++) {
+            if (selectedIdentities.contains(cards.get(index).identity())) last = index;
+        }
+        return last;
+    }
+
+    private void repaintIdentities(java.util.Collection<String> identities) {
+        for (String identity : identities) repaintIndex(indexOfIdentity(identity));
     }
 
     private void moveFocus(int delta) {
@@ -211,10 +272,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         getActionMap().put("select", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) {
                 if (focusedIndex < 0) return;
-                int old = selectedIndex;
-                selectedIndex = focusedIndex;
-                repaintIndex(old);
-                repaintIndex(selectedIndex);
+                toggleSelection(focusedIndex);
             }
         });
     }
@@ -262,7 +320,8 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
                 card.name(),
                 images.get(card.identity()),
                 index == hoveredIndex,
-                index == selectedIndex,
+                selectedIdentities.contains(card.identity()),
+                underConsiderationIdentities.contains(card.identity()),
                 hasFocus() && index == focusedIndex);
         rendererPane.paintComponent(g, cardView, this,
                 bounds.x, bounds.y, bounds.width, bounds.height, true);

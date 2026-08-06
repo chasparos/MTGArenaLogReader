@@ -21,14 +21,14 @@ class CardViewTest {
             view.setSize(100, 160);
 
             BufferedImage placeholder = new BufferedImage(100, 160, BufferedImage.TYPE_INT_ARGB);
-            view.configure("A very long card name for placeholder rendering", null, false, false, false);
+            view.configure("A very long card name for placeholder rendering", null, false, false, false, false);
             Graphics2D placeholderGraphics = placeholder.createGraphics();
             view.paint(placeholderGraphics);
             placeholderGraphics.dispose();
             assertNotEquals(0, placeholder.getRGB(50, 80));
 
             BufferedImage rendered = new BufferedImage(100, 160, BufferedImage.TYPE_INT_ARGB);
-            view.configure("Card", cached, true, true, true);
+            view.configure("Card", cached, true, true, true, true);
             Graphics2D renderedGraphics = rendered.createGraphics();
             view.paint(renderedGraphics);
             renderedGraphics.dispose();
