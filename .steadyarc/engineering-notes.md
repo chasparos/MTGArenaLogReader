@@ -61,3 +61,9 @@
 
 - Initial Steady Arc bootstrap work completed on 2026-07-31. Its returned handoff is preserved under `.steadyarc/handoff-history/SA-MTGA-BOOTSTRAP-001.md`.
 - Managed Steady Arc tools, knowledge documents, and the generic `devtools` support relay were upgraded from PlaneGuardianAssets on 2026-08-06.
+
+## 2026-08-06 — Current Arena collection logging limitation
+
+- Current production client `2026.61.30.13636` did not publish `PlayerInventory.GetPlayerCardsV3` or a complete bare numeric ownership map in detailed `Player.log` captures after Collection browsing, Deck Builder entry, arbitrary owned/unowned card additions, and deck save.
+- Deck save publishes a full `DeckUpsertDeckV3` definition, including unowned cards, so it is explicit negative evidence for using deck membership as ownership.
+- Ownership-dependent Deck Planner behavior is deferred under `SA-MTGA-DEF-003`; catalog filtering and semantic indexing continue independently with collection quantity unknown.

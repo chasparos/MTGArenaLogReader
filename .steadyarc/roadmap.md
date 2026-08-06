@@ -39,7 +39,7 @@ Completion evidence (2026-08-06):
 - `CardEnrichmentService` is shared by live `InformationCollector` and bulk catalog ingestion.
 - Support-relay `maven-test` passed: 164 tests, zero failures/errors/skips.
 
-### DP-02 — Arena collection observation (active; live evidence pending)
+### DP-02 — Arena collection observation (implemented; live integration deferred)
 
 Discover and parse the authoritative Arena log response(s) that expose owned card quantities, then persist a provenance-bearing collection snapshot keyed by Arena card identity.
 
@@ -59,11 +59,12 @@ Implementation evidence (2026-08-06):
 - Raw observation is wired before gameplay parsing; unsupported delta-like records do not mutate collection state.
 - Support-relay `maven-test` passed: 171 tests, zero failures/errors/skips.
 
-Remaining acceptance evidence:
+Deferred acceptance evidence:
 
-- Capture a sanitized record from the current Arena `Player.log` and confirm that its framing reaches `ArenaCollectionObserver`. Direct read access to the live log was denied to the sandbox account while Arena was active.
+- Current production `Player.log` captures from 2026-08-06 were inspected after opening Collection, entering Deck Builder, adding owned and unowned cards, and saving a deck. Arena logged navigation and the complete deck upsert, but published no `PlayerInventory.GetPlayerCardsV3` response or structurally equivalent complete owned-card map.
+- Live ownership-dependent integration is deferred under `SA-MTGA-DEF-003` until Arena again publishes an authoritative complete collection record. The parser, provenance model, repository, and observer remain available and tested; no ownership is inferred from deck contents.
 
-### DP-03 — Filter index and categorized tag cloud
+### DP-03 — Filter index and categorized tag cloud (active)
 
 Build immutable/filterable indexes over the completed catalog. Define normalized categories for colors, base types, mana value, oracle keywords, zones, mechanics/actions, and compound concepts such as `all creatures`.
 
@@ -135,7 +136,7 @@ Acceptance evidence:
 
 ## Current planning decisions
 
-- DP-01 is complete. DP-02 is implemented but remains active until a current real-log collection record validates the wire shape.
+- DP-01 is complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-03 is active and must remain independent of collection availability.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.
