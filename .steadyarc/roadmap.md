@@ -174,6 +174,7 @@ Human-feedback rework plan (2026-08-07), in implementation order:
 
    Current implementation slice promotes the candidate container into a small shared `CardCollectionSurface` primitive that owns project-local scrolling, component-row selection, and insertion-point drag/drop while leaving card-specific rendering/grouping metadata to its caller. DP-06 uses that primitive first; no other workspace is migrated in this patch.
 6. **Human click acceptance.** Update `DeckPlannerWorkspacePreview` and its visible checklist to exercise real Standard cards, replay-style chips, drag/drop persistence, normal MTG sorting, known-deck and pasted-text import, Scryfall-name fallback behavior, the consideration-only filter layer, stale-card recovery, resizing/scrolling, and restart persistence. DP-06 closes only after the full Maven suite is green and the human explicitly accepts this real-card preview.
+   Current implementation slice turns the checklist into an interactive ten-check human acceptance surface covering every completed DP-06 rework behavior. Reaching 10/10 records only that the click checks were performed; the harness deliberately cannot close DP-06 or manufacture acceptance. The human must still report explicit acceptance or defects after repository-side validation is green.
 
 #### DP-07 — Authoritative AI deck-building protocol
 
@@ -204,7 +205,7 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-06 — Under consideration workspace` is active in its human-feedback rework phase. Rework steps 1–3 are validated through the clean 226-test baseline at `f20a751b0f9820f1fc030fa3e669b4777baa9eee`. Step 4 (shared local-first name resolution, exact-name Scryfall fallback, known observed-Arena-deck import) is the current implementation slice, together with the human-requested custom candidate-surface refactor described above. Do not start DP-07 until the real-card click harness is explicitly accepted.
+`DP-06 — Under consideration workspace` is active at rework step 6, the human click-acceptance gate. Steps 1–5 are integrated through the clean 232-test baseline at `e16406021090074b006e31706387b7c973245892`. Apply and validate the interactive real-card acceptance-harness patch, then run the preview and report explicit acceptance or observed defects. Do not start DP-07 until DP-06 is explicitly accepted.
 
 ### Current planning decisions
 

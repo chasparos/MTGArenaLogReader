@@ -119,6 +119,24 @@ class DeckPlannerWorkspacePreviewTest {
         }
     }
 
+    @Test
+    void acceptanceChecklistRequiresExplicitHumanCompletion() throws Exception {
+        AtomicReference<JPanel> checklist = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> checklist.set(DeckPlannerWorkspacePreview.acceptanceChecklist()));
+
+        List<JCheckBox> steps = findAll(checklist.get(), JCheckBox.class);
+        JLabel status = findNamed(checklist.get(), JLabel.class, "dp06-acceptance-status");
+        assertEquals(10, steps.size());
+        assertNotNull(status);
+        assertTrue(status.getText().contains("0/10 checked"));
+        assertTrue(status.getText().contains("remains active"));
+
+        SwingUtilities.invokeAndWait(() -> steps.forEach(AbstractButton::doClick));
+        assertTrue(status.getText().contains("10/10 checked"));
+        assertTrue(status.getText().contains("explicit ACCEPT"));
+        assertTrue(status.getText().contains("does not close DP-06"));
+    }
+
     private static FormatCatalogRepository.Snapshot snapshot(int count) {
         List<FormatCatalogRepository.CardOutcome> outcomes = cards(0, count).stream()
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null))
@@ -145,6 +163,26 @@ class DeckPlannerWorkspacePreviewTest {
             result.add(card);
         }
         return List.copyOf(result);
+    }
+
+    private static <T extends Component> List<T> findAll(Container root, Class<T> type) {
+        List<T> found = new ArrayList<>();
+        for (Component child : root.getComponents()) {
+            if (type.isInstance(child)) found.add(type.cast(child));
+            if (child instanceof Container container) found.addAll(findAll(container, type));
+        }
+        return List.copyOf(found);
+    }
+
+    private static <T extends Component> T findNamed(Container root, Class<T> type, String name) {
+        for (Component child : root.getComponents()) {
+            if (type.isInstance(child) && name.equals(child.getName())) return type.cast(child);
+            if (child instanceof Container container) {
+                T nested = findNamed(container, type, name);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
     }
 
     private static <T extends Component> T find(Container root, Class<T> type) {

@@ -177,25 +177,7 @@ public final class DeckPlannerWorkspacePreview {
 
 
         String sampleArenaDeck = sampleArenaDeck(snapshot);
-        JTextArea checklist = new JTextArea("""
-                DP-06 HUMAN CLICK ACCEPTANCE — REAL STANDARD CARDS
-                1. Verify the browser is populated with real Arena-available Standard cards and real cached Scryfall images.
-                2. Double-click browser cards; verify they appear at right and get a consideration badge.
-                3. Drag candidate chips into a new order; verify Remove/Clear work, then use Normal MTG sort and verify the order visibly changes.
-                4. Apply filters after adding candidates; verify hidden candidates remain at right and badges return when filters reset.
-                5. Verify the seeded "Unavailable card" row remains recoverable and removable.
-                6. Click Import deck: if observed Arena decks exist, select one and load it; also paste the sample deck below. Verify local names resolve first, missing exact names use Scryfall fallback when available, and unresolved names are reported.
-                7. Close and relaunch this preview; verify candidate membership/order survives restart.
-                8. Exercise Ready / Partial cache / Offline cache and normal resizing/scrolling. Later DP-06 rework steps will replace row rendering/order/import/filter interactions before final acceptance.
-                """);
-        checklist.setEditable(false);
-        checklist.setFocusable(false);
-        checklist.setLineWrap(true);
-        checklist.setWrapStyleWord(true);
-        checklist.setRows(8);
-        checklist.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        checklist.setBackground(AppColors.color("Panel.background", new Color(0x202328)));
-        checklist.setForeground(AppColors.color("Label.foreground", Color.WHITE));
+        JPanel checklist = acceptanceChecklist();
 
         JTextArea sampleDeck = new JTextArea(sampleArenaDeck);
         sampleDeck.setEditable(false);
@@ -228,21 +210,85 @@ public final class DeckPlannerWorkspacePreview {
 
         JPanel review = new JPanel(new BorderLayout(8, 4));
         review.setOpaque(true);
-        review.setBackground(checklist.getBackground());
+        review.setBackground(AppColors.color("Panel.background", new Color(0x202328)));
         review.add(catalogStatus, BorderLayout.NORTH);
-        review.add(new JScrollPane(checklist,
+        JScrollPane checklistScroll = new JScrollPane(checklist,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER), BorderLayout.CENTER);
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        checklistScroll.getVerticalScrollBar().setUnitIncrement(12);
+        review.add(checklistScroll, BorderLayout.CENTER);
         review.add(new JScrollPane(sampleDeck), BorderLayout.WEST);
         review.add(stateButtons, BorderLayout.EAST);
 
         JPanel content = new JPanel(new BorderLayout());
         content.setOpaque(true);
-        content.setBackground(checklist.getBackground());
+        content.setBackground(AppColors.color("Panel.background", new Color(0x202328)));
         content.add(review, BorderLayout.NORTH);
         content.add(workspace, BorderLayout.CENTER);
         return new PreviewSession(content, workspace, scheduler, worker, repository,
                 nameLookup, observedCardCache, observedDeckCache);
+    }
+
+    static JPanel acceptanceChecklist() {
+        String[] steps = {
+                "Real Standard catalog and images: verify the browser contains real Arena-available Standard cards and real cached Scryfall images.",
+                "Candidate presentation: add/remove/clear cards and verify resolved candidates use replay-style card chips with no owned-count display.",
+                "Manual ordering: drag candidate chips into a new order and verify the visible order changes without disturbing candidate membership.",
+                "Normal MTG sorting: use Normal MTG sort and verify type → mana value → color → name ordering replaces the manual order.",
+                "Filter layer control: apply ordinary filters, enable Consideration only in the filter rail, and verify the catalog is intersected with candidates.",
+                "Candidate-selection filter: select a resolved candidate and verify Consideration only activates; disable it and verify the prior ordinary filters remain intact.",
+                "Stale recovery: verify the seeded Unavailable card remains visible/recoverable and can be removed without affecting valid candidates.",
+                "Deck import: load a Known Arena deck when available, then paste the sample deck; verify local resolution, exact-name Scryfall fallback, and unresolved-name reporting.",
+                "Surface behavior: exercise Ready / Partial cache / Offline cache plus resizing and scrolling; verify the custom candidate surface uses the project-local scrollbar.",
+                "Persistence: close and relaunch the preview and verify candidate membership and manual/sorted order survive restart."
+        };
+
+        Color background = AppColors.color("Panel.background", new Color(0x202328));
+        Color foreground = AppColors.color("Label.foreground", Color.WHITE);
+        JPanel checklist = new JPanel();
+        checklist.setName("dp06-acceptance-checklist");
+        checklist.setLayout(new BoxLayout(checklist, BoxLayout.Y_AXIS));
+        checklist.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        checklist.setBackground(background);
+
+        JLabel title = new JLabel("DP-06 HUMAN CLICK ACCEPTANCE — REAL STANDARD CARDS");
+        title.setFont(title.getFont().deriveFont(Font.BOLD));
+        title.setForeground(foreground);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        checklist.add(title);
+        checklist.add(Box.createVerticalStrut(4));
+
+        JLabel status = new JLabel();
+        status.setName("dp06-acceptance-status");
+        status.setForeground(foreground);
+        status.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        List<JCheckBox> boxes = new ArrayList<>();
+        Runnable updateStatus = () -> {
+            long checked = boxes.stream().filter(AbstractButton::isSelected).count();
+            if (checked == steps.length) {
+                status.setText("Acceptance status: " + checked + "/" + steps.length
+                        + " checked — report explicit ACCEPT or defects; this harness does not close DP-06.");
+            } else {
+                status.setText("Acceptance status: " + checked + "/" + steps.length
+                        + " checked — DP-06 remains active.");
+            }
+        };
+
+        for (int index = 0; index < steps.length; index++) {
+            JCheckBox box = new JCheckBox((index + 1) + ". " + steps[index]);
+            box.setName("dp06-acceptance-step-" + (index + 1));
+            box.setOpaque(false);
+            box.setForeground(foreground);
+            box.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.addActionListener(event -> updateStatus.run());
+            boxes.add(box);
+            checklist.add(box);
+        }
+        checklist.add(Box.createVerticalStrut(5));
+        checklist.add(status);
+        updateStatus.run();
+        return checklist;
     }
 
     static String sampleArenaDeck(FormatCatalogRepository.Snapshot snapshot) {
