@@ -1,11 +1,15 @@
 package app.deckplanner.ui;
 
 import app.deckplanner.application.DeckPlannerFilterCoordinator;
+import app.deckplanner.collection.CollectionQuantity;
+import app.deckplanner.consideration.DeckListImporter;
+import app.deckplanner.consideration.UnderConsiderationModel;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.filter.IndexedCatalogCard;
 import app.ui.AppColors;
 import app.ui.AppScrollBarUI;
+import app.model.card.CardInfo;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -16,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.ToIntFunction;
 
 /**
  * Reusable DP-05 workspace that composes filter controls, asynchronous filtering, explicit result
@@ -27,6 +32,10 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
 
     private final DeckPlannerFilterPanel filters;
     private final CardBrowserPanel browser;
+    private final UnderConsiderationPanel considerationPanel = new UnderConsiderationPanel();
+    private final CatalogFilterIndex catalogIndex;
+    private final UnderConsiderationModel considerationModel;
+    private final UnderConsiderationModel.Listener considerationListener;
     private final CardBrowserScrollPane browserScrollPane;
     private final DeckPlannerResultsStatePanel statePanel = new DeckPlannerResultsStatePanel();
     private final JPanel resultCards = new JPanel(new CardLayout());
@@ -42,9 +51,25 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                                 Executor worker,
                                 Duration debounce,
                                 DeckPlannerFilterCoordinator.Availability availability) {
+        this(model, index, imageSource, scheduler, worker, debounce, availability,
+                UnderConsiderationModel.transientModel(), ignored -> CollectionQuantity.UNKNOWN);
+    }
+
+    public DeckPlannerWorkspace(DeckPlannerFilterModel model,
+                                CatalogFilterIndex index,
+                                CardBrowserPanel.ImageSource imageSource,
+                                ScheduledExecutorService scheduler,
+                                Executor worker,
+                                Duration debounce,
+                                DeckPlannerFilterCoordinator.Availability availability,
+                                UnderConsiderationModel considerationModel,
+                                ToIntFunction<CardInfo> collectionQuantitySource) {
         Objects.requireNonNull(model);
         Objects.requireNonNull(index);
         Objects.requireNonNull(imageSource);
+        this.catalogIndex = index;
+        this.considerationModel = Objects.requireNonNull(considerationModel);
+        this.considerationListener = ignored -> showConsideration();
         assertEdt();
 
         setLayout(new BorderLayout());
@@ -52,7 +77,20 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         filters = new DeckPlannerFilterPanel(model, allTags(index.cards()));
         browser = new CardBrowserPanel(CardGridLayout.readableDefaults(),
                 new ViewportImageWindow(240), imageSource);
+        browser.setConsiderationListener(new CardBrowserPanel.ConsiderationListener() {
+            @Override public void added(Collection<String> identities) {
+                considerationModel.add(identities);
+            }
+            @Override public void removed(String identity) {
+                considerationModel.remove(identity);
+            }
+        });
         browserScrollPane = new CardBrowserScrollPane(browser);
+        considerationPanel.bind(considerationModel, collectionQuantitySource);
+        considerationPanel.setImportAction(this::showDeckImportDialog);
+        considerationPanel.setPreferredSize(new Dimension(280, 600));
+        considerationPanel.setMinimumSize(new Dimension(230, 300));
+        considerationModel.addListener(considerationListener);
 
         JScrollPane filterScroll = new JScrollPane(filters,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
@@ -87,7 +125,9 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
 
         add(filterScroll, BorderLayout.WEST);
         add(resultCards, BorderLayout.CENTER);
+        add(considerationPanel, BorderLayout.EAST);
         refreshThemeColors();
+        showConsideration();
 
         coordinator = new DeckPlannerFilterCoordinator(model,
                 state -> new DeckPlannerFilterCoordinator.Result(
@@ -104,6 +144,50 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
 
     public CardBrowserPanel browser() { return browser; }
     public DeckPlannerFilterPanel filters() { return filters; }
+    public UnderConsiderationPanel consideration() { return considerationPanel; }
+
+    private void showConsideration() {
+        assertEdt();
+        List<String> identities = considerationModel.identities();
+        browser.setUnderConsiderationIdentities(new java.util.LinkedHashSet<>(identities));
+        considerationPanel.setEntries(considerationModel.resolve(catalogIndex));
+    }
+
+    public DeckListImporter.Result importDeckText(String deckText) {
+        assertEdt();
+        DeckListImporter.Result result = DeckListImporter.resolve(deckText, catalogIndex);
+        considerationModel.add(result.identities());
+        return result;
+    }
+
+    private void showDeckImportDialog() {
+        assertEdt();
+        JTextArea input = new JTextArea(18, 48);
+        input.setLineWrap(false);
+        JScrollPane scroll = new JScrollPane(input);
+        JPanel content = new JPanel(new BorderLayout(6, 6));
+        content.add(new JLabel("Paste an Arena-exported deck list; all deck sections are imported once."),
+                BorderLayout.NORTH);
+        content.add(scroll, BorderLayout.CENTER);
+        int choice = JOptionPane.showConfirmDialog(this, content, "Import deck into consideration",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) return;
+
+        DeckListImporter.Result result = importDeckText(input.getText());
+        String message;
+        if (result.parsedCardLines() == 0) {
+            message = "No Arena deck card lines were found.";
+        } else if (result.unresolvedNames().isEmpty()) {
+            message = "Imported " + result.resolvedCards() + " unique card" +
+                    (result.resolvedCards() == 1 ? "" : "s") + " into consideration.";
+        } else {
+            message = "Imported " + result.resolvedCards() + " unique card" +
+                    (result.resolvedCards() == 1 ? "" : "s") + ". Could not resolve: " +
+                    String.join(", ", result.unresolvedNames());
+        }
+        JOptionPane.showMessageDialog(this, message, "Deck import",
+                result.unresolvedNames().isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+    }
 
     public void setAvailability(DeckPlannerFilterCoordinator.Availability availability) {
         coordinator.setAvailability(availability);
@@ -121,12 +205,14 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             setRefreshing(false);
             filters.setTagCloud(content.tagCloud());
             browserScrollPane.setCards(toBrowserCards(content.cards()));
+            showConsideration();
             showAvailability(content.availability());
             showCard(CONTENT);
         } else if (state instanceof DeckPlannerFilterCoordinator.Empty empty) {
             setRefreshing(false);
             filters.setTagCloud(empty.tagCloud());
             browserScrollPane.setCards(List.of());
+            showConsideration();
             showAvailability(empty.availability());
             statePanel.showState(empty);
             showCard(STATE);
@@ -207,6 +293,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     }
 
     @Override public void close() {
+        considerationModel.removeListener(considerationListener);
         coordinator.close();
     }
 }

@@ -102,6 +102,85 @@ class DeckPlannerWorkspaceTest {
         SwingUtilities.invokeAndWait(workspaceRef.get()::close);
     }
 
+
+    @Test void considerationStateOutlivesBrowserFilteringAndRestoresOverlay() throws Exception {
+        CatalogFilterIndex index = index(
+                card("mill", "U", "Sorcery", "Target player mills two cards."),
+                card("flying", "W", "Creature — Bird", "Flying"));
+        DeckPlannerFilterModel filterModel = new DeckPlannerFilterModel("standard");
+        app.deckplanner.consideration.UnderConsiderationModel consideration =
+                new app.deckplanner.consideration.UnderConsiderationModel(List.of(), ignored -> { });
+        AtomicReference<DeckPlannerWorkspace> workspaceRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(filterModel, index,
+                    ignored -> java.util.concurrent.CompletableFuture.completedFuture(Optional.empty()),
+                    scheduler, Runnable::run, Duration.ZERO,
+                    DeckPlannerFilterCoordinator.Availability.READY,
+                    consideration, ignored -> app.deckplanner.collection.CollectionQuantity.UNKNOWN);
+            workspaceRef.set(workspace);
+            workspace.start();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
+
+        SwingUtilities.invokeAndWait(() ->
+                workspaceRef.get().browser().addUnderConsiderationIdentities(List.of("oracle:mill")));
+        assertEquals(List.of("oracle:mill"), consideration.identities());
+        assertEquals(List.of("oracle:mill"), onEdt(() -> workspaceRef.get().consideration().identities()));
+
+        SwingUtilities.invokeAndWait(() -> filterModel.toggleColor(CardColor.WHITE));
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
+        assertEquals(List.of("oracle:mill"), consideration.identities(),
+                "filtering must not remove hidden candidates from the workspace");
+        assertTrue(onEdt(() -> workspaceRef.get().browser().underConsiderationIdentities().isEmpty()));
+        assertEquals(List.of("oracle:mill"), onEdt(() -> workspaceRef.get().consideration().identities()));
+
+        SwingUtilities.invokeAndWait(filterModel::resetFilters);
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
+        assertEquals(Set.of("oracle:mill"),
+                onEdt(() -> workspaceRef.get().browser().underConsiderationIdentities()));
+        SwingUtilities.invokeAndWait(workspaceRef.get()::close);
+    }
+
+    @Test void importsExistingDeckIntoConsiderationWithoutResettingActiveFilters() throws Exception {
+        CatalogFilterIndex index = index(
+                card("mill", "U", "Sorcery", "Target player mills two cards."),
+                card("flying", "W", "Creature — Bird", "Flying"));
+        DeckPlannerFilterModel filterModel = new DeckPlannerFilterModel("standard");
+        app.deckplanner.consideration.UnderConsiderationModel consideration =
+                new app.deckplanner.consideration.UnderConsiderationModel(List.of(), ignored -> { });
+        AtomicReference<DeckPlannerWorkspace> workspaceRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(filterModel, index,
+                    ignored -> java.util.concurrent.CompletableFuture.completedFuture(Optional.empty()),
+                    scheduler, Runnable::run, Duration.ZERO,
+                    DeckPlannerFilterCoordinator.Availability.READY,
+                    consideration, ignored -> app.deckplanner.collection.CollectionQuantity.UNKNOWN);
+            workspaceRef.set(workspace);
+            workspace.start();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
+
+        SwingUtilities.invokeAndWait(() -> filterModel.toggleColor(CardColor.BLUE));
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
+
+        AtomicReference<app.deckplanner.consideration.DeckListImporter.Result> result = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> result.set(workspaceRef.get().importDeckText("""
+                Deck
+                4 flying
+                4 mill
+                """)));
+
+        assertEquals(List.of("oracle:flying", "oracle:mill"), consideration.identities());
+        assertEquals(List.of(), result.get().unresolvedNames());
+        assertEquals(Set.of("oracle:mill"), onEdt(() -> workspaceRef.get().browser().underConsiderationIdentities()),
+                "only imported cards visible under the active filter should paint browser overlays");
+        assertEquals(Set.of(CardColor.BLUE), filterModel.state().filters().colors(),
+                "deck import must not reset browser filters");
+        SwingUtilities.invokeAndWait(workspaceRef.get()::close);
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();

@@ -150,6 +150,7 @@ Acceptance evidence:
 - Duplicate-printing behavior is defined and tested.
 - Browser and consideration views remain synchronized, including overlays and collection counts.
 - Empty and stale/unresolvable candidate states remain recoverable.
+- Existing Arena-exported deck lists can be imported into consideration without resetting active browser filters; quantities and duplicate printings collapse to one logical candidate, unresolved names are reported, and imported deck contents never imply collection ownership.
 
 #### DP-07 — Authoritative AI deck-building protocol
 

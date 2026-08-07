@@ -26,6 +26,11 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         CompletableFuture<Optional<BufferedImage>> request(BrowserCard card);
     }
 
+    public interface ConsiderationListener {
+        void added(java.util.Collection<String> identities);
+        void removed(String identity);
+    }
+
     public record BrowserCard(String identity, String name) {
         public BrowserCard {
             if (identity == null || identity.isBlank()) throw new IllegalArgumentException("identity required");
@@ -53,6 +58,10 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private CardGridLayout.Result layoutResult;
     private final LinkedHashSet<String> selectedIdentities = new LinkedHashSet<>();
     private final LinkedHashSet<String> underConsiderationIdentities = new LinkedHashSet<>();
+    private ConsiderationListener considerationListener = new ConsiderationListener() {
+        @Override public void added(java.util.Collection<String> identities) { }
+        @Override public void removed(String identity) { }
+    };
     private int selectedIndex = -1;
     private int selectionAnchorIndex = -1;
     private LinkedHashSet<String> selectionBeforeClick = new LinkedHashSet<>();
@@ -103,7 +112,6 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         this.cards = List.copyOf(cards == null ? List.of() : cards);
         Set<String> available = this.cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
         selectedIdentities.retainAll(available);
-        underConsiderationIdentities.retainAll(available);
         selectedIndex = indexOfIdentity(selectedIdentity);
         if (selectedIndex < 0) selectedIndex = lastSelectedIndex();
         selectionAnchorIndex = selectedIndex;
@@ -145,16 +153,27 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     public void setUnderConsiderationIdentities(Set<String> identities) {
         assertEdt();
         Set<String> previous = Set.copyOf(underConsiderationIdentities);
-        Set<String> available = cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
         underConsiderationIdentities.clear();
-        if (identities != null) identities.stream().filter(available::contains).forEach(underConsiderationIdentities::add);
+        if (identities != null) underConsiderationIdentities.addAll(identities);
         LinkedHashSet<String> changed = new LinkedHashSet<>(previous);
         changed.addAll(underConsiderationIdentities);
         repaintIdentities(changed);
     }
 
+    /** Returns the consideration identities currently visible in this filtered browser result. */
     public Set<String> underConsiderationIdentities() {
-        return Collections.unmodifiableSet(new LinkedHashSet<>(underConsiderationIdentities));
+        Set<String> visible = cards.stream().map(BrowserCard::identity)
+                .filter(underConsiderationIdentities::contains)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        return Collections.unmodifiableSet(visible);
+    }
+
+    public void setConsiderationListener(ConsiderationListener listener) {
+        assertEdt();
+        considerationListener = listener == null ? new ConsiderationListener() {
+            @Override public void added(java.util.Collection<String> identities) { }
+            @Override public void removed(String identity) { }
+        } : listener;
     }
 
     public void addUnderConsiderationIdentities(java.util.Collection<String> identities) {
@@ -166,11 +185,15 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             if (available.contains(identity) && underConsiderationIdentities.add(identity)) changed.add(identity);
         }
         repaintIdentities(changed);
+        if (!changed.isEmpty()) considerationListener.added(List.copyOf(changed));
     }
 
     public void removeUnderConsiderationIdentity(String identity) {
         assertEdt();
-        if (identity != null && underConsiderationIdentities.remove(identity)) repaintIndex(indexOfIdentity(identity));
+        if (identity != null && underConsiderationIdentities.remove(identity)) {
+            repaintIndex(indexOfIdentity(identity));
+            considerationListener.removed(identity);
+        }
     }
 
     /** Captures the first card intersecting the viewport plus its vertical pixel offset. */

@@ -185,3 +185,17 @@ The DP-05 interaction pass uses `PreviewDeckPlannerWorkspace.ps1`. The harness o
 ### 2026-08-07 — DP-05 color-semantics radio polish
 
 Human review preferred the lighter unframed color-semantics row beneath the color selectors. The final treatment restores radio-button visuals with a theme-aware hollow/filled bullet so the active source and match mode remain explicit without competing visually with the color chips.
+
+
+## 2026-08-07 — DP-06 consideration workspace state
+
+- The authoritative under-consideration set is ordered and keyed by the Deck Planner logical catalog identity, not by printing-specific Arena or Scryfall IDs. Alternate printings grouped under the same logical identity therefore occupy one candidate position.
+- Consideration persistence retains unresolved identities across catalog refreshes. A temporarily missing identity is rendered as a recoverable stale candidate instead of being deleted; when the identity returns in a later catalog snapshot it resolves to that snapshot's preferred printing.
+- Browser consideration badges are a projection of the persistent workspace onto the currently filtered browser result. Filtering a card out of the browser must not remove it from the consideration workspace.
+- Collection quantity shown for a considered card preserves the existing `-1` unknown / `0` known absent / positive-owned contract. Persistence writes are injectable through an executor so disk I/O can remain off the Swing EDT.
+### DP-06 existing-deck import
+
+- Arena-exported deck text is an input convenience for the under-consideration set, not an ownership source or authoritative playable-deck model.
+- Import resolves card names against every printing in the current format catalog, then stores the catalog group's stable logical identity. Quantities, repeated lines, and alternate printings therefore collapse to one candidate while preserving first appearance order.
+- Main deck, sideboard, commander, and companion card lines are accepted. Unresolved names remain explicit import feedback rather than becoming fabricated/stale identities.
+- Import is additive and does not reset active browser filters. Browser badges remain a visible-result projection of the durable consideration set.
