@@ -110,7 +110,7 @@ final class FilterChip extends JToggleButton {
                 getVerticalTextPosition(), getHorizontalTextPosition(),
                 view, iconRect, textRect, getIconTextGap());
         int iconStart = iconRect.width > 0 ? iconRect.x : Math.max(CHECK_SPACE + 4, getInsets().left);
-        return Math.max(8, ((2 + iconStart) / 2) - 2);
+        return Math.max(13, ((6 + iconStart) / 2) - 1);
     }
 
     private void paintCount(Graphics graphics) {

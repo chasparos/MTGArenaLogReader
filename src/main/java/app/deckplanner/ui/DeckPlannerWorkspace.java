@@ -55,10 +55,13 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         browserScrollPane = new CardBrowserScrollPane(browser);
 
         JScrollPane filterScroll = new JScrollPane(filters,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         filterScroll.setBorder(BorderFactory.createEmptyBorder());
         filterScroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
+        filterScroll.getVerticalScrollBar().getModel().addChangeListener(event ->
+                syncScrollbarEnabled(filterScroll.getVerticalScrollBar()));
+        syncScrollbarEnabled(filterScroll.getVerticalScrollBar());
         filterScroll.getViewport().setBackground(filters.getBackground());
         filterScroll.setPreferredSize(new Dimension(350, 600));
         filterScroll.setMinimumSize(new Dimension(310, 300));
@@ -113,8 +116,8 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
 
     private void showResult(DeckPlannerFilterCoordinator.ViewState state) {
         assertEdt();
-        statePanel.showState(state);
         if (state instanceof DeckPlannerFilterCoordinator.Content content) {
+            statePanel.deactivate();
             setRefreshing(false);
             filters.setTagCloud(content.tagCloud());
             browserScrollPane.setCards(toBrowserCards(content.cards()));
@@ -125,19 +128,23 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             filters.setTagCloud(empty.tagCloud());
             browserScrollPane.setCards(List.of());
             showAvailability(empty.availability());
+            statePanel.showState(empty);
             showCard(STATE);
         } else if (state instanceof DeckPlannerFilterCoordinator.Loading loading) {
             showAvailability(loading.availability());
             if (browser.cards().isEmpty()) {
                 setRefreshing(false);
+                statePanel.showState(loading);
                 showCard(STATE);
             } else {
+                statePanel.deactivate();
                 setRefreshing(true);
                 showCard(CONTENT);
             }
         } else if (state instanceof DeckPlannerFilterCoordinator.Failed failed) {
             setRefreshing(false);
             showAvailability(failed.availability());
+            statePanel.showState(failed);
             showCard(STATE);
         }
     }
@@ -185,6 +192,12 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private static List<CardBrowserPanel.BrowserCard> toBrowserCards(List<IndexedCatalogCard> cards) {
         return cards.stream().map(card -> new CardBrowserPanel.BrowserCard(
                 card.group().identity(), card.group().preferredPrinting().getName())).toList();
+    }
+
+
+    private static void syncScrollbarEnabled(JScrollBar scrollBar) {
+        BoundedRangeModel model = scrollBar.getModel();
+        scrollBar.setEnabled(model.getExtent() < model.getMaximum() - model.getMinimum());
     }
 
     private static void assertEdt() {

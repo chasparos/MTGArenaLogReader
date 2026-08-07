@@ -63,6 +63,13 @@ public final class DeckPlannerResultsStatePanel extends JPanel {
         repaint();
     }
 
+
+    /** Stops hidden indeterminate animation when the workspace keeps published content visible. */
+    void deactivate() {
+        progress.setVisible(false);
+        setVisible(false);
+    }
+
     @Override public void updateUI() {
         super.updateUI();
         Color background = AppColors.color("Panel.background", new Color(0x202328));

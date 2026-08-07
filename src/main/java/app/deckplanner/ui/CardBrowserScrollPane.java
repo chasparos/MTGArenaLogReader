@@ -23,12 +23,15 @@ public final class CardBrowserScrollPane extends JScrollPane {
     public CardBrowserScrollPane(CardBrowserPanel browser) {
         super(java.util.Objects.requireNonNull(browser));
         this.browser = browser;
+        setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
         setBorder(BorderFactory.createEmptyBorder());
         setBackground(AppColors.color("ScrollPane.background", browser.getBackground()));
         getViewport().setOpaque(true);
         getViewport().setBackground(AppColors.color("Viewport.background", browser.getBackground()));
         installApplicationScrollBars();
         getVerticalScrollBar().setUnitIncrement(48);
+        getVerticalScrollBar().getModel().addChangeListener(event -> syncVerticalScrollBar());
+        syncVerticalScrollBar();
         getViewport().addChangeListener(event -> viewportChanged());
         getViewport().addComponentListener(new ComponentAdapter() {
             @Override public void componentResized(ComponentEvent event) {
@@ -39,6 +42,11 @@ public final class CardBrowserScrollPane extends JScrollPane {
     }
 
 
+    @Override public void doLayout() {
+        super.doLayout();
+        syncVerticalScrollBar();
+    }
+
     @Override public void updateUI() {
         super.updateUI();
         if (browser != null) {
@@ -46,6 +54,12 @@ public final class CardBrowserScrollPane extends JScrollPane {
             getViewport().setBackground(AppColors.color("Viewport.background", browser.getBackground()));
             installApplicationScrollBars();
         }
+    }
+
+    private void syncVerticalScrollBar() {
+        int contentHeight = browser == null ? 0 : browser.getPreferredSize().height;
+        int viewportHeight = getViewport() == null ? 0 : getViewport().getExtentSize().height;
+        getVerticalScrollBar().setEnabled(contentHeight > viewportHeight);
     }
 
     private void installApplicationScrollBars() {
@@ -65,6 +79,7 @@ public final class CardBrowserScrollPane extends JScrollPane {
         Optional<CardBrowserPanel.ScrollAnchor> retained = browser.captureScrollAnchor(getViewport().getViewRect());
         browser.setCards(cards);
         restore(retained);
+        syncVerticalScrollBar();
     }
 
     private void viewportChanged() {

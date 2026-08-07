@@ -68,11 +68,11 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         colors.add(phyrexianChip);
 
         JPanel semantics = flow();
-        JRadioButton printed = manaRadio("Printed", "/svg/watermark-colorpie.svg");
-        JRadioButton identity = manaRadio("Identity", "/svg/watermark-mtg.svg");
+        FilterChip printed = manaRadio("Printed", "/svg/watermark-colorpie.svg");
+        FilterChip identity = manaRadio("Identity", "/svg/watermark-mtg.svg");
         ButtonGroup sourceGroup = new ButtonGroup(); sourceGroup.add(printed); sourceGroup.add(identity);
-        JRadioButton inclusive = manaRadio("Inclusive", "/svg/counter-plus.svg");
-        JRadioButton exact = manaRadio("Exact", "/svg/counter-pin.svg");
+        FilterChip inclusive = manaRadio("Inclusive", "/svg/counter-plus.svg");
+        FilterChip exact = manaRadio("Exact", "/svg/counter-pin.svg");
         ButtonGroup modeGroup = new ButtonGroup(); modeGroup.add(inclusive); modeGroup.add(exact);
         semantics.add(printed); semantics.add(identity); semantics.add(inclusive); semantics.add(exact);
         JPanel colorSection = new JPanel();
@@ -152,10 +152,10 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         typeChips.forEach((type, chip) -> chip.addActionListener(event -> { if (!syncing) model.toggleBaseType(type); }));
         tagChips.forEach((tag, chip) -> chip.addActionListener(event -> { if (!syncing) model.toggleTag(tag); }));
         JPanel semantics = (JPanel) getClientProperty("semantics");
-        ((JRadioButton) semantics.getClientProperty("printed")).addActionListener(e -> { if (!syncing) model.setColorSource(ColorSource.CARD_COLORS); });
-        ((JRadioButton) semantics.getClientProperty("identity")).addActionListener(e -> { if (!syncing) model.setColorSource(ColorSource.COLOR_IDENTITY); });
-        ((JRadioButton) semantics.getClientProperty("inclusive")).addActionListener(e -> { if (!syncing) model.setColorMatchMode(ColorMatchMode.INCLUSIVE); });
-        ((JRadioButton) semantics.getClientProperty("exact")).addActionListener(e -> { if (!syncing) model.setColorMatchMode(ColorMatchMode.EXACT); });
+        ((AbstractButton) semantics.getClientProperty("printed")).addActionListener(e -> { if (!syncing) model.setColorSource(ColorSource.CARD_COLORS); });
+        ((AbstractButton) semantics.getClientProperty("identity")).addActionListener(e -> { if (!syncing) model.setColorSource(ColorSource.COLOR_IDENTITY); });
+        ((AbstractButton) semantics.getClientProperty("inclusive")).addActionListener(e -> { if (!syncing) model.setColorMatchMode(ColorMatchMode.INCLUSIVE); });
+        ((AbstractButton) semantics.getClientProperty("exact")).addActionListener(e -> { if (!syncing) model.setColorMatchMode(ColorMatchMode.EXACT); });
         manaRange.setRangeListener((minimum, maximum) -> {
             if (syncing) return;
             if (minimum == 0 && maximum == ManaValueRangeControl.MAX_BUCKET) model.setManaValueRange(null);
@@ -175,8 +175,8 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
             typeChips.forEach((type, chip) -> chip.setSelected(filters.baseTypes().contains(type)));
             tagChips.forEach((tag, chip) -> chip.setSelected(filters.selectedTags().contains(tag)));
             JPanel semantics = (JPanel) getClientProperty("semantics");
-            ((JRadioButton) semantics.getClientProperty(filters.colorSource() == ColorSource.CARD_COLORS ? "printed" : "identity")).setSelected(true);
-            ((JRadioButton) semantics.getClientProperty(filters.colorMatchMode() == ColorMatchMode.INCLUSIVE ? "inclusive" : "exact")).setSelected(true);
+            ((AbstractButton) semantics.getClientProperty(filters.colorSource() == ColorSource.CARD_COLORS ? "printed" : "identity")).setSelected(true);
+            ((AbstractButton) semantics.getClientProperty(filters.colorMatchMode() == ColorMatchMode.INCLUSIVE ? "inclusive" : "exact")).setSelected(true);
             ManaValueRange range = filters.manaValueRange();
             manaRange.setRange(range == null ? 0 : bucket(range.minimum()), range == null ? ManaValueRangeControl.MAX_BUCKET : bucket(range.maximum()));
         } finally {
@@ -204,12 +204,8 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         return panel;
     }
 
-    private JRadioButton manaRadio(String label, String iconPath) {
-        JRadioButton button = new JRadioButton(label, new SvgIcon(iconPath, 13));
-        button.setOpaque(false);
-        button.setFocusPainted(false);
-        button.setMargin(new Insets(2, 4, 2, 6));
-        button.setIconTextGap(4);
+    private FilterChip manaRadio(String label, String iconPath) {
+        FilterChip button = new FilterChip(label, new SvgIcon(iconPath, 13));
         button.setFont(button.getFont().deriveFont(Font.BOLD, 10.5f));
         return button;
     }

@@ -174,3 +174,10 @@ The DP-05 interaction pass uses `PreviewDeckPlannerWorkspace.ps1`. The harness o
 - Filter chips now size once from their own label/icon while reserving permanent selection-mark space and optional count space.
 - Restored visible check-mark selection state, softened inline tag counts, and added tag-list text filtering for large future tag vocabularies.
 - Color controls now include W/U/B/R/G, colorless, and a separate Phyrexian-mana refinement derived from card/face mana costs; Phyrexian remains a semantic mana-symbol filter, not a color.
+
+
+### 2026-08-07 — DP-05 loading and scroll stability
+
+- Once content has been published, filter refresh uses only the fixed status-strip progress indicator; the hidden centered state-panel indicator is deactivated so it cannot animate/repaint behind the browser.
+- Planner vertical scroll panes reserve the narrow custom-scrollbar gutter and disable the thumb when scrolling is unnecessary. This avoids scrollbar-width/layout feedback loops without presenting an active scrollbar when content fits.
+- Color-source and match-mode selectors use the same explicit selected-chip treatment as other filters so chosen semantics are visible without relying on native radio rendering.

@@ -25,6 +25,24 @@ class DeckPlannerFilterPanelTest {
         assertTrue(findSelectedButton(panel.get(), "Mill"));
     }
 
+    @Test void colorSemanticsExposeVisibleSelectedState() throws Exception {
+        DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
+        AtomicReference<DeckPlannerFilterPanel> panel = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> panel.set(new DeckPlannerFilterPanel(model, Set.of())));
+
+        assertTrue(findSelectedButton(panel.get(), "Printed"));
+        assertTrue(findSelectedButton(panel.get(), "Inclusive"));
+        SwingUtilities.invokeAndWait(() -> {
+            model.setColorSource(ColorSource.COLOR_IDENTITY);
+            model.setColorMatchMode(ColorMatchMode.EXACT);
+        });
+        SwingUtilities.invokeAndWait(() -> {});
+        assertTrue(findSelectedButton(panel.get(), "Identity"));
+        assertTrue(findSelectedButton(panel.get(), "Exact"));
+        assertFalse(findSelectedButton(panel.get(), "Printed"));
+        assertFalse(findSelectedButton(panel.get(), "Inclusive"));
+    }
+
     @Test void selectedChipsExposeNonColorStateAndKeepStableGeometry() throws Exception {
         DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
         SemanticTag mill = new SemanticTag(TagCategory.ACTION, "mill", "Mill");

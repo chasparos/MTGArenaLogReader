@@ -80,6 +80,24 @@ class CardBrowserScrollPaneTest {
         });
     }
 
+    @Test void verticalScrollbarKeepsStableGutterAndOnlyEnablesWhenNeeded() throws Exception {
+        AtomicReference<CardBrowserScrollPane> paneRef = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardBrowserPanel browser = new CardBrowserPanel(CardGridLayout.readableDefaults(),
+                    new ViewportImageWindow(0), ignored -> CompletableFuture.completedFuture(Optional.empty()));
+            CardBrowserScrollPane pane = new CardBrowserScrollPane(browser);
+            pane.setSize(900, 700);
+            pane.doLayout();
+            paneRef.set(pane);
+            assertEquals(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS, pane.getVerticalScrollBarPolicy());
+            assertFalse(pane.getVerticalScrollBar().isEnabled());
+            pane.setCards(java.util.stream.IntStream.range(0, 20)
+                    .mapToObj(i -> new CardBrowserPanel.BrowserCard("id-" + i, "Card " + i)).toList());
+            pane.doLayout();
+        });
+        SwingUtilities.invokeAndWait(() -> assertTrue(paneRef.get().getVerticalScrollBar().isEnabled()));
+    }
+
     private static CardBrowserPanel panel() {
         return new CardBrowserPanel(
                 new CardGridLayout(100, 160, 10, 10, 10),

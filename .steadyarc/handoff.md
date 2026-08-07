@@ -157,3 +157,10 @@ DP-04 human review found three presentation corrections: stale background pixels
 Human review approved the composed behavior but found filter-column clipping, oversized/unstable chip geometry, weak MTG visual language, an unsuitable spinner-based mana range, and tag counts that vanished on rollover and did not recount after tag selection. This bounded correction introduces wrapping compact icon controls, a 0–7+ dual-handle mana selector, stable painted count pills, and active-tag faceted recounting. DP-05 remains active pending rerun of the workspace preview.
 
 - DP-05 human-review follow-up: compact wrapped filter rail, content-sized stable chips, restored checks, softened counts, tag search, connected color semantics controls, and colorless/Phyrexian refinements prepared for validation.
+
+
+## 2026-08-07 — DP-05 final interaction-stability amendment
+
+- Human review identified check-mark alignment, a hidden centered loading animation, weak selected-state visibility for color semantics, and a rare scrollbar/layout feedback loop.
+- This bounded correction moves the check inward, deactivates hidden loading animation after content publication, gives color semantics explicit selected-chip visuals, and stabilizes vertical scrollbar geometry with a reserved custom-scrollbar gutter whose thumb disables when unnecessary.
+- DP-05 remains active pending human visual approval of these corrections.

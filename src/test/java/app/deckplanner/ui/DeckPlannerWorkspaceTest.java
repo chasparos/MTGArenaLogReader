@@ -74,11 +74,11 @@ class DeckPlannerWorkspaceTest {
         SwingUtilities.invokeAndWait(() -> model.toggleColor(CardColor.BLUE));
         assertEquals(2, onEdt(() -> workspaceRef.get().browser().cards().size()),
                 "published cards should remain stable while replacement results are pending");
-        assertTrue(onEdt(() -> visibleProgressBar(workspaceRef.get()) != null),
-                "refresh progress should live in the fixed content strip");
+        assertEquals(1, onEdt(() -> visibleProgressBarCount(workspaceRef.get())),
+                "refresh should animate only the fixed content-strip indicator");
 
         await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
-        assertNull(onEdt(() -> visibleProgressBar(workspaceRef.get())));
+        assertEquals(0, onEdt(() -> visibleProgressBarCount(workspaceRef.get())));
         SwingUtilities.invokeAndWait(workspaceRef.get()::close);
     }
 
@@ -129,15 +129,13 @@ class DeckPlannerWorkspaceTest {
         return null;
     }
 
-    private static JProgressBar visibleProgressBar(Container root) {
+    private static int visibleProgressBarCount(Container root) {
+        int count = 0;
         for (Component component : root.getComponents()) {
-            if (component instanceof JProgressBar progress && progress.isVisible()) return progress;
-            if (component instanceof Container container) {
-                JProgressBar nested = visibleProgressBar(container);
-                if (nested != null) return nested;
-            }
+            if (component instanceof JProgressBar progress && progress.isVisible()) count++;
+            if (component instanceof Container container) count += visibleProgressBarCount(container);
         }
-        return null;
+        return count;
     }
 
     private static boolean containsLabel(Container root, String text) {
