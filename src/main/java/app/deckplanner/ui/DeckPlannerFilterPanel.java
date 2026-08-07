@@ -37,6 +37,16 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         model.addListener(state -> SwingUtilities.invokeLater(() -> syncFromModel(state)));
         syncFromModel(model.state());
         applyControlColors();
+        addHierarchyListener(event -> {
+            if ((event.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing()) {
+                SwingUtilities.invokeLater(this::refreshWrappedSectionHeights);
+            }
+        });
+    }
+
+    @Override public void addNotify() {
+        super.addNotify();
+        SwingUtilities.invokeLater(this::refreshWrappedSectionHeights);
     }
 
     @Override public void updateUI() {
@@ -99,7 +109,7 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         for (Map.Entry<TagCategory, List<SemanticTag>> entry : byCategory.entrySet()) {
             JPanel tagPanel = flow();
             for (SemanticTag tag : entry.getValue()) {
-                FilterChip chip = new FilterChip(tag.label(), tagIcon(entry.getKey()), true);
+                FilterChip chip = new FilterChip(tag.label(), tagIcon(tag), true);
                 tagChips.put(tag, chip);
                 tagPanel.add(chip);
             }
@@ -212,8 +222,23 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
                     || tag.category().name().toLowerCase(Locale.ROOT).contains(query);
             chip.setVisible(matches || chip.isSelected());
         });
+        refreshWrappedSectionHeights();
+    }
+
+    private void refreshWrappedSectionHeights() {
+        invalidate();
+        for (Component component : getComponents()) {
+            if (component instanceof Container container) invalidateWrapLayouts(container);
+        }
         revalidate();
         repaint();
+    }
+
+    private void invalidateWrapLayouts(Container container) {
+        if (container.getLayout() instanceof WrapLayout) container.invalidate();
+        for (Component child : container.getComponents()) {
+            if (child instanceof Container nested) invalidateWrapLayouts(nested);
+        }
     }
 
     private void applyControlColors() {
@@ -241,13 +266,36 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         return new SvgIcon(resource, 14);
     }
 
-    private Icon tagIcon(TagCategory category) {
-        return new SvgIcon(switch (category) {
-            case KEYWORD -> "/svg/rarity.svg";
+    private Icon tagIcon(SemanticTag tag) {
+        String resource = switch (tag.category()) {
+            case KEYWORD -> evergreenAbilityIcon(tag.key());
             case ACTION -> "/svg/tap.svg";
             case ZONE -> "/svg/land.svg";
             case CONCEPT -> "/svg/chaos.svg";
-        }, 13);
+        };
+        return new SvgIcon(resource, 13);
+    }
+
+    private String evergreenAbilityIcon(String key) {
+        return switch (key) {
+            case "deathtouch" -> "/svg/ability-deathtouch.svg";
+            case "defender" -> "/svg/ability-defender.svg";
+            case "double-strike", "double strike" -> "/svg/ability-doublestrike.svg";
+            case "first-strike", "first strike" -> "/svg/ability-firststrike.svg";
+            case "flash" -> "/svg/ability-flash.svg";
+            case "flying" -> "/svg/ability-flying.svg";
+            case "haste" -> "/svg/ability-haste.svg";
+            case "hexproof" -> "/svg/ability-hexproof.svg";
+            case "indestructible" -> "/svg/ability-indestructible.svg";
+            case "lifelink" -> "/svg/ability-lifelink.svg";
+            case "menace" -> "/svg/ability-menace.svg";
+            case "prowess" -> "/svg/ability-prowess.svg";
+            case "reach" -> "/svg/ability-reach.svg";
+            case "trample" -> "/svg/ability-trample.svg";
+            case "vigilance" -> "/svg/ability-vigilance.svg";
+            case "ward" -> "/svg/ability-ward.svg";
+            default -> "/svg/rarity.svg";
+        };
     }
 
     private int bucket(double value) {

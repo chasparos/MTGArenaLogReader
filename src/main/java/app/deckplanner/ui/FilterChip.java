@@ -77,18 +77,26 @@ final class FilterChip extends JToggleButton {
                 g.setStroke(new BasicStroke(2f));
                 g.draw(new RoundRectangle2D.Float(3, 3, getWidth() - 6, getHeight() - 6, 9, 9));
             }
-            if (isSelected()) {
-                g.setColor(AppColors.color("Label.foreground", Color.WHITE));
-                g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                int cy = getHeight() / 2;
-                g.drawLine(7, cy, 10, cy + 3);
-                g.drawLine(10, cy + 3, 15, cy - 3);
-            }
         } finally {
             g.dispose();
         }
         super.paintComponent(graphics);
+        if (isSelected()) paintCheck(graphics);
         if (countCapable && count != null) paintCount(graphics);
+    }
+
+    private void paintCheck(Graphics graphics) {
+        Graphics2D g = (Graphics2D) graphics.create();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(AppColors.color("Label.foreground", Color.WHITE));
+            g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            int cy = getHeight() / 2;
+            g.drawLine(7, cy, 10, cy + 3);
+            g.drawLine(10, cy + 3, 15, cy - 3);
+        } finally {
+            g.dispose();
+        }
     }
 
     private void paintCount(Graphics graphics) {
