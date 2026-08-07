@@ -7,6 +7,8 @@ This repository follows that specification against itself. Current state is stor
 - `.steadyarc/roadmap.md`
 - `.steadyarc/deferred-issues.md`
 - `.steadyarc/engineering-notes.md`
+- `.steadyarc/design-notes.md`
+- `.steadyarc/user-preferences.md`
 - `.steadyarc/handoff.md`
 
 Codex-specific entry and bridge guidance remains in `AGENTS.md`, `knowledge/SteadyArc_CodexWorkflow.md`, and the optional `.steadyarc/hello-codex.md`; those adapter artifacts are not canonical project memory.

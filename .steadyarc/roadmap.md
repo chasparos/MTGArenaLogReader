@@ -1,10 +1,39 @@
 # Steady Arc Roadmap
 
-## Active Engineering Arc — Deck Planner
+## Current arc
+
+- **Arc identifier:** Steady Arc 1.0 Project Memory Compliance
+- **Arc type:** maintenance
+- **Area in scope:** `.steadyarc/` project-owned continuity Markdown, `AGENTS.md`, and static compliance evidence only. Managed release artifacts, product source, and product tests are out of scope.
+- **Completion criteria:** canonical project-memory roles exist; roadmap and handoff use the Steady Arc 1.0 shapes without losing prior evidence; the pre-existing Deck Planner arc is retained without reprioritizing its product objective; managed-tool update status is explicitly classified rather than reconstructed without a verified release archive.
+
+### Ordered items
+
+#### SA-COMP-01 — Migrate continuity memory to Steady Arc 1.0
+
+**State:** complete
+
+**Completion evidence date:** 2026-08-07
+
+Migrate the project-owned continuity artifacts to the current information architecture and lifecycle contracts while preserving the transferred repository's engineering state. This adds the missing design and collaboration-preference memory roles, converts the roadmap to canonical arc/item states, retires the legacy reused handoff record into history, and refreshes repository entry-point routing. Managed tools remain unchanged because the verified Steady Arc release archive required for a version transition was not supplied.
+
+### Active item
+
+None. `SA-COMP-01` is complete in this patch; the arc is at its human evaluation point. After application and repository-side validation, the safe product continuation is a new Deck Planner handoff ID that resumes DP-05.
+
+## Retained context — Deck Planner
+
+- **Arc identifier:** Deck Planner
+- **Arc type:** feature implementation
+- **Area in scope:** `src/main/java/app/deckplanner/`, Deck Planner-focused tests and preview fixtures, and the minimum shared application/enrichment surfaces explicitly required by a Deck Planner roadmap item.
+- **Completion criteria:** DP-01 through DP-08 reach `complete` or an explicitly named `implemented; <X> deferred` state with the required validation, performance, integration, and human visual evidence. Ownership-dependent behavior remains deferred until authoritative Arena collection evidence is available.
+- **Resume state:** DP-05 is the next product item, but product implementation is paused until the Steady Arc 1.0 compliance patch is applied and the human issues a fresh handoff ID.
+
+### Mission
 
 Build a responsive Swing workspace for discovering cards legal in a chosen MTG Arena format, narrowing them through structured and semantic filters, collecting candidates under consideration, incorporating collection ownership when Arena logs provide authoritative evidence, and exporting those candidates to an LLM with authoritative card rules.
 
-## Accepted product constraints
+### Accepted constraints
 
 - The catalog contains cards satisfying both `game:arena` and the selected Scryfall format-legality predicate. Catalog identity must be stable across alternate printings and Arena IDs.
 - Scryfall metadata supplements catalog and rules information; it never overrides Arena-observed ownership or gameplay truth.
@@ -17,9 +46,13 @@ Build a responsive Swing workspace for discovering cards legal in a chosen MTG A
 - Cards can be added to a persistent "Under consideration" workspace.
 - AI export uses a versioned, token-conscious text protocol, includes authoritative rules for every considered card, and ends with exactly: `What deck would you build with these cards?`
 
-## Ordered items
+### Ordered items
 
-### DP-01 — Catalog and enrichment foundation (complete)
+#### DP-01 — Catalog and enrichment foundation
+
+**State:** complete
+
+**Completion evidence date:** 2026-08-06
 
 Define a format catalog service that pages Scryfall with a query equivalent to `game:arena legal:<format>`, normalizes duplicate printings to a documented planning identity, and passes cards sequentially through a reusable enrichment/cache boundary.
 
@@ -39,7 +72,11 @@ Completion evidence (2026-08-06):
 - `CardEnrichmentService` is shared by live `InformationCollector` and bulk catalog ingestion.
 - Support-relay `maven-test` passed: 164 tests, zero failures/errors/skips.
 
-### DP-02 — Arena collection observation (implemented; live integration deferred)
+#### DP-02 — Arena collection observation
+
+**State:** implemented; live ownership integration deferred
+
+**Completion evidence date:** 2026-08-06
 
 Discover and parse the authoritative Arena log response(s) that expose owned card quantities, then persist a provenance-bearing collection snapshot keyed by Arena card identity.
 
@@ -64,7 +101,11 @@ Deferred acceptance evidence:
 - Current production `Player.log` captures from 2026-08-06 were inspected after opening Collection, entering Deck Builder, adding owned and unowned cards, and saving a deck. Arena logged navigation and the complete deck upsert, but published no `PlayerInventory.GetPlayerCardsV3` response or structurally equivalent complete owned-card map.
 - Live ownership-dependent integration is deferred under `SA-MTGA-DEF-003` until Arena again publishes an authoritative complete collection record. The parser, provenance model, repository, and observer remain available and tested; no ownership is inferred from deck contents.
 
-### DP-03 — Filter index and categorized tag cloud (complete)
+#### DP-03 — Filter index and categorized tag cloud
+
+**State:** complete
+
+**Completion evidence date:** 2026-08-06
 
 Build immutable/filterable indexes over the completed catalog. Define normalized categories for colors, base types, mana value, oracle keywords, zones, mechanics/actions, and compound concepts such as `all creatures`.
 
@@ -85,7 +126,11 @@ Completion evidence (2026-08-06):
 - Selected tags use global AND semantics, including selections within the same category. Tag-cloud counts are calculated after structured filtering and the active selected-tag AND layer so each activation recounts the remaining refinements.
 - Local validation passed: 174 tests, zero failures/errors/skips at source commit `41a86e54c6c1d77b6003096f7b79ef3d9134b8e8`; the final acceptance-tightening patch adds focused mana-policy and same-category tests for the next validation run.
 
-### DP-04 — Responsive card browser and asynchronous images (complete)
+#### DP-04 — Responsive card browser and asynchronous images
+
+**State:** complete
+
+**Completion evidence date:** 2026-08-06
 
 Create the Deck Planner frame/workspace, responsive card layout, reusable `CardView`, and viewport-aware image scheduling.
 
@@ -98,7 +143,9 @@ Acceptance evidence:
 - The panel performs element layout and hit testing, supports mouse and keyboard focus/selection, and paints hover/selection/focus/ownership overlays without mutating cached card images.
 - Rendered-fixture evidence covers narrow, normal, and wide viewports; a human visual pass confirms responsiveness and interaction feel.
 
-### DP-05 — Filter controls and interaction quality (active)
+#### DP-05 — Filter controls and interaction quality
+
+**State:** active
 
 Current slice: human-review corrections for wrapping compact MTG-styled controls, dual-handle mana range, and active-tag faceted counts.
 
@@ -111,7 +158,9 @@ Acceptance evidence:
 - Empty, loading, partially cached, offline, and failed-catalog states have explicit UI treatments.
 - Keyboard traversal and visible focus are supported; color is not the sole indication of state.
 
-### DP-06 — Under consideration workspace
+#### DP-06 — Under consideration workspace
+
+**State:** planned
 
 Persist an ordered set of candidate cards and expose add/remove/clear/reorder interactions without losing the active browser filters.
 
@@ -122,7 +171,9 @@ Acceptance evidence:
 - Browser and consideration views remain synchronized, including overlays and collection counts.
 - Empty and stale/unresolvable candidate states remain recoverable.
 
-### DP-07 — Authoritative AI deck-building protocol
+#### DP-07 — Authoritative AI deck-building protocol
+
+**State:** planned
 
 Create `MTGA_DECK_BUILD_REQUEST_V1`, following the established authoritative/provenance discipline of game reconstruction exports while using a deck-planning-specific schema.
 
@@ -134,7 +185,9 @@ Acceptance evidence:
 - Golden tests cover ordinary, token-producing, split/adventure, transform/modal, and metadata-incomplete cards plus the `-1/0/positive` collection states.
 - The final request text is exactly `What deck would you build with these cards?`
 
-### DP-08 — Integration, performance, and release evidence
+#### DP-08 — Integration, performance, and release evidence
+
+**State:** planned
 
 Wire navigation/startup lifecycle, background service shutdown, persistence migration, and end-to-end validation.
 
@@ -145,16 +198,20 @@ Acceptance evidence:
 - Performance evidence records EDT responsiveness, time to first usable catalog view, scroll behavior with a full target-format catalog, image-cache hit behavior, and bounded memory/cache growth.
 - Human visual validation covers normal interaction and the required loading/offline/error states.
 
-## Current planning decisions
+### Current planning decisions
 
 - DP-01, DP-03, and DP-04 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-05 is active and must keep collection-status controls disabled or explicitly unavailable while ownership remains unknown.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.
 
-## Out of scope for the first arc
+### Out of scope for the first arc
 
 - Automatically submitting or importing a deck into Arena.
 - AI-generated card facts that are absent from authoritative metadata.
 - Full deck legality/sideboard validation or automated mana-base optimization unless promoted as a later bounded item.
 - Live collaborative/cloud synchronization.
+
+## Concurrent arcs
+
+None.

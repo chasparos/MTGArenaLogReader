@@ -8,9 +8,10 @@ Read in this order and stop once you have enough authority and context for the d
 
 1. `.steadyarc/handoff.md` — current ownership, delegated authority, constraints, and return condition.
 2. The current arc and active item in `.steadyarc/roadmap.md`.
-3. Relevant sections of `.steadyarc/engineering-notes.md`; do not read it as a progress log.
-4. `knowledge/SteadyArc_CodexWorkflow.md` only for Codex-specific operation, continuation-artifact handling, or knowledge-ZIP bootstrap/update work.
-5. `knowledge/SteadyArc_InformationArchitecture.md` only when document authority or placement is unclear.
+3. Relevant sections of `.steadyarc/engineering-notes.md` and `.steadyarc/design-notes.md`; use the former for engineering invariants and the latter for durable product/design intent.
+4. `.steadyarc/user-preferences.md` for explicit standing collaboration preferences.
+5. `knowledge/SteadyArc_CodexWorkflow.md` only for Codex-specific operation, continuation-artifact handling, or knowledge-ZIP bootstrap/update work.
+6. `knowledge/SteadyArc_InformationArchitecture.md` only when document authority or placement is unclear.
 
 Inspect source, tests, scripts, and current validation evidence before changing behavior.
 
