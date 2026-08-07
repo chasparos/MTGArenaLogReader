@@ -26,6 +26,38 @@ Each arc has:
 3. completion criteria;
 4. an evaluation point before another arc begins.
 
+Each arc has a stable **arc identifier** (a short name, e.g. `Workflow Information Architecture 1.0`) that handoffs and roadmap sections reference. An identifier is not reused for a materially different objective once its arc is complete or abandoned.
+
+### 2.1 Parallel arcs
+
+A repository normally advances one arc at a time, but more than one Engineering Arc may be simultaneously active when different agents are genuinely working on non-overlapping concerns.
+
+- A repository has at most one **primary arc**, tracked as `## Current arc` in `.steadyarc/roadmap.md`. The primary arc is the default destination for new work and the one a human should expect to be moving when they check in casually.
+- A repository may additionally have zero or more **concurrent arcs**, each tracked in its own subsection under `## Concurrent arcs` in `.steadyarc/roadmap.md`, using the same shape as the primary arc: objective, arc type, completion criteria, ordered items, and active item.
+- Every arc, primary or concurrent, declares an explicit **area in scope**: the files, directories, or components it is allowed to change. Areas in scope are evidence, not intent — they must describe what the arc's roadmap items actually touch.
+- **Non-interference rule:** two arcs may run concurrently only while their declared areas in scope do not overlap. If two arcs would need to change the same file, directory, or tightly coupled component, they must be sequenced (one paused or merged into the other), not run in parallel. Discovering an unavoidable overlap mid-arc is a blocking question, not a reason to silently proceed in both.
+- Opening a concurrent arc requires the same rigor as opening the primary arc: an objective, completion criteria, and an explicit human decision that the work is worth parallelizing. It is not a way to bypass the "complete exactly one roadmap item per patch" rule within a single arc.
+- Each concurrently active handoff (see §9.1) names the arc it belongs to. An agent must not act against a concurrent arc's scope using a handoff issued for a different arc.
+- When a concurrent arc's completion criteria are met, it is closed the same way as any arc: evaluated, its roadmap subsection marked complete or removed, and its handoff moved to history. Closing one concurrent arc does not require pausing or closing others.
+- Arc lifecycle step 10 (§4) may resolve to opening an additional concurrent arc instead of only choosing the next arc in sequence, provided the non-interference rule holds.
+
+### 2.2 Ordered-item format
+
+An arc's `## Ordered items` (primary, concurrent, or retained-context) is a narrative record, not a bare checklist. It has three parts:
+
+1. **Mission** — the one-paragraph objective already required above, stated as what the arc builds or changes, not a task list.
+2. **Accepted constraints** (optional, arc-scoped) — durable product, design, or engineering decisions that bind every item in this arc. These are narrower and shorter-lived than `.steadyarc/engineering-notes.md`, which holds cross-arc invariants; when a constraint would still matter after this arc closes, promote it to engineering notes instead of leaving it only here.
+3. **Items** — each item has a stable **item ID** (`<ARC-PREFIX>-<NN>`, e.g. `WMP-03`), a short title, a canonical **state**, and a prose body explaining what the item does and why, not only that it is done.
+
+Canonical states, and only these:
+
+- **planned** — not yet started; no date stamp.
+- **active** — currently being worked; no date stamp required, though a started-on date may be noted in prose.
+- **complete** — all of the item's own criteria are met; requires a mandatory completion-evidence **date stamp** (`YYYY-MM-DD`) naming when that evidence was produced (a commit, a verified build, a recorded observation).
+- **implemented; `<X>` deferred** — the core of the item is done but a named remainder `<X>` is intentionally not: also requires a mandatory completion-evidence date stamp, and `<X>` must be concrete enough to become its own future item rather than a vague caveat.
+
+A date stamp is mandatory whenever a state asserts completion evidence (`complete` or `implemented; ... deferred`); it is never fabricated retroactively — an item completed before this rule existed may record `(date not recorded; predates mandatory date-stamp requirement)` instead of an invented date. This format replaces the plain `- [ ]`/`- [x]` checklist as the default ordered-item shape; it does not introduce a separate or competing roadmap protocol, and it applies identically to the primary arc and every concurrent arc in §2.1.
+
 ## 3. Core rules
 
 - Treat the current repository snapshot as authoritative.
@@ -82,7 +114,7 @@ Those conditions prove that the finalization which created the payload has alrea
 7. Update roadmap and deferred issues.
 8. Repeat until completion criteria are met.
 9. Pause for human evaluation, real-world testing, or architectural review.
-10. Select the next arc from evidence rather than momentum alone.
+10. Select the next arc from evidence rather than momentum alone, or open an additional non-overlapping concurrent arc (§2.1) when parallel specialist work is justified and does not require sequencing.
 
 ## 5. Failure investigation
 
@@ -159,13 +191,13 @@ A request to adjust work owned by another role is valid delegation; it does not 
 
 ## 9. Handoff protocol
 
-A true handoff is explicit and persisted in `.steadyarc/handoff.md`. The file is the repository-owned coordination record for the delegated interval; it is not a scratchpad, changelog, or substitute for the roadmap.
+A true handoff is explicit and persisted in `.steadyarc/handoff.md`. The file is the repository-owned coordination record for the delegated interval or intervals; it is not a scratchpad, changelog, or substitute for the roadmap.
 
-The active handoff states:
+Each active handoff record states:
 
 - status and handoff identifier;
 - sending, receiving, and return owners;
-- engineering arc and active roadmap item;
+- the arc identifier (§2.1) it belongs to, and the active roadmap item within that arc;
 - authoritative revision or snapshot and build/test state;
 - requested action and completion criteria;
 - constraints, open questions, and in-scope/out-of-scope areas;
@@ -213,7 +245,7 @@ Treat the handoff as an append-preserving ownership-transition record:
 - `Closed` is terminal and must not be reused as a convenient blank template;
 - parallel independent delegations use separate handoff IDs and non-overlapping scopes.
 
-The active handoff is the newest non-closed record that covers the delegated work. Keep `.steadyarc/handoff.md` as the single current record. When a new handoff ID replaces a returned or closed record, preserve the prior file under `.steadyarc/handoff-history/<handoff-id>.md`. Historical records are evidence, not additional current-state candidates. If a repository instead stores prior records in one file, preserve them under clearly dated history and keep exactly one current-state section. If authority is ambiguous, stop implementation and ask the human rather than inferring ownership from the most recent prose.
+The active handoff is the newest non-closed record that covers the delegated work. When only one arc is active, keep `.steadyarc/handoff.md` as a single current record with a one-row index (§9.1). When multiple arcs are concurrently active, `.steadyarc/handoff.md` holds the index plus one record per open handoff ID, per §9.1. When a new handoff ID replaces a returned or closed record, preserve the prior file under `.steadyarc/handoff-history/<handoff-id>.md`. Historical records are evidence, not additional current-state candidates. If a repository instead stores prior records in one file, preserve them under clearly dated history and keep exactly the current index and its open records as current state. If authority is ambiguous, stop implementation and ask the human rather than inferring ownership from the most recent prose.
 
 ### Provenance in an active handoff
 
@@ -221,11 +253,26 @@ The authoritative revision must identify one commit or snapshot baseline. Record
 
 When the working tree is dirty, state whether those changes are authoritative inputs, implementation work in progress, or a known platform artifact. An archive produced from `HEAD` contains committed state only; the manifest must disclose omitted working-tree changes, and the receiving agent must not discard them merely because they are absent from the archive.
 
+### 9.1 Multiple concurrently active handoffs
+
+Parallel arcs (§2.1) require more than one active handoff at the same time. This is the normal shape for a repository running concurrent arcs, not an exceptional case.
+
+- `.steadyarc/handoff.md` opens with an **Active handoffs index**: one row per open handoff listing its handoff ID, arc, receiver, and status. The index is the first thing a picking-up agent reads; it must not assume the file contains exactly one record.
+- The index is followed by one full record per listed handoff ID, each using the normal handoff shape (status, delegation, engineering context, activity amendments, return report).
+- Every active handoff names the arc it belongs to (§2.1). An agent must confirm its handoff's arc matches the concurrent arc whose scope it is about to touch before acting.
+- Two active handoffs must not declare overlapping "areas in scope." If a needed change would cross into another active handoff's declared area, stop and raise it as a blocking question rather than acting across the boundary.
+- When a handoff tied to a concurrent arc returns or closes, move only that record to `.steadyarc/handoff-history/<handoff-id>.md` and remove its row from the index. Sibling handoffs and their arcs are unaffected.
+- A repository with only one active handoff may keep the index to a single row rather than omitting it, so the index format never needs to change when a second concurrent arc opens.
+
 ## 10. Agent coexistence
 
 Steady Arc core support remains separate from agent-specific workflow documentation. Do not overwrite, merge, or reinterpret an agent's native instructions unless the human explicitly asks.
 
 An agent adapter may provide a repository bridge that explains the shared contract, but it must not prescribe another agent's internal workflow or redefine the agent-neutral core.
+
+### 10.1 Capability profiles
+
+Cooperating agents differ in git access, commit automation, execution sandboxing, and cross-session memory. `knowledge/SteadyArc_AgentProfiles.md` defines agent-neutral **capability profiles** (categorized by what an agent can do, not by vendor name) and the operating guidance each profile needs to follow this workflow safely. A concrete agent adapter should state which profile it matches instead of duplicating profile guidance.
 
 ## 11. Automation scripts are first-class code
 
@@ -237,3 +284,11 @@ Repository automation deserves the same design discipline as production code.
 - Apply environment changes in one explicit initialization step.
 - Keep orchestration thin so each responsibility can be tested independently.
 - Treat shell parsing, quoting, working-directory behavior, and environment inheritance as correctness concerns rather than incidental scripting details.
+
+### 11.1 Cross-platform script parity
+
+When a PowerShell automation script is part of the human handoff loop, provide a bash counterpart with strictly equivalent outcomes rather than requiring PowerShell as the only supported shell.
+
+- Equivalent outcomes mean the same git operations, the same generated artifacts (archive, manifest, applied-patch archiving), the same exit-code contract, and the same failure classification for the same inputs. Cosmetic differences (message wording, OS-native line endings) are acceptable; differences in what gets committed, staged, or archived are not.
+- Any host-specific default, such as a patch download directory, is a configurable property with the same name and precedence in both script families rather than a value hardcoded differently per platform. See `knowledge/SteadyArc_Tooling.md` for the current property.
+- When only one script family can be executed in the current environment, follow the static-evidence rule in §5.3: state what was checked (parser success, source-contract tests, packaging) and what remains `not performed` rather than implying the other family was exercised.

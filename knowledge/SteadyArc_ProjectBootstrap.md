@@ -24,7 +24,7 @@ When the archive arrives, transition to the full procedure below. Make the asses
 
 ## Procedure
 
-**Required release input:** Before implementing bootstrap for a repository that does not already contain Steady Arc, require the verified `steady-arc-knowledge-<version>.zip` release archive as a conversation attachment. When it is absent, request it from the human and enter assessment mode above. The workflow Knowledge files describe the contract but do not supply the released managed artifact bytes. Do not reconstruct managed scripts, Java sources, manifests, or binaries from prose.
+**Required release input:** Before implementing bootstrap for a repository that does not already contain Steady Arc, require the verified `steady-arc-knowledge-<version>.zip` release archive as a conversation attachment. When it is absent, request it from the human and pause implementation (enter assessment mode above). The workflow Knowledge files describe the contract but do not supply the released managed artifact bytes. Do not reconstruct managed scripts, Java sources, manifests, or binaries from prose.
 
 1. Inspect repository structure, version-control state, build system, test framework, and existing agent instructions.
 2. Treat existing project and agent documentation as authoritative within its own scope.

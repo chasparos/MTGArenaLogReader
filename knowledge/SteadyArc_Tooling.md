@@ -7,7 +7,10 @@ Steady Arc uses a dedicated directory to avoid interfering with project document
 - `.steadyarc/roadmap.md`
 - `.steadyarc/deferred-issues.md`
 - `.steadyarc/engineering-notes.md`
+- `.steadyarc/design-notes.md`
+- `.steadyarc/user-preferences.md`
 - `.steadyarc/handoff.md`
+- `.steadyarc/local-config` (gitignored; see "Patch download location property" below)
 
 Knowledge and reusable templates may live outside `.steadyarc/`, but active project state belongs there.
 
@@ -44,7 +47,7 @@ Bootstrap and patch delivery must report separately whether the repository build
 
 ## NewPatch.ps1
 
-`NewPatch.ps1` is the repository-supported patch-production tool. It emits Git-native `--binary --full-index` patches and avoids text normalization.
+`NewPatch.ps1` (bash: `newpatch.sh`) is the repository-supported patch-production tool. It emits Git-native `--binary --full-index` patches and avoids text normalization. Both variants produce equivalent patch bytes for equivalent inputs; see "Cross-platform script parity" below.
 
 It is optional producer-side tooling. Users following the normal snapshot → agent-produced patch → `PatchSequence.ps1` loop do not invoke it. Use it only when changes already exist in a working tree or in paired baseline/modified directories and must be converted into a transportable patch.
 
@@ -52,6 +55,10 @@ From a Git working tree:
 
 ```powershell
 .\NewPatch.ps1 -OutputPath "change.patch"
+```
+
+```bash
+./newpatch.sh --output-path "change.patch"
 ```
 
 From snapshot directories without `.git` metadata:
@@ -63,11 +70,18 @@ From snapshot directories without `.git` metadata:
     -ModifiedDirectory "C:\path\to\modified"
 ```
 
+```bash
+./newpatch.sh \
+    --output-path "change.patch" \
+    --baseline-directory "/path/to/baseline" \
+    --modified-directory "/path/to/modified"
+```
+
 The directory fallback copies bytes into a temporary Git repository, commits the baseline, overlays the modified tree, and produces the patch with Git. It must not normalize line endings or decode and rewrite repository files. The output still requires the repository's normal application and validation path.
 
 ## PatchSequence.ps1
 
-The helper supports two paths:
+`PatchSequence.ps1` (bash: `patchsequence.sh`) supports two paths:
 
 - apply a unified patch, then test, commit, and snapshot;
 - finalize manual edits by omitting the patch argument.
@@ -75,16 +89,39 @@ The helper supports two paths:
 Its responsibilities are:
 
 1. verify the Maven Wrapper exists;
-2. resolve a patch from an explicit path or the user's Downloads directory;
+2. resolve a patch from an explicit path or the configured patch download location (see below);
 3. run `git apply --check`;
 4. apply and archive the patch;
-5. execute the Maven test suite through `mvnw.cmd`;
+5. execute the Maven test suite through `mvnw.cmd` (bash: `mvnw`);
 6. write `latest test results.log`;
 7. stage and commit repository changes;
-8. create `latest snapshot.zip` from `HEAD`;
+8. create `latest snapshot.zip` from `HEAD` and `latest snapshot manifest.json`;
 9. return the test exit code.
 
 Do not embed project-specific paths or names in the reusable source.
+
+```bash
+./patchsequence.sh "change.patch" "Commit message"
+./patchsequence.sh "" "Commit message"   # finalize without applying a patch
+```
+
+### Patch download location property
+
+When `PatchFile`/`$1` is a bare filename rather than an absolute path, both `PatchSequence.ps1` and `patchsequence.sh` resolve it against the repository root first, then against the **patch download location**, in this precedence order:
+
+1. the `STEADYARC_PATCH_DOWNLOAD_DIR` environment variable, when set;
+2. the `patchDownloadDir` key in the gitignored `.steadyarc/local-config` file (see `.steadyarc/local-config.example`), when present;
+3. otherwise, the platform default: `$HOME/Downloads` (bash) or `Join-Path $HOME "Downloads"` (PowerShell).
+
+This property exists because a literal "Downloads" directory is a Windows-centric assumption; Linux, WSL, and macOS operators without one can redirect resolution without editing either script. Both script families read the same environment variable name and the same `.steadyarc/local-config` key so the resolved location never silently diverges between them for the same host configuration.
+
+### Cross-platform script parity
+
+`PatchSequence.ps1`/`patchsequence.sh` and `NewPatch.ps1`/`newpatch.sh` are required to produce strictly equal outcomes for equivalent inputs: the same git operations (apply, add, commit, archive), the same generated artifacts (`latest snapshot.zip`, `latest test results.log`, `latest snapshot manifest.json`, the `applied patches/` archive), the same exit-code contract, and the same failure classification (tests failing leaves the working tree uncommitted and produces a diagnostic archive from unchanged `HEAD` in both variants).
+
+The snapshot manifest schema is shared and versioned (`schemaVersion`, currently `1`). `PatchSequence.ps1` retains its existing `runtime.powershell` field (`$PSVersionTable.PSVersion`) for backward compatibility; `patchsequence.sh` populates the equivalent `runtime.shell` field (`"bash <version>"`) since bash has no PowerShell-version concept to report. A manifest consumer distinguishes the producing script by which of these two fields is present rather than by a shared field name. Message wording and OS-native line endings are allowed to differ; what gets committed, staged, or archived is not.
+
+When only one script family can be executed in the current environment, report the other as `not performed` per §5.3 of `knowledge/SteadyArc_Workflow.md` rather than inferring runtime parity from static inspection alone.
 
 ## Bootstrap and tool updates
 
