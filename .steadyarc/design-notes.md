@@ -15,3 +15,18 @@ An existing Arena-exported deck can be used as a starting point for consideratio
 ## AI assistance direction
 
 Deck-building export is advisory. The payload supplies authoritative card rules and provenance-aware collection quantities, distinguishes unknown from known zero, and asks the model for strategic inference without allowing it to invent or substitute card facts.
+
+## DP-06 consideration-workspace feedback (2026-08-07)
+
+Human acceptance must exercise the planner against real current Standard cards, not synthetic stand-ins. The preview should obtain a bounded real-card subset through the same Scryfall/catalog/cache pipeline used by the product so visual and interaction feedback covers representative names, mana costs, card types, faces, images, and stable identities.
+
+The consideration workspace is a lightweight candidate set rather than an ownership view. While Arena collection publication remains unavailable under `SA-MTGA-DEF-003`, candidate rows should not show simulated or inferred owned quantities.
+
+Candidate ordering has two intentional modes: persistent manual order, primarily manipulated by drag and drop, and an explicit `Use normal MTG sorting` action. Normal MTG sorting should reuse one shared ordering rule already represented in the Draft Assistant / Deck Tracker family rather than allowing planner-specific ordering to drift.
+
+Card presentation in the candidate list should reuse the replay card-chip visual language. This is a shared presentation primitive, not a near-copy created only for Deck Planner.
+
+Deck import is a planner entry path rather than only a text parser. The import surface should offer known Arena decks already observed by the local deck subsystem and also accept pasted Arena-export text. Name resolution belongs behind a common repository that prefers the current local catalog/cache and uses exact-name Scryfall lookup only as a metadata fallback. Scryfall resolution never proves ownership.
+
+The consideration-only catalog view is an additive filter layer. It must leave the user's structured/tag filter state intact. Selecting a candidate may activate that layer for focused browsing; a visible filter-panel control turns the layer on or off explicitly.
+
