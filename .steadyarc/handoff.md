@@ -4,12 +4,14 @@
 
 No active handoffs.
 
-The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` is preserved at `.steadyarc/handoff-history/SA-MTGA-DECK-PLANNER-005.md`. It returned to the human repository owner for the compliance interlude without claiming DP-05 completion.
+The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains preserved at `.steadyarc/handoff-history/SA-MTGA-DECK-PLANNER-005.md`. DP-05 was subsequently accepted by the human on 2026-08-06; that acceptance is recorded in the current Deck Planner roadmap rather than retroactively changing the returned legacy handoff.
 
 ## Current ownership
 
 - **Owner:** Human repository owner
-- **Repository baseline inspected for this migration:** `c1a18ed8940a1ae71990bc829c4f13a9dfe2d763` on `main`
+- **Repository baseline inspected for this transition:** `f3c8772f06d36daf63fddda24519723ff8420c65` on `main`
 - **Transferred validation:** `mvnw.cmd test` passed 212 tests with zero failures, errors, or skips.
-- **Safe next action:** Apply and repository-validate the Steady Arc 1.0 project-memory compliance patch. If Deck Planner DP-05 should resume afterward, create a new handoff ID with `Active — implementation` status and the bounded DP-05 scope.
-- **Managed-tool update:** Blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
+- **Current arc:** Deck Planner.
+- **Active roadmap item:** `DP-06 — Under consideration workspace`.
+- **Safe next action:** Implement DP-06 only under a new explicit delegation or active handoff for that bounded item. Until then, the human repository owner retains implementation ownership.
+- **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.

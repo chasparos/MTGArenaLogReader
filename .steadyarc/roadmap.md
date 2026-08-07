@@ -2,32 +2,10 @@
 
 ## Current arc
 
-- **Arc identifier:** Steady Arc 1.0 Project Memory Compliance
-- **Arc type:** maintenance
-- **Area in scope:** `.steadyarc/` project-owned continuity Markdown, `AGENTS.md`, and static compliance evidence only. Managed release artifacts, product source, and product tests are out of scope.
-- **Completion criteria:** canonical project-memory roles exist; roadmap and handoff use the Steady Arc 1.0 shapes without losing prior evidence; the pre-existing Deck Planner arc is retained without reprioritizing its product objective; managed-tool update status is explicitly classified rather than reconstructed without a verified release archive.
-
-### Ordered items
-
-#### SA-COMP-01 — Migrate continuity memory to Steady Arc 1.0
-
-**State:** complete
-
-**Completion evidence date:** 2026-08-07
-
-Migrate the project-owned continuity artifacts to the current information architecture and lifecycle contracts while preserving the transferred repository's engineering state. This adds the missing design and collaboration-preference memory roles, converts the roadmap to canonical arc/item states, retires the legacy reused handoff record into history, and refreshes repository entry-point routing. Managed tools remain unchanged because the verified Steady Arc release archive required for a version transition was not supplied.
-
-### Active item
-
-None. `SA-COMP-01` is complete in this patch; the arc is at its human evaluation point. After application and repository-side validation, the safe product continuation is a new Deck Planner handoff ID that resumes DP-05.
-
-## Retained context — Deck Planner
-
 - **Arc identifier:** Deck Planner
 - **Arc type:** feature implementation
 - **Area in scope:** `src/main/java/app/deckplanner/`, Deck Planner-focused tests and preview fixtures, and the minimum shared application/enrichment surfaces explicitly required by a Deck Planner roadmap item.
 - **Completion criteria:** DP-01 through DP-08 reach `complete` or an explicitly named `implemented; <X> deferred` state with the required validation, performance, integration, and human visual evidence. Ownership-dependent behavior remains deferred until authoritative Arena collection evidence is available.
-- **Resume state:** DP-05 is the next product item, but product implementation is paused until the Steady Arc 1.0 compliance patch is applied and the human issues a fresh handoff ID.
 
 ### Mission
 
@@ -145,9 +123,11 @@ Acceptance evidence:
 
 #### DP-05 — Filter controls and interaction quality
 
-**State:** active
+**State:** complete
 
-Current slice: human-review corrections for wrapping compact MTG-styled controls, dual-handle mana range, and active-tag faceted counts.
+**Completion evidence date:** 2026-08-06
+
+Human acceptance approval was recorded on 2026-08-06 after review of the filter-control and interaction-quality work.
 
 Add appealing click-first controls for format, colors, base types, mana range, collection status, and categorized tags, with clear active states and fast reset/navigation.
 
@@ -160,7 +140,7 @@ Acceptance evidence:
 
 #### DP-06 — Under consideration workspace
 
-**State:** planned
+**State:** active
 
 Persist an ordered set of candidate cards and expose add/remove/clear/reorder interactions without losing the active browser filters.
 
@@ -198,9 +178,13 @@ Acceptance evidence:
 - Performance evidence records EDT responsiveness, time to first usable catalog view, scroll behavior with a full target-format catalog, image-cache hit behavior, and bounded memory/cache growth.
 - Human visual validation covers normal interaction and the required loading/offline/error states.
 
+### Active item
+
+`DP-06 — Under consideration workspace` is active. Persist and synchronize the ordered candidate-card workspace while preserving the current browser filters and the established unknown-ownership semantics.
+
 ### Current planning decisions
 
-- DP-01, DP-03, and DP-04 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-05 is active and must keep collection-status controls disabled or explicitly unavailable while ownership remains unknown.
+- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 is active; ownership-dependent consideration displays must continue to preserve unknown collection quantity rather than infer ownership.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.
