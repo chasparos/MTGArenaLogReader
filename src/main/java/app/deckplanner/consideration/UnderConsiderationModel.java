@@ -2,6 +2,7 @@ package app.deckplanner.consideration;
 
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.IndexedCatalogCard;
+import app.model.card.MagicCardOrdering;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -99,6 +100,45 @@ public final class UnderConsiderationModel {
         reordered.add(to, identity);
         identities.clear();
         identities.addAll(reordered);
+        commit();
+    }
+
+    /** Moves an identity to an insertion point in the current ordered set. */
+    public void moveToIndex(String identity, int insertionIndex) {
+        if (identity == null || !identities.contains(identity)) return;
+        ArrayList<String> reordered = new ArrayList<>(identities);
+        int from = reordered.indexOf(identity);
+        int target = Math.max(0, Math.min(reordered.size(), insertionIndex));
+        reordered.remove(from);
+        if (from < target) target--;
+        target = Math.max(0, Math.min(reordered.size(), target));
+        if (target == from) return;
+        reordered.add(target, identity);
+        identities.clear();
+        identities.addAll(reordered);
+        commit();
+    }
+
+    /** Applies the shared conventional MTG ordering while keeping stale identities recoverable. */
+    public void sortByMagic(CatalogFilterIndex index) {
+        Objects.requireNonNull(index);
+        java.util.Map<String, IndexedCatalogCard> byIdentity = index.cards().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        card -> card.group().identity(), card -> card, (left, right) -> left));
+        ArrayList<String> sorted = new ArrayList<>(identities);
+        sorted.sort((left, right) -> {
+            IndexedCatalogCard leftCard = byIdentity.get(left);
+            IndexedCatalogCard rightCard = byIdentity.get(right);
+            if (leftCard == null && rightCard == null) return left.compareToIgnoreCase(right);
+            if (leftCard == null) return 1;
+            if (rightCard == null) return -1;
+            int compared = MagicCardOrdering.normalComparator().compare(
+                    leftCard.group().preferredPrinting(), rightCard.group().preferredPrinting());
+            return compared != 0 ? compared : left.compareToIgnoreCase(right);
+        });
+        if (sorted.equals(new ArrayList<>(identities))) return;
+        identities.clear();
+        identities.addAll(sorted);
         commit();
     }
 

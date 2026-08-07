@@ -60,6 +60,43 @@ class UnderConsiderationModelTest {
         assertEquals(List.of(logicalIdentity), model.identities());
     }
 
+    @Test void arbitraryInsertionMovePersistsDragDropOrder() {
+        List<List<String>> saved = new ArrayList<>();
+        UnderConsiderationModel model = new UnderConsiderationModel(
+                List.of("oracle:a", "oracle:b", "oracle:c", "oracle:d"),
+                identities -> saved.add(List.copyOf(identities)));
+
+        model.moveToIndex("oracle:a", 4);
+        assertEquals(List.of("oracle:b", "oracle:c", "oracle:d", "oracle:a"), model.identities());
+
+        model.moveToIndex("oracle:d", 0);
+        assertEquals(List.of("oracle:d", "oracle:b", "oracle:c", "oracle:a"), model.identities());
+        assertEquals(model.identities(), saved.getLast());
+    }
+
+    @Test void normalMagicSortUsesSharedTypeManaColorNameOrderAndKeepsStaleLast() {
+        CardInfo redCreature = card("red", "Red creature");
+        redCreature.setColors(List.of("R"));
+        redCreature.setColorIdentity(List.of("R"));
+        redCreature.setCmc(3.0);
+        CardInfo whiteCreature = card("white", "White creature");
+        whiteCreature.setColors(List.of("W"));
+        whiteCreature.setColorIdentity(List.of("W"));
+        whiteCreature.setCmc(4.0);
+        CardInfo blueInstant = card("blue", "Blue instant");
+        blueInstant.setColors(List.of("U"));
+        blueInstant.setColorIdentity(List.of("U"));
+        blueInstant.setTypeLine("Instant");
+        blueInstant.setCmc(1.0);
+
+        UnderConsiderationModel model = new UnderConsiderationModel(
+                List.of("oracle:missing", "oracle:blue", "oracle:white", "oracle:red"), ignored -> { });
+        model.sortByMagic(index(blueInstant, whiteCreature, redCreature));
+
+        assertEquals(List.of("oracle:red", "oracle:white", "oracle:blue", "oracle:missing"),
+                model.identities());
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();

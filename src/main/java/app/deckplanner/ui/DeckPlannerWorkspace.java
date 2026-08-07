@@ -88,6 +88,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         browserScrollPane = new CardBrowserScrollPane(browser);
         considerationPanel.bind(considerationModel, collectionQuantitySource);
         considerationPanel.setImportAction(this::showDeckImportDialog);
+        considerationPanel.setMagicSortAction(() -> considerationModel.sortByMagic(catalogIndex));
         considerationPanel.setPreferredSize(new Dimension(280, 600));
         considerationPanel.setMinimumSize(new Dimension(230, 300));
         considerationModel.addListener(considerationListener);

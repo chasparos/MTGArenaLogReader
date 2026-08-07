@@ -60,6 +60,28 @@ class UnderConsiderationPanelTest {
         assertTrue(((JLabel) rendered.get()).getText().contains("stale"));
     }
 
+    @Test
+    void candidateListExposesMoveTransferHandlerAndNormalMagicSortControl() throws Exception {
+        AtomicReference<JList<?>> listRef = new AtomicReference<>();
+        AtomicReference<AbstractButton> sortRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            UnderConsiderationPanel panel = new UnderConsiderationPanel();
+            UnderConsiderationModel model = new UnderConsiderationModel(
+                    List.of("oracle:a", "oracle:b"), ignored -> { });
+            panel.bind(model, ignored -> -1);
+            panel.setEntries(model.resolve(index(card("oracle:a", "A"), card("oracle:b", "B"))));
+            listRef.set(find(panel, JList.class));
+            sortRef.set(findButton(panel, "Normal MTG sort"));
+        });
+
+        assertNotNull(listRef.get());
+        assertNotNull(listRef.get().getTransferHandler(), "candidate list must support drag/drop transfer");
+        assertEquals(TransferHandler.MOVE, listRef.get().getTransferHandler().getSourceActions(listRef.get()));
+        assertNotNull(sortRef.get());
+        assertTrue(sortRef.get().isEnabled());
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static Component render(JList list, int index) {
         Object value = list.getModel().getElementAt(index);
@@ -99,6 +121,17 @@ class UnderConsiderationPanelTest {
         card.setOracleText("Draw a card.");
         card.setKeywords(List.of());
         return card;
+    }
+
+    private static AbstractButton findButton(Container root, String text) {
+        for (Component child : root.getComponents()) {
+            if (child instanceof AbstractButton button && text.equals(button.getText())) return button;
+            if (child instanceof Container container) {
+                AbstractButton nested = findButton(container, text);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
     }
 
     private static <T extends Component> T find(Container root, Class<T> type) {

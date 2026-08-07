@@ -9,6 +9,9 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.List;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.util.Objects;
 import java.util.function.ToIntFunction;
 
@@ -18,10 +21,10 @@ public final class UnderConsiderationPanel extends JPanel {
     private final JList<Row> list = new JList<>(rows);
     private final JButton remove = new JButton("Remove");
     private final JButton clear = new JButton("Clear");
-    private final JButton up = new JButton("Up");
-    private final JButton down = new JButton("Down");
+    private final JButton magicSort = new JButton("Normal MTG sort");
     private final JButton importDeck = new JButton("Import deck");
     private Runnable importAction = () -> { };
+    private Runnable magicSortAction = () -> { };
     private UnderConsiderationModel model;
 
     public UnderConsiderationPanel() {
@@ -39,9 +42,8 @@ public final class UnderConsiderationPanel extends JPanel {
 
         JPanel actions = new JPanel(new BorderLayout(4, 4));
         actions.add(importDeck, BorderLayout.NORTH);
-        JPanel candidateActions = new JPanel(new GridLayout(2, 2, 4, 4));
-        candidateActions.add(up);
-        candidateActions.add(down);
+        JPanel candidateActions = new JPanel(new GridLayout(1, 3, 4, 4));
+        candidateActions.add(magicSort);
         candidateActions.add(remove);
         candidateActions.add(clear);
         actions.add(candidateActions, BorderLayout.CENTER);
@@ -49,9 +51,11 @@ public final class UnderConsiderationPanel extends JPanel {
 
         remove.addActionListener(event -> selectedIdentity().ifPresent(model::remove));
         clear.addActionListener(event -> { if (model != null) model.clear(); });
-        up.addActionListener(event -> selectedIdentity().ifPresent(identity -> model.move(identity, -1)));
-        down.addActionListener(event -> selectedIdentity().ifPresent(identity -> model.move(identity, 1)));
+        magicSort.addActionListener(event -> magicSortAction.run());
         importDeck.addActionListener(event -> importAction.run());
+        list.setDropMode(DropMode.INSERT);
+        list.setTransferHandler(new CandidateTransferHandler());
+        if (!GraphicsEnvironment.isHeadless()) list.setDragEnabled(true);
         list.addListSelectionListener(event -> updateActions());
         updateActions();
         refreshTheme();
@@ -63,6 +67,10 @@ public final class UnderConsiderationPanel extends JPanel {
 
     public void setImportAction(Runnable importAction) {
         this.importAction = importAction == null ? () -> { } : importAction;
+    }
+
+    public void setMagicSortAction(Runnable magicSortAction) {
+        this.magicSortAction = magicSortAction == null ? () -> { } : magicSortAction;
     }
 
     public void setEntries(List<UnderConsiderationModel.Entry> entries) {
@@ -101,9 +109,8 @@ public final class UnderConsiderationPanel extends JPanel {
     private void updateActions() {
         boolean selected = list.getSelectedIndex() >= 0;
         remove.setEnabled(selected);
-        up.setEnabled(selected && list.getSelectedIndex() > 0);
-        down.setEnabled(selected && list.getSelectedIndex() + 1 < rows.size());
         clear.setEnabled(!rows.isEmpty());
+        magicSort.setEnabled(rows.size() > 1);
     }
 
     private void refreshTheme() {
@@ -114,6 +121,33 @@ public final class UnderConsiderationPanel extends JPanel {
     private static void assertEdt() {
         if (!SwingUtilities.isEventDispatchThread()) {
             throw new IllegalStateException("Consideration workspace must be used on EDT");
+        }
+    }
+
+    private final class CandidateTransferHandler extends TransferHandler {
+        @Override protected Transferable createTransferable(JComponent component) {
+            return selectedIdentity().map(StringSelection::new).orElse(null);
+        }
+
+        @Override public int getSourceActions(JComponent component) {
+            return MOVE;
+        }
+
+        @Override public boolean canImport(TransferSupport support) {
+            return model != null && support.isDrop() && support.isDataFlavorSupported(DataFlavor.stringFlavor)
+                    && support.getDropLocation() instanceof JList.DropLocation;
+        }
+
+        @Override public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            try {
+                String identity = (String) support.getTransferable().getTransferData(DataFlavor.stringFlavor);
+                JList.DropLocation location = (JList.DropLocation) support.getDropLocation();
+                model.moveToIndex(identity, location.getIndex());
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
         }
     }
 
