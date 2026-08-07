@@ -30,7 +30,9 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private final CardBrowserScrollPane browserScrollPane;
     private final DeckPlannerResultsStatePanel statePanel = new DeckPlannerResultsStatePanel();
     private final JPanel resultCards = new JPanel(new CardLayout());
+    private final JPanel statusStrip = new JPanel(new BorderLayout(8, 0));
     private final JLabel availabilityBanner = new JLabel();
+    private final JProgressBar refreshProgress = new JProgressBar();
     private final DeckPlannerFilterCoordinator coordinator;
 
     public DeckPlannerWorkspace(DeckPlannerFilterModel model,
@@ -61,12 +63,21 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         filterScroll.setPreferredSize(new Dimension(350, 600));
         filterScroll.setMinimumSize(new Dimension(310, 300));
 
-        availabilityBanner.setOpaque(true);
-        availabilityBanner.setBorder(new EmptyBorder(6, 10, 6, 10));
-        availabilityBanner.setVisible(false);
+        availabilityBanner.setBorder(new EmptyBorder(0, 8, 0, 0));
+        refreshProgress.setIndeterminate(true);
+        refreshProgress.setBorderPainted(false);
+        refreshProgress.setPreferredSize(new Dimension(92, 6));
+        refreshProgress.setMaximumSize(new Dimension(92, 6));
+        refreshProgress.setVisible(false);
+        statusStrip.setOpaque(true);
+        statusStrip.setBorder(new EmptyBorder(4, 2, 4, 8));
+        statusStrip.setPreferredSize(new Dimension(10, 28));
+        statusStrip.setMinimumSize(new Dimension(10, 28));
+        statusStrip.add(availabilityBanner, BorderLayout.CENTER);
+        statusStrip.add(refreshProgress, BorderLayout.EAST);
 
         JPanel content = new JPanel(new BorderLayout());
-        content.add(availabilityBanner, BorderLayout.NORTH);
+        content.add(statusStrip, BorderLayout.NORTH);
         content.add(browserScrollPane, BorderLayout.CENTER);
         resultCards.add(content, CONTENT);
         resultCards.add(statePanel, STATE);
@@ -104,31 +115,49 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         assertEdt();
         statePanel.showState(state);
         if (state instanceof DeckPlannerFilterCoordinator.Content content) {
+            setRefreshing(false);
             filters.setTagCloud(content.tagCloud());
             browserScrollPane.setCards(toBrowserCards(content.cards()));
             showAvailability(content.availability());
             showCard(CONTENT);
         } else if (state instanceof DeckPlannerFilterCoordinator.Empty empty) {
+            setRefreshing(false);
             filters.setTagCloud(empty.tagCloud());
             browserScrollPane.setCards(List.of());
             showAvailability(empty.availability());
             showCard(STATE);
         } else if (state instanceof DeckPlannerFilterCoordinator.Loading loading) {
             showAvailability(loading.availability());
-            showCard(STATE);
+            if (browser.cards().isEmpty()) {
+                setRefreshing(false);
+                showCard(STATE);
+            } else {
+                setRefreshing(true);
+                showCard(CONTENT);
+            }
         } else if (state instanceof DeckPlannerFilterCoordinator.Failed failed) {
+            setRefreshing(false);
             showAvailability(failed.availability());
             showCard(STATE);
         }
     }
 
     private void showAvailability(DeckPlannerFilterCoordinator.Availability availability) {
-        availabilityBanner.setVisible(availability != DeckPlannerFilterCoordinator.Availability.READY);
         availabilityBanner.setText(switch (availability) {
-            case READY -> "";
+            case READY -> refreshProgress.isVisible() ? "Updating results…" : "";
             case PARTIAL_CACHE -> "Partial catalog — showing cached cards while loading continues";
             case OFFLINE -> "Offline — showing the most recent cached catalog";
         });
+    }
+
+    private void setRefreshing(boolean refreshing) {
+        refreshProgress.setVisible(refreshing);
+        if (refreshing && availabilityBanner.getText().isBlank()) {
+            availabilityBanner.setText("Updating results…");
+        } else if (!refreshing && "Updating results…".equals(availabilityBanner.getText())) {
+            availabilityBanner.setText("");
+        }
+        statusStrip.repaint();
     }
 
     private void showCard(String name) {
@@ -142,8 +171,10 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         Color foreground = AppColors.color("Label.foreground", Color.WHITE);
         setBackground(background);
         resultCards.setBackground(background);
-        availabilityBanner.setBackground(AppColors.color("TextField.background", new Color(0x30343A)));
-        availabilityBanner.setForeground(foreground);
+        statusStrip.setBackground(AppColors.color("Panel.background", background));
+        availabilityBanner.setForeground(AppColors.color("Label.disabledForeground", new Color(0xB8BDC7)));
+        refreshProgress.setBackground(statusStrip.getBackground());
+        refreshProgress.setForeground(AppColors.color("App.accent", new Color(0xC69B52)));
     }
 
     private static Collection<app.deckplanner.filter.SemanticTag> allTags(List<IndexedCatalogCard> cards) {

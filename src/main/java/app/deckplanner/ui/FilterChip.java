@@ -91,12 +91,26 @@ final class FilterChip extends JToggleButton {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setColor(AppColors.color("Label.foreground", Color.WHITE));
             g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            int cx = checkCenterX();
             int cy = getHeight() / 2;
-            g.drawLine(7, cy, 10, cy + 3);
-            g.drawLine(10, cy + 3, 15, cy - 3);
+            g.drawLine(cx - 4, cy, cx - 1, cy + 3);
+            g.drawLine(cx - 1, cy + 3, cx + 4, cy - 3);
         } finally {
             g.dispose();
         }
+    }
+
+    /** Centers the mark in the reserved gap before the icon, then nudges it away from the label. */
+    private int checkCenterX() {
+        Rectangle view = new Rectangle(0, 0, getWidth(), getHeight());
+        Rectangle iconRect = new Rectangle();
+        Rectangle textRect = new Rectangle();
+        SwingUtilities.layoutCompoundLabel(this, getFontMetrics(getFont()), getText(), getIcon(),
+                getVerticalAlignment(), getHorizontalAlignment(),
+                getVerticalTextPosition(), getHorizontalTextPosition(),
+                view, iconRect, textRect, getIconTextGap());
+        int iconStart = iconRect.width > 0 ? iconRect.x : Math.max(CHECK_SPACE + 4, getInsets().left);
+        return Math.max(8, ((2 + iconStart) / 2) - 2);
     }
 
     private void paintCount(Graphics graphics) {

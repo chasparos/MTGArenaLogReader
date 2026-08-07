@@ -54,6 +54,34 @@ class DeckPlannerWorkspaceTest {
         SwingUtilities.invokeAndWait(workspaceRef.get()::close);
     }
 
+    @Test void refreshKeepsPublishedCardsVisibleWhileWorkIsDebounced() throws Exception {
+        CatalogFilterIndex index = index(
+                card("mill", "U", "Sorcery", "Target player mills two cards."),
+                card("flying", "W", "Creature — Bird", "Flying"));
+        DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
+        AtomicReference<DeckPlannerWorkspace> workspaceRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(model, index,
+                    ignored -> java.util.concurrent.CompletableFuture.completedFuture(Optional.empty()),
+                    scheduler, Runnable::run, Duration.ofMillis(150),
+                    DeckPlannerFilterCoordinator.Availability.READY);
+            workspaceRef.set(workspace);
+            workspace.start();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
+
+        SwingUtilities.invokeAndWait(() -> model.toggleColor(CardColor.BLUE));
+        assertEquals(2, onEdt(() -> workspaceRef.get().browser().cards().size()),
+                "published cards should remain stable while replacement results are pending");
+        assertTrue(onEdt(() -> visibleProgressBar(workspaceRef.get()) != null),
+                "refresh progress should live in the fixed content strip");
+
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
+        assertNull(onEdt(() -> visibleProgressBar(workspaceRef.get())));
+        SwingUtilities.invokeAndWait(workspaceRef.get()::close);
+    }
+
     @Test void offlineContentRemainsBrowsableAndEmptyFiltersShowExplicitState() throws Exception {
         CatalogFilterIndex index = index(card("white", "W", "Creature — Human", "Vigilance"));
         DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
@@ -95,6 +123,17 @@ class DeckPlannerWorkspaceTest {
             if (component instanceof AbstractButton button && text.equals(button.getText())) return button;
             if (component instanceof Container container) {
                 AbstractButton nested = findButton(container, text);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
+
+    private static JProgressBar visibleProgressBar(Container root) {
+        for (Component component : root.getComponents()) {
+            if (component instanceof JProgressBar progress && progress.isVisible()) return progress;
+            if (component instanceof Container container) {
+                JProgressBar nested = visibleProgressBar(container);
                 if (nested != null) return nested;
             }
         }
