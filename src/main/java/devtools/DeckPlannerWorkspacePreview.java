@@ -2,6 +2,9 @@ package devtools;
 
 import app.deckplanner.application.DeckPlannerFilterCoordinator;
 import app.deckplanner.catalog.FormatCatalogRepository;
+import app.deckplanner.collection.CollectionQuantity;
+import app.deckplanner.consideration.UnderConsiderationModel;
+import app.deckplanner.consideration.UnderConsiderationRepository;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.ui.CardBrowserPanel;
@@ -15,30 +18,45 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/** Standalone human-review harness for the composed DP-05 filter workspace. */
+/** Standalone human click-test harness for DP-06 acceptance. */
 public final class DeckPlannerWorkspacePreview {
+    private static final List<String> INITIAL_CONSIDERATION = List.of(
+            "oracle:preview-oracle-2", "oracle:preview-oracle-7", "preview-stale-card");
+    private static final String SAMPLE_ARENA_DECK = """
+            Deck
+            4 Planner Card 3
+            2 Planner Card 8
+            1 Planner Card 15
+
+            Sideboard
+            2 Planner Card 22
+            1 Card That Does Not Exist
+            """;
+    private static final Path DEFAULT_DATABASE =
+            Path.of("target", "deck-planner-dp06-preview", "consideration");
+
     private DeckPlannerWorkspacePreview() { }
 
     public static void main(String[] args) {
         new ThemeService().applySaved();
         SwingUtilities.invokeLater(() -> {
             PreviewSession session = createSession();
-            JFrame frame = new JFrame("Deck Planner Filter Workspace Review");
+            JFrame frame = new JFrame("Deck Planner DP-06 Acceptance Review");
             frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
             frame.setContentPane(session.content());
-            frame.setSize(1280, 820);
+            frame.setSize(1500, 900);
             frame.setLocationByPlatform(true);
             frame.addWindowListener(new WindowAdapter() {
                 @Override public void windowClosed(WindowEvent event) { session.close(); }
@@ -49,46 +67,94 @@ public final class DeckPlannerWorkspacePreview {
     }
 
     static PreviewSession createSession() {
+        return createSession(DEFAULT_DATABASE);
+    }
+
+    static PreviewSession createSession(Path databasePath) {
         assertEdt();
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "planner-preview-scheduler"));
-        ExecutorService worker = Executors.newSingleThreadExecutor(r -> daemon(r, "planner-preview-worker"));
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
+                r -> daemon(r, "planner-preview-scheduler"));
+        ExecutorService worker = Executors.newSingleThreadExecutor(
+                r -> daemon(r, "planner-preview-worker"));
         CatalogFilterIndex index = new CatalogFilterIndex(sampleSnapshot(72));
+
+        UnderConsiderationRepository repository = new UnderConsiderationRepository(databasePath);
+        // The acceptance harness uses a tiny local H2 store and synchronous writes so closing and
+        // relaunching the preview deterministically exercises the same persisted state.
+        UnderConsiderationModel consideration =
+                UnderConsiderationModel.persisted(repository, Runnable::run);
+        if (consideration.identities().isEmpty()) consideration.add(INITIAL_CONSIDERATION);
+
         DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(
                 new DeckPlannerFilterModel("standard"), index,
                 DeckPlannerWorkspacePreview::requestPreviewImage,
                 scheduler, worker, Duration.ofMillis(120),
-                DeckPlannerFilterCoordinator.Availability.READY);
-        workspace.browser().setUnderConsiderationIdentities(Set.of(
-                "preview-oracle-2", "preview-oracle-7", "preview-oracle-13"));
+                DeckPlannerFilterCoordinator.Availability.READY,
+                consideration, DeckPlannerWorkspacePreview::previewCollectionQuantity);
 
-        JLabel instructions = new JLabel("Use filters rapidly; verify live tag counts, keyboard focus, reset, stable scrolling, and explicit cache states.");
-        instructions.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        instructions.setOpaque(true);
-        instructions.setBackground(AppColors.color("Panel.background", new Color(0x202328)));
-        instructions.setForeground(AppColors.color("Label.foreground", Color.WHITE));
+        JTextArea checklist = new JTextArea("""
+                DP-06 HUMAN CLICK ACCEPTANCE
+                1. Double-click browser cards; verify they appear at right and get a consideration badge.
+                2. Select candidates at right; verify Up/Down, Remove, and Clear work and ordering is visible.
+                3. Apply filters after adding candidates; verify hidden candidates remain at right and badges return when filters reset.
+                4. Verify the seeded "Unavailable card" row remains recoverable and removable.
+                5. Copy the sample Arena deck below, click Import deck, paste it, and verify four unique cards import while the missing card is reported.
+                6. Verify imported cards do not change collection ownership; preview rows intentionally show unknown, zero, and positive quantities.
+                7. Close and relaunch this preview; verify candidate membership/order survives restart.
+                8. Exercise Ready / Partial cache / Offline cache and normal resizing/scrolling before accepting DP-06.
+                """);
+        checklist.setEditable(false);
+        checklist.setFocusable(false);
+        checklist.setLineWrap(true);
+        checklist.setWrapStyleWord(true);
+        checklist.setRows(8);
+        checklist.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        checklist.setBackground(AppColors.color("Panel.background", new Color(0x202328)));
+        checklist.setForeground(AppColors.color("Label.foreground", Color.WHITE));
+
+        JTextArea sampleDeck = new JTextArea(SAMPLE_ARENA_DECK);
+        sampleDeck.setEditable(false);
+        sampleDeck.setRows(7);
+        sampleDeck.setColumns(28);
+        sampleDeck.setBorder(BorderFactory.createTitledBorder("Sample Arena deck — copy this into Import deck"));
 
         JPanel stateButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 4));
         stateButtons.setOpaque(false);
         JButton ready = new JButton("Ready");
         JButton partial = new JButton("Partial cache");
         JButton offline = new JButton("Offline cache");
+        JButton reset = new JButton("Reset acceptance state");
         ready.addActionListener(e -> workspace.setAvailability(DeckPlannerFilterCoordinator.Availability.READY));
         partial.addActionListener(e -> workspace.setAvailability(DeckPlannerFilterCoordinator.Availability.PARTIAL_CACHE));
         offline.addActionListener(e -> workspace.setAvailability(DeckPlannerFilterCoordinator.Availability.OFFLINE));
-        stateButtons.add(ready); stateButtons.add(partial); stateButtons.add(offline);
+        reset.addActionListener(e -> {
+            consideration.clear();
+            consideration.add(INITIAL_CONSIDERATION);
+        });
+        stateButtons.add(reset);
+        stateButtons.add(ready);
+        stateButtons.add(partial);
+        stateButtons.add(offline);
 
-        JPanel header = new JPanel(new BorderLayout());
-        header.setOpaque(true);
-        header.setBackground(instructions.getBackground());
-        header.add(instructions, BorderLayout.CENTER);
-        header.add(stateButtons, BorderLayout.EAST);
+        JPanel review = new JPanel(new BorderLayout(8, 4));
+        review.setOpaque(true);
+        review.setBackground(checklist.getBackground());
+        review.add(new JScrollPane(checklist,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER), BorderLayout.CENTER);
+        review.add(new JScrollPane(sampleDeck), BorderLayout.WEST);
+        review.add(stateButtons, BorderLayout.EAST);
 
         JPanel content = new JPanel(new BorderLayout());
         content.setOpaque(true);
-        content.setBackground(instructions.getBackground());
-        content.add(header, BorderLayout.NORTH);
+        content.setBackground(checklist.getBackground());
+        content.add(review, BorderLayout.NORTH);
         content.add(workspace, BorderLayout.CENTER);
-        return new PreviewSession(content, workspace, scheduler, worker);
+        return new PreviewSession(content, workspace, scheduler, worker, repository);
+    }
+
+    static String sampleArenaDeck() {
+        return SAMPLE_ARENA_DECK;
     }
 
     static FormatCatalogRepository.Snapshot sampleSnapshot(int count) {
@@ -110,6 +176,15 @@ public final class DeckPlannerWorkspacePreview {
         Instant now = Instant.now();
         return new FormatCatalogRepository.Snapshot("preview", "standard",
                 FormatCatalogRepository.SCHEMA_VERSION, now, now, List.copyOf(outcomes));
+    }
+
+    private static int previewCollectionQuantity(CardInfo card) {
+        int bucket = Math.floorMod(card.getName().hashCode(), 3);
+        return switch (bucket) {
+            case 0 -> CollectionQuantity.UNKNOWN;
+            case 1 -> 0;
+            default -> 2;
+        };
     }
 
     private static String typeLine(int index) {
@@ -178,15 +253,19 @@ public final class DeckPlannerWorkspacePreview {
     }
 
     private static void assertEdt() {
-        if (!SwingUtilities.isEventDispatchThread()) throw new IllegalStateException("Preview content must be created on EDT");
+        if (!SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException("Preview content must be created on EDT");
+        }
     }
 
     record PreviewSession(JComponent content, DeckPlannerWorkspace workspace,
-                          ScheduledExecutorService scheduler, ExecutorService worker) implements AutoCloseable {
+                          ScheduledExecutorService scheduler, ExecutorService worker,
+                          UnderConsiderationRepository repository) implements AutoCloseable {
         @Override public void close() {
             workspace.close();
             scheduler.shutdownNow();
             worker.shutdownNow();
+            repository.close();
         }
     }
 }

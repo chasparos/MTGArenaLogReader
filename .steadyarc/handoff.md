@@ -9,10 +9,10 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 ## Current ownership
 
 - **Owner:** Human repository owner
-- **Repository baseline inspected for DP-06 implementation:** `2b8770392bb38842884077d504d3277778947fe4` on `main`
-- **Transferred validation:** The first DP-06 application discovered 217 tests and failed 1 focused workspace test; the supplied log showed the test used shorthand `"mill"` instead of the production logical identity `"oracle:mill"`. The implementation also pruned hidden consideration identities during filtering, which is corrected in the follow-up patch.
+- **Repository baseline inspected for DP-06 acceptance work:** `ebbd41c484889b9a151107861b4694d76290cdd5` on `main`
+- **Transferred validation:** `./mvnw.cmd test` passed 219 tests with zero failures/errors/skips at `ebbd41c484889b9a151107861b4694d76290cdd5`; the DP-06 implementation and existing-deck import are committed on a clean tree.
 - **Current arc:** Deck Planner.
 - **Active roadmap item:** `DP-06 — Under consideration workspace`.
-- **DP-06 delegation:** The human explicitly continued DP-06 on 2026-08-07 and added existing-deck import to its scope. The patch-exchange agent returned an incremental follow-up that fixes the stable-identity/filtering regression and adds Arena-export deck import into the same authoritative consideration model.
-- **Safe next action:** Apply the incremental DP-06 follow-up to the currently modified working tree through `PatchSequence.ps1`, inspect the full project-test evidence, and keep DP-06 active until human UI/import acceptance is recorded.
+- **DP-06 delegation:** The human explicitly corrected the acceptance plan on 2026-08-07: DP-06 must include a human feedback gate and a click-test harness. `DeckPlannerWorkspacePreview` is the approved surface to repurpose because it already composes the same workspace UI.
+- **Safe next action:** Apply the DP-06 acceptance-harness patch, rerun the full Maven suite, then launch `DeckPlannerWorkspacePreview` and complete the visible click-test checklist. Keep DP-06 active until the human explicitly accepts or reports defects; do not start DP-07 merely because automated validation is green.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.

@@ -151,6 +151,8 @@ Acceptance evidence:
 - Browser and consideration views remain synchronized, including overlays and collection counts.
 - Empty and stale/unresolvable candidate states remain recoverable.
 - Existing Arena-exported deck lists can be imported into consideration without resetting active browser filters; quantities and duplicate printings collapse to one logical candidate, unresolved names are reported, and imported deck contents never imply collection ownership.
+- A repository-owned human click-test harness exposes the complete DP-06 workspace before acceptance. `DeckPlannerWorkspacePreview` must exercise add/remove/clear/reorder, filter-preserved membership/overlays, stale candidates, mixed collection-quantity states, Arena deck import, and persistence across relaunch.
+- Human acceptance is a required completion gate: after automated validation is green, the human runs the preview checklist and explicitly accepts DP-06 (or records observed defects). Automated tests alone do not close DP-06.
 
 #### DP-07 — Authoritative AI deck-building protocol
 
@@ -181,11 +183,11 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-06 — Under consideration workspace` is active. Persist and synchronize the ordered candidate-card workspace while preserving the current browser filters and the established unknown-ownership semantics.
+`DP-06 — Under consideration workspace` is active at its human-acceptance phase. The implementation is automated-test green; expose it through the repository-owned click-test harness and keep DP-06 active until the human explicitly accepts the UI behavior.
 
 ### Current planning decisions
 
-- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 is active; ownership-dependent consideration displays must continue to preserve unknown collection quantity rather than infer ownership.
+- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 implementation and deck import are validated by 219 passing tests at commit `ebbd41c484889b9a151107861b4694d76290cdd5`, but DP-06 remains active pending explicit human click-test acceptance. Ownership-dependent consideration displays must continue to preserve unknown collection quantity rather than infer ownership.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.
