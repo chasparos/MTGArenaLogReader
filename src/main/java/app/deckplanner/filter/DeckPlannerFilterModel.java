@@ -10,7 +10,11 @@ import java.util.function.Consumer;
 
 /** Widget-independent mutable interaction model around immutable planner filter state. */
 public final class DeckPlannerFilterModel {
-    public record State(String format, CardFilterState filters) {
+    public record State(String format, CardFilterState filters, boolean considerationOnly) {
+        public State(String format, CardFilterState filters) {
+            this(format, filters, false);
+        }
+
         public State {
             format = normalizeFormat(format);
             filters = filters == null ? CardFilterState.empty() : filters;
@@ -21,7 +25,7 @@ public final class DeckPlannerFilterModel {
     private State state;
 
     public DeckPlannerFilterModel(String format) {
-        this(new State(format, CardFilterState.empty()));
+        this(new State(format, CardFilterState.empty(), false));
     }
 
     public DeckPlannerFilterModel(State initialState) {
@@ -41,7 +45,7 @@ public final class DeckPlannerFilterModel {
     }
 
     public void setFormat(String format) {
-        replace(new State(format, state.filters()));
+        replace(new State(format, state.filters(), state.considerationOnly()));
     }
 
     public void toggleColor(CardColor color) {
@@ -98,7 +102,14 @@ public final class DeckPlannerFilterModel {
     }
 
     public void resetFilters() {
-        replace(new State(state.format(), CardFilterState.empty()));
+        replace(new State(state.format(), CardFilterState.empty(), state.considerationOnly()));
+    }
+
+    /**
+     * Enables the temporary workspace-membership layer without mutating normal structured/tag filters.
+     */
+    public void setConsiderationOnly(boolean enabled) {
+        replace(new State(state.format(), state.filters(), enabled));
     }
 
     public void replace(State next) {
@@ -109,7 +120,7 @@ public final class DeckPlannerFilterModel {
     }
 
     private void setFilters(CardFilterState filters) {
-        replace(new State(state.format(), filters));
+        replace(new State(state.format(), filters, state.considerationOnly()));
     }
 
     private EnumSet<CardColor> copyColors() {

@@ -44,6 +44,21 @@ class DeckPlannerFilterModelTest {
         assertEquals(CardFilterState.empty(), model.state().filters());
     }
 
+
+    @Test void considerationLayerIsIndependentFromNormalFilters() {
+        DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
+        model.toggleColor(CardColor.BLUE);
+        CardFilterState normal = model.state().filters();
+
+        model.setConsiderationOnly(true);
+        assertTrue(model.state().considerationOnly());
+        assertEquals(normal, model.state().filters());
+
+        model.setConsiderationOnly(false);
+        assertFalse(model.state().considerationOnly());
+        assertEquals(normal, model.state().filters());
+    }
+
     @Test void noOpReplacementDoesNotNotifyListeners() {
         DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
         List<DeckPlannerFilterModel.State> events = new ArrayList<>();

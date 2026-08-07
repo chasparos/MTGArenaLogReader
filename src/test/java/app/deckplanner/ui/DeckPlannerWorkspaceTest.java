@@ -181,6 +181,97 @@ class DeckPlannerWorkspaceTest {
         SwingUtilities.invokeAndWait(workspaceRef.get()::close);
     }
 
+
+
+    @Test void selectingCandidateEnablesConsiderationLayerWithoutChangingNormalFilters() throws Exception {
+        CatalogFilterIndex index = index(
+                card("mill", "U", "Sorcery", "Target player mills two cards."),
+                card("flying", "W", "Creature — Bird", "Flying"),
+                card("burn", "R", "Instant", "Deal three damage."));
+        DeckPlannerFilterModel filterModel = new DeckPlannerFilterModel("standard");
+        app.deckplanner.consideration.UnderConsiderationModel consideration =
+                new app.deckplanner.consideration.UnderConsiderationModel(
+                        List.of("oracle:mill", "oracle:flying"), ignored -> { });
+        AtomicReference<DeckPlannerWorkspace> workspaceRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(filterModel, index,
+                    ignored -> java.util.concurrent.CompletableFuture.completedFuture(Optional.empty()),
+                    scheduler, Runnable::run, Duration.ZERO,
+                    DeckPlannerFilterCoordinator.Availability.READY,
+                    consideration, ignored -> app.deckplanner.collection.CollectionQuantity.UNKNOWN);
+            workspaceRef.set(workspace);
+            workspace.start();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 3));
+
+        SwingUtilities.invokeAndWait(() -> {
+            JComponent row = workspaceRef.get().consideration().candidateRows().getFirst();
+            row.dispatchEvent(new java.awt.event.MouseEvent(row,
+                    java.awt.event.MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), 0, 4, 4, 1, false));
+        });
+
+        await(() -> filterModel.state().considerationOnly());
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
+        assertEquals(Set.of("oracle:mill", "oracle:flying"),
+                onEdt(() -> workspaceRef.get().browser().cards().stream()
+                        .map(CardBrowserPanel.BrowserCard::identity)
+                        .collect(java.util.stream.Collectors.toSet())));
+        assertEquals(CardFilterState.empty(), filterModel.state().filters(),
+                "automatic layer activation must not mutate normal structured/tag filters");
+
+        SwingUtilities.invokeAndWait(() -> filterModel.setConsiderationOnly(false));
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 3));
+        SwingUtilities.invokeAndWait(workspaceRef.get()::close);
+    }
+
+    @Test void considerationLayerControlAndMembershipChangesRefreshImmediately() throws Exception {
+        CatalogFilterIndex index = index(
+                card("mill", "U", "Sorcery", "Target player mills two cards."),
+                card("flying", "W", "Creature — Bird", "Flying"),
+                card("burn", "R", "Instant", "Deal three damage."));
+        DeckPlannerFilterModel filterModel = new DeckPlannerFilterModel("standard");
+        app.deckplanner.consideration.UnderConsiderationModel consideration =
+                new app.deckplanner.consideration.UnderConsiderationModel(
+                        List.of("oracle:mill"), ignored -> { });
+        AtomicReference<DeckPlannerWorkspace> workspaceRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(filterModel, index,
+                    ignored -> java.util.concurrent.CompletableFuture.completedFuture(Optional.empty()),
+                    scheduler, Runnable::run, Duration.ZERO,
+                    DeckPlannerFilterCoordinator.Availability.READY,
+                    consideration, ignored -> app.deckplanner.collection.CollectionQuantity.UNKNOWN);
+            workspaceRef.set(workspace);
+            workspace.start();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 3));
+
+        SwingUtilities.invokeAndWait(() -> {
+            AbstractButton layer = findButton(workspaceRef.get().filters(), "Consideration only");
+            assertNotNull(layer);
+            layer.doClick();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
+        assertTrue(filterModel.state().considerationOnly());
+
+        SwingUtilities.invokeAndWait(() -> consideration.add(List.of("oracle:flying")));
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 2));
+
+        SwingUtilities.invokeAndWait(() -> consideration.remove("oracle:mill"));
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 1));
+        assertEquals("flying", onEdt(() -> workspaceRef.get().browser().cards().getFirst().name()));
+
+        SwingUtilities.invokeAndWait(() -> {
+            AbstractButton layer = findButton(workspaceRef.get().filters(), "Consideration only");
+            layer.doClick();
+        });
+        await(() -> onEdt(() -> workspaceRef.get().browser().cards().size() == 3));
+        assertFalse(filterModel.state().considerationOnly());
+        SwingUtilities.invokeAndWait(workspaceRef.get()::close);
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();

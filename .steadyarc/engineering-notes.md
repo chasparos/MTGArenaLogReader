@@ -199,3 +199,10 @@ Human review preferred the lighter unframed color-semantics row beneath the colo
 - Import resolves card names against every printing in the current format catalog, then stores the catalog group's stable logical identity. Quantities, repeated lines, and alternate printings therefore collapse to one candidate while preserving first appearance order.
 - Main deck, sideboard, commander, and companion card lines are accepted. Unresolved names remain explicit import feedback rather than becoming fabricated/stale identities.
 - Import is additive and does not reset active browser filters. Browser badges remain a visible-result projection of the durable consideration set.
+
+### 2026-08-07 — Shared card collection surface and consideration filter layer
+
+- `app.ui.CardCollectionSurface` is the reusable component-row primitive for small ordered card collections that need project-local scrolling, selection, and insertion-point drag/drop. It deliberately does not own card-specific rendering, planner persistence, or semantic grouping policy; callers supply ordinary Swing row components and may later add group headers/metadata without a `JList` cell-renderer constraint.
+- Deck Planner's consideration-only catalog layer is orthogonal to normal structured/tag filters. Enabling or disabling it never rewrites those filters; it intersects the normal result with the current authoritative consideration identities.
+- Selecting a resolved consideration candidate may activate the consideration-only layer as a temporary browsing aid. Stale candidates do not activate it.
+- Consideration membership changes are propagated into the active layer immediately; the browser remains a filtered projection and never becomes the authority for candidate membership.

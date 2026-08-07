@@ -4,34 +4,27 @@ import app.deckplanner.consideration.UnderConsiderationModel;
 import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
 import app.ui.AppColors;
-import app.ui.AppScrollBarUI;
+import app.ui.CardCollectionSurface;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.StringSelection;
-import java.awt.datatransfer.Transferable;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.ToIntFunction;
 
 /**
- * Ordered DP-06 candidate workspace with a custom panel surface.
+ * Ordered DP-06 candidate workspace backed by the project-owned {@link CardCollectionSurface}.
  *
- * <p>The surface deliberately avoids {@link JList}: candidate rows are ordinary components so
- * future grouping/category/mana affordances can be composed without fighting a list-cell renderer.
- * Ordering remains authoritative in {@link UnderConsiderationModel}.</p>
+ * <p>Candidate rows are ordinary components so future grouping/category/mana affordances can be
+ * composed without fighting a list-cell renderer. Ordering remains authoritative in
+ * {@link UnderConsiderationModel}.</p>
  */
 public final class UnderConsiderationPanel extends JPanel {
-    private final CandidateSurface surface = new CandidateSurface();
-    private final JScrollPane scroll = new JScrollPane(surface,
-            ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
-            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    private final CardCollectionSurface surface = new CardCollectionSurface();
+    private final JScrollPane scroll = surface.createScrollPane();
     private final JButton remove = new JButton("Remove");
     private final JButton clear = new JButton("Clear");
     private final JButton magicSort = new JButton("Normal MTG sort");
@@ -39,7 +32,7 @@ public final class UnderConsiderationPanel extends JPanel {
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
     private UnderConsiderationModel model;
-    private String selectedIdentity;
+    private Consumer<Optional<String>> selectionAction = ignored -> { };
 
     public UnderConsiderationPanel() {
         super(new BorderLayout(6, 6));
@@ -48,13 +41,13 @@ public final class UnderConsiderationPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
-        scroll.setBorder(BorderFactory.createEmptyBorder());
-        scroll.getViewport().setOpaque(true);
-        scroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
-        scroll.getVerticalScrollBar().setUnitIncrement(48);
-        scroll.getVerticalScrollBar().getModel().addChangeListener(
-                event -> syncScrollbarEnabled(scroll.getVerticalScrollBar()));
-        surface.setTransferHandler(new CandidateTransferHandler());
+        surface.setMoveHandler((identity, insertionIndex) -> {
+            if (model != null) model.moveToIndex(identity, insertionIndex);
+        });
+        surface.setSelectionListener(selection -> {
+            updateActions();
+            selectionAction.accept(selection);
+        });
         add(scroll, BorderLayout.CENTER);
 
         JPanel actions = new JPanel(new BorderLayout(4, 4));
@@ -86,35 +79,25 @@ public final class UnderConsiderationPanel extends JPanel {
         this.magicSortAction = magicSortAction == null ? () -> { } : magicSortAction;
     }
 
+    public void setSelectionAction(Consumer<Optional<String>> selectionAction) {
+        this.selectionAction = selectionAction == null ? ignored -> { } : selectionAction;
+    }
+
     public void setEntries(List<UnderConsiderationModel.Entry> entries) {
         assertEdt();
-        String previousSelection = selectedIdentity;
-        surface.removeAll();
-        surface.rows.clear();
-
-        for (UnderConsiderationModel.Entry entry : entries) {
-            CandidateRow row = new CandidateRow(entry);
-            surface.rows.add(row);
-            surface.add(row);
-        }
-
-        selectedIdentity = surface.rows.stream()
-                .map(CandidateRow::identity)
-                .filter(identity -> Objects.equals(identity, previousSelection))
-                .findFirst().orElse(null);
-        refreshSelection();
+        List<CandidateRow> rows = (entries == null ? List.<UnderConsiderationModel.Entry>of() : entries)
+                .stream().map(CandidateRow::new).toList();
+        surface.setRows(rows);
         updateActions();
-        surface.revalidate();
-        surface.repaint();
         syncScrollbarEnabled(scroll.getVerticalScrollBar());
     }
 
     public List<String> identities() {
-        return surface.rows.stream().map(CandidateRow::identity).toList();
+        return surface.identities();
     }
 
     Optional<String> selectedIdentity() {
-        return Optional.ofNullable(selectedIdentity);
+        return surface.selectedIdentity();
     }
 
     JComponent candidateSurface() {
@@ -122,29 +105,17 @@ public final class UnderConsiderationPanel extends JPanel {
     }
 
     List<JComponent> candidateRows() {
-        return List.copyOf(surface.rows);
+        return surface.rowComponents();
     }
 
     JScrollPane candidateScrollPane() {
         return scroll;
     }
 
-    private void select(String identity) {
-        selectedIdentity = Objects.equals(selectedIdentity, identity) ? null : identity;
-        refreshSelection();
-        updateActions();
-    }
-
-    private void refreshSelection() {
-        for (CandidateRow row : surface.rows) {
-            row.setSelected(Objects.equals(row.identity(), selectedIdentity));
-        }
-    }
-
     private void updateActions() {
-        remove.setEnabled(selectedIdentity != null);
-        clear.setEnabled(!surface.rows.isEmpty());
-        magicSort.setEnabled(surface.rows.size() > 1);
+        remove.setEnabled(surface.selectedIdentity().isPresent());
+        clear.setEnabled(!surface.identities().isEmpty());
+        magicSort.setEnabled(surface.identities().size() > 1);
     }
 
     private void refreshTheme() {
@@ -166,25 +137,7 @@ public final class UnderConsiderationPanel extends JPanel {
         }
     }
 
-    private final class CandidateSurface extends JPanel {
-        private final List<CandidateRow> rows = new ArrayList<>();
-
-        CandidateSurface() {
-            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-            setOpaque(true);
-        }
-
-        int insertionIndex(Point point) {
-            int y = point == null ? Integer.MAX_VALUE : point.y;
-            for (int index = 0; index < rows.size(); index++) {
-                Rectangle bounds = rows.get(index).getBounds();
-                if (y < bounds.y + bounds.height / 2) return index;
-            }
-            return rows.size();
-        }
-    }
-
-    private final class CandidateRow extends JPanel {
+    private final class CandidateRow extends JPanel implements CardCollectionSurface.Row {
         private final String identity;
         private final CardInfo card;
         private final boolean stale;
@@ -211,30 +164,15 @@ public final class UnderConsiderationPanel extends JPanel {
             }
             add(content, BorderLayout.CENTER);
 
-            MouseAdapter mouse = new MouseAdapter() {
-                private Point pressed;
-
-                @Override public void mousePressed(MouseEvent event) {
-                    pressed = event.getPoint();
-                    select(identity);
-                }
-
-                @Override public void mouseDragged(MouseEvent event) {
-                    if (pressed == null || pressed.distance(event.getPoint()) < 4) return;
-                    getTransferHandler().exportAsDrag(CandidateRow.this, event, TransferHandler.MOVE);
-                    pressed = null;
-                }
-            };
-            addMouseListener(mouse);
-            addMouseMotionListener(mouse);
-            content.addMouseListener(mouse);
-            content.addMouseMotionListener(mouse);
-            setTransferHandler(new CandidateTransferHandler());
             setSelected(false);
         }
 
-        String identity() {
+        @Override public String identity() {
             return identity;
+        }
+
+        @Override public JComponent component() {
+            return this;
         }
 
         CardInfo card() {
@@ -245,7 +183,7 @@ public final class UnderConsiderationPanel extends JPanel {
             return stale;
         }
 
-        void setSelected(boolean selected) {
+        @Override public void setSelected(boolean selected) {
             this.selected = selected;
             Color base = AppColors.color("Panel.background", new Color(0x202328));
             Color selectedBackground = AppColors.color("List.selectionBackground", new Color(0x3B4554));
@@ -261,37 +199,4 @@ public final class UnderConsiderationPanel extends JPanel {
         }
     }
 
-    private final class CandidateTransferHandler extends TransferHandler {
-        @Override protected Transferable createTransferable(JComponent component) {
-            if (component instanceof CandidateRow row) {
-                return new StringSelection(row.identity());
-            }
-            return selectedIdentity().map(StringSelection::new).orElse(null);
-        }
-
-        @Override public int getSourceActions(JComponent component) {
-            return MOVE;
-        }
-
-        @Override public boolean canImport(TransferSupport support) {
-            return model != null && support.isDrop()
-                    && support.isDataFlavorSupported(DataFlavor.stringFlavor);
-        }
-
-        @Override public boolean importData(TransferSupport support) {
-            if (!canImport(support)) return false;
-            try {
-                String identity = (String) support.getTransferable()
-                        .getTransferData(DataFlavor.stringFlavor);
-                Point point = support.getDropLocation().getDropPoint();
-                Point surfacePoint = SwingUtilities.convertPoint(
-                        support.getComponent(), point, surface);
-                model.moveToIndex(identity, surface.insertionIndex(surfacePoint));
-                selectedIdentity = identity;
-                return true;
-            } catch (Exception error) {
-                return false;
-            }
-        }
-    }
 }

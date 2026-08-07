@@ -20,11 +20,15 @@ import java.awt.*;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.ToIntFunction;
+import java.util.stream.Collectors;
 
 /**
  * Reusable DP-05 workspace that composes filter controls, asynchronous filtering, explicit result
@@ -34,6 +38,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private static final String CONTENT = "content";
     private static final String STATE = "state";
 
+    private final DeckPlannerFilterModel filterModel;
     private final DeckPlannerFilterPanel filters;
     private final CardBrowserPanel browser;
     private final UnderConsiderationPanel considerationPanel = new UnderConsiderationPanel();
@@ -42,6 +47,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private final CardNameRepository cardNames;
     private final KnownArenaDeckSource knownDecks;
     private final Executor worker;
+    private volatile Set<String> considerationFilterIdentities = Set.of();
     private final UnderConsiderationModel.Listener considerationListener;
     private final CardBrowserScrollPane browserScrollPane;
     private final DeckPlannerResultsStatePanel statePanel = new DeckPlannerResultsStatePanel();
@@ -90,12 +96,13 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         Objects.requireNonNull(model);
         Objects.requireNonNull(index);
         Objects.requireNonNull(imageSource);
+        this.filterModel = model;
         this.catalogIndex = index;
         this.considerationModel = Objects.requireNonNull(considerationModel);
         this.cardNames = Objects.requireNonNull(cardNames);
         this.knownDecks = Objects.requireNonNull(knownDecks);
         this.worker = Objects.requireNonNull(worker);
-        this.considerationListener = ignored -> showConsideration();
+        this.considerationListener = ignored -> onConsiderationChanged();
         assertEdt();
 
         setLayout(new BorderLayout());
@@ -115,9 +122,11 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         considerationPanel.bind(considerationModel, collectionQuantitySource);
         considerationPanel.setImportAction(this::showDeckImportDialog);
         considerationPanel.setMagicSortAction(() -> considerationModel.sortByMagic(catalogIndex));
+        considerationPanel.setSelectionAction(selection -> selection
+                .filter(this::isResolvedCandidate)
+                .ifPresent(ignored -> filterModel.setConsiderationOnly(true)));
         considerationPanel.setPreferredSize(new Dimension(280, 600));
         considerationPanel.setMinimumSize(new Dimension(230, 300));
-        considerationModel.addListener(considerationListener);
 
         JScrollPane filterScroll = new JScrollPane(filters,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
@@ -157,11 +166,11 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         showConsideration();
 
         coordinator = new DeckPlannerFilterCoordinator(model,
-                state -> new DeckPlannerFilterCoordinator.Result(
-                        index.filter(state.filters()), index.tagCloud(state.filters())),
+                state -> filterResult(index, state),
                 scheduler, worker, debounce);
         coordinator.setListener(this::showResult);
         coordinator.setAvailability(availability);
+        considerationModel.addListener(considerationListener);
     }
 
     public void start() {
@@ -176,8 +185,38 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private void showConsideration() {
         assertEdt();
         List<String> identities = considerationModel.identities();
+        considerationFilterIdentities = Set.copyOf(identities);
         browser.setUnderConsiderationIdentities(new java.util.LinkedHashSet<>(identities));
         considerationPanel.setEntries(considerationModel.resolve(catalogIndex));
+    }
+
+    private void onConsiderationChanged() {
+        assertEdt();
+        showConsideration();
+        if (filterModel.state().considerationOnly()) {
+            coordinator.restart();
+        }
+    }
+
+    private boolean isResolvedCandidate(String identity) {
+        if (identity == null) return false;
+        return catalogIndex.cards().stream()
+                .anyMatch(card -> identity.equals(card.group().identity()));
+    }
+
+    private DeckPlannerFilterCoordinator.Result filterResult(
+            CatalogFilterIndex index, DeckPlannerFilterModel.State state) {
+        List<IndexedCatalogCard> cards = index.filter(state.filters());
+        if (state.considerationOnly()) {
+            Set<String> allowed = considerationFilterIdentities;
+            cards = cards.stream()
+                    .filter(card -> allowed.contains(card.group().identity()))
+                    .toList();
+        }
+        Map<app.deckplanner.filter.SemanticTag, Long> tagCloud = cards.stream()
+                .flatMap(card -> card.tags().stream())
+                .collect(Collectors.groupingBy(tag -> tag, TreeMap::new, Collectors.counting()));
+        return new DeckPlannerFilterCoordinator.Result(cards, tagCloud);
     }
 
     public DeckListImporter.Result importDeckText(String deckText) {
