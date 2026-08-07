@@ -68,11 +68,11 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         colors.add(phyrexianChip);
 
         JPanel semantics = flow();
-        FilterChip printed = manaRadio("Printed", "/svg/watermark-colorpie.svg");
-        FilterChip identity = manaRadio("Identity", "/svg/watermark-mtg.svg");
+        JRadioButton printed = manaRadio("Printed");
+        JRadioButton identity = manaRadio("Identity");
         ButtonGroup sourceGroup = new ButtonGroup(); sourceGroup.add(printed); sourceGroup.add(identity);
-        FilterChip inclusive = manaRadio("Inclusive", "/svg/counter-plus.svg");
-        FilterChip exact = manaRadio("Exact", "/svg/counter-pin.svg");
+        JRadioButton inclusive = manaRadio("Inclusive");
+        JRadioButton exact = manaRadio("Exact");
         ButtonGroup modeGroup = new ButtonGroup(); modeGroup.add(inclusive); modeGroup.add(exact);
         semantics.add(printed); semantics.add(identity); semantics.add(inclusive); semantics.add(exact);
         JPanel colorSection = new JPanel();
@@ -204,10 +204,46 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         return panel;
     }
 
-    private FilterChip manaRadio(String label, String iconPath) {
-        FilterChip button = new FilterChip(label, new SvgIcon(iconPath, 13));
+    private JRadioButton manaRadio(String label) {
+        JRadioButton button = new JRadioButton(label);
+        button.setOpaque(false);
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setFocusPainted(true);
         button.setFont(button.getFont().deriveFont(Font.BOLD, 10.5f));
+        button.setIcon(new RadioBulletIcon(false));
+        button.setSelectedIcon(new RadioBulletIcon(true));
+        button.setIconTextGap(5);
+        button.setMargin(new Insets(1, 2, 1, 4));
+        button.getAccessibleContext().setAccessibleName(label);
         return button;
+    }
+
+    /** Theme-aware radio indicator that stays visually light beneath the color chips. */
+    private static final class RadioBulletIcon implements Icon {
+        private final boolean selected;
+
+        private RadioBulletIcon(boolean selected) {
+            this.selected = selected;
+        }
+
+        @Override public int getIconWidth() { return 13; }
+        @Override public int getIconHeight() { return 13; }
+
+        @Override public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color border = AppColors.color("App.border", new Color(0x727985));
+                Color accent = AppColors.color("App.accent", new Color(0xC69B52));
+                g.setColor(selected ? accent : border);
+                g.setStroke(new BasicStroke(1.5f));
+                g.drawOval(x + 1, y + 1, 10, 10);
+                if (selected) g.fillOval(x + 4, y + 4, 5, 5);
+            } finally {
+                g.dispose();
+            }
+        }
     }
 
     private void filterVisibleTags() {

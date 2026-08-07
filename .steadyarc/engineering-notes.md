@@ -181,3 +181,7 @@ The DP-05 interaction pass uses `PreviewDeckPlannerWorkspace.ps1`. The harness o
 - Once content has been published, filter refresh uses only the fixed status-strip progress indicator; the hidden centered state-panel indicator is deactivated so it cannot animate/repaint behind the browser.
 - Planner vertical scroll panes reserve the narrow custom-scrollbar gutter and disable the thumb when scrolling is unnecessary. This avoids scrollbar-width/layout feedback loops without presenting an active scrollbar when content fits.
 - Color-source and match-mode selectors use the same explicit selected-chip treatment as other filters so chosen semantics are visible without relying on native radio rendering.
+
+### 2026-08-07 — DP-05 color-semantics radio polish
+
+Human review preferred the lighter unframed color-semantics row beneath the color selectors. The final treatment restores radio-button visuals with a theme-aware hollow/filled bullet so the active source and match mode remain explicit without competing visually with the color chips.

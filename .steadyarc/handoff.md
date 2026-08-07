@@ -164,3 +164,9 @@ Human review approved the composed behavior but found filter-column clipping, ov
 - Human review identified check-mark alignment, a hidden centered loading animation, weak selected-state visibility for color semantics, and a rare scrollbar/layout feedback loop.
 - This bounded correction moves the check inward, deactivates hidden loading animation after content publication, gives color semantics explicit selected-chip visuals, and stabilizes vertical scrollbar geometry with a reserved custom-scrollbar gutter whose thumb disables when unnecessary.
 - DP-05 remains active pending human visual approval of these corrections.
+
+## 2026-08-07 — DP-05 color-semantics visual polish
+
+- Restored the unframed radio-button row beneath the color selectors.
+- Active color source and match mode use a theme-aware filled bullet; inactive choices use a hollow bullet.
+- DP-05 remains active pending final human approval.

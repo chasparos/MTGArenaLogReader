@@ -30,8 +30,14 @@ class DeckPlannerFilterPanelTest {
         AtomicReference<DeckPlannerFilterPanel> panel = new AtomicReference<>();
         SwingUtilities.invokeAndWait(() -> panel.set(new DeckPlannerFilterPanel(model, Set.of())));
 
-        assertTrue(findSelectedButton(panel.get(), "Printed"));
-        assertTrue(findSelectedButton(panel.get(), "Inclusive"));
+        AbstractButton printed = findButton(panel.get(), "Printed");
+        AbstractButton inclusive = findButton(panel.get(), "Inclusive");
+        assertInstanceOf(JRadioButton.class, printed);
+        assertInstanceOf(JRadioButton.class, inclusive);
+        assertTrue(printed.isSelected());
+        assertTrue(inclusive.isSelected());
+        assertNotNull(printed.getIcon());
+        assertNotNull(printed.getSelectedIcon());
         SwingUtilities.invokeAndWait(() -> {
             model.setColorSource(ColorSource.COLOR_IDENTITY);
             model.setColorMatchMode(ColorMatchMode.EXACT);
