@@ -17,7 +17,7 @@ public class ReplayCardChip extends JComponent {
     private final CardInfo card;
     private final String stateLabel;
     private final BoardPermanentSnapshot permanent;
-    private final boolean selected;
+    private boolean selected;
     private final ReplayFragmentRenderer renderer;
 
     public ReplayCardChip(CardInfo card) {
@@ -58,6 +58,17 @@ public class ReplayCardChip extends JComponent {
 
     public CardInfo card() {
         return card;
+    }
+
+    /** Updates the shared replay hover/selection treatment without recreating the chip. */
+    public void setSelected(boolean selected) {
+        if (this.selected == selected) return;
+        this.selected = selected;
+        repaint();
+    }
+
+    public boolean selected() {
+        return selected;
     }
 
     @Override

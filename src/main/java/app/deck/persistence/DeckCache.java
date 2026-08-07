@@ -71,6 +71,24 @@ public final class DeckCache implements AutoCloseable {
         }
     }
 
+    /** Returns the most recently observed Arena decks for read-only planner selection. */
+    public synchronized List<CachedDeck> recent(int limit) {
+        if (limit <= 0) return List.of();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT deck_json FROM arena_deck_cache ORDER BY updated_at DESC LIMIT ?")) {
+            statement.setInt(1, limit);
+            try (ResultSet results = statement.executeQuery()) {
+                List<CachedDeck> decks = new ArrayList<>();
+                while (results.next()) {
+                    decks.add(enrich(gson.fromJson(results.getString(1), CachedDeck.class)));
+                }
+                return List.copyOf(decks);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not list cached decks", e);
+        }
+    }
+
     public synchronized Optional<CachedDeck> mostRecentForEvent(String eventName) {
         String sql = eventName == null || eventName.isBlank()
                 ? "SELECT deck_json FROM arena_deck_cache ORDER BY updated_at DESC LIMIT 1"

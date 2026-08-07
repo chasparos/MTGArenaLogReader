@@ -46,6 +46,23 @@ class DeckCacheSelectionTest {
         }
     }
 
+
+    @Test
+    void listsRecentObservedDecksForPlannerSelection() {
+        Gson gson = new Gson();
+        try (CardCache cards = new CardCache(gson, tempDir.resolve("cards-recent"));
+             DeckCache decks = new DeckCache(gson, cards, tempDir.resolve("decks-recent"))) {
+            decks.put(deck("first", "Ladder", 100, 200));
+            decks.put(deck("second", "Ladder", 300, 400));
+
+            List<CachedDeck> recent = decks.recent(10);
+
+            assertEquals(2, recent.size());
+            assertTrue(recent.stream().map(CachedDeck::deckId).toList()
+                    .containsAll(List.of("first", "second")));
+        }
+    }
+
     private CachedDeck deck(String id, String event, long first, long second) {
         return new CachedDeck(id, id, "Standard", event, Instant.now(),
                 List.of(new DeckEntry(first, 4, null), new DeckEntry(second, 4, null)),

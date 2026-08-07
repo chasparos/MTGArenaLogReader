@@ -5,6 +5,7 @@ import app.deckplanner.consideration.UnderConsiderationModel;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
+import app.ui.AppScrollBarUI;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
@@ -23,20 +24,19 @@ class UnderConsiderationPanelTest {
         CatalogFilterIndex index = index(card);
         UnderConsiderationModel model =
                 new UnderConsiderationModel(List.of("oracle:consider-me"), ignored -> { });
-        AtomicReference<Component> rendered = new AtomicReference<>();
+        AtomicReference<JComponent> row = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
             UnderConsiderationPanel panel = new UnderConsiderationPanel();
             panel.bind(model, ignored -> 4);
             panel.setEntries(model.resolve(index));
-            JList<?> list = find(panel, JList.class);
-            assertNotNull(list);
-            rendered.set(render(list, 0));
+            row.set(panel.candidateRows().getFirst());
         });
 
-        assertInstanceOf(ReplayCardChip.class, rendered.get());
-        assertEquals("Consider Me", ((ReplayCardChip) rendered.get()).card().getName());
-        assertFalse(componentText(rendered.get()).toLowerCase().contains("owned"),
+        ReplayCardChip chip = find(row.get(), ReplayCardChip.class);
+        assertNotNull(chip);
+        assertEquals("Consider Me", chip.card().getName());
+        assertFalse(componentText(row.get()).toLowerCase().contains("owned"),
                 "DP-06 candidate presentation must not invent or expose deferred ownership counts");
     }
 
@@ -44,26 +44,23 @@ class UnderConsiderationPanelTest {
     void staleCandidatesRemainExplicitRecoverableRows() throws Exception {
         UnderConsiderationModel model =
                 new UnderConsiderationModel(List.of("oracle:missing"), ignored -> { });
-        CatalogFilterIndex index = index();
-        AtomicReference<Component> rendered = new AtomicReference<>();
+        AtomicReference<JComponent> row = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
             UnderConsiderationPanel panel = new UnderConsiderationPanel();
             panel.bind(model, ignored -> -1);
-            panel.setEntries(model.resolve(index));
-            JList<?> list = find(panel, JList.class);
-            assertNotNull(list);
-            rendered.set(render(list, 0));
+            panel.setEntries(model.resolve(index()));
+            row.set(panel.candidateRows().getFirst());
         });
 
-        assertInstanceOf(JLabel.class, rendered.get());
-        assertTrue(((JLabel) rendered.get()).getText().contains("stale"));
+        JLabel label = find(row.get(), JLabel.class);
+        assertNotNull(label);
+        assertTrue(label.getText().contains("stale"));
     }
 
     @Test
-    void candidateListExposesMoveTransferHandlerAndNormalMagicSortControl() throws Exception {
-        AtomicReference<JList<?>> listRef = new AtomicReference<>();
-        AtomicReference<AbstractButton> sortRef = new AtomicReference<>();
+    void candidateSurfaceIsCustomPanelWithProjectScrollbarAndMoveTransferHandler() throws Exception {
+        AtomicReference<UnderConsiderationPanel> ref = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
             UnderConsiderationPanel panel = new UnderConsiderationPanel();
@@ -71,22 +68,18 @@ class UnderConsiderationPanelTest {
                     List.of("oracle:a", "oracle:b"), ignored -> { });
             panel.bind(model, ignored -> -1);
             panel.setEntries(model.resolve(index(card("oracle:a", "A"), card("oracle:b", "B"))));
-            listRef.set(find(panel, JList.class));
-            sortRef.set(findButton(panel, "Normal MTG sort"));
+            ref.set(panel);
         });
 
-        assertNotNull(listRef.get());
-        assertNotNull(listRef.get().getTransferHandler(), "candidate list must support drag/drop transfer");
-        assertEquals(TransferHandler.MOVE, listRef.get().getTransferHandler().getSourceActions(listRef.get()));
-        assertNotNull(sortRef.get());
-        assertTrue(sortRef.get().isEnabled());
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static Component render(JList list, int index) {
-        Object value = list.getModel().getElementAt(index);
-        return list.getCellRenderer().getListCellRendererComponent(
-                list, value, index, false, false);
+        UnderConsiderationPanel panel = ref.get();
+        assertNull(find(panel, JList.class), "candidate surface must not regress to JList");
+        assertInstanceOf(AppScrollBarUI.class, panel.candidateScrollPane().getVerticalScrollBar().getUI());
+        assertNotNull(panel.candidateSurface().getTransferHandler());
+        assertEquals(TransferHandler.MOVE,
+                panel.candidateRows().getFirst().getTransferHandler()
+                        .getSourceActions(panel.candidateRows().getFirst()));
+        assertNotNull(findButton(panel, "Normal MTG sort"));
+        assertTrue(findButton(panel, "Normal MTG sort").isEnabled());
     }
 
     private static String componentText(Component component) {

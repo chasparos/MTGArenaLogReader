@@ -4,21 +4,34 @@ import app.deckplanner.consideration.UnderConsiderationModel;
 import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
 import app.ui.AppColors;
+import app.ui.AppScrollBarUI;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.util.List;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
 
-/** Ordered DP-06 candidate workspace with recoverable stale entries. */
+/**
+ * Ordered DP-06 candidate workspace with a custom panel surface.
+ *
+ * <p>The surface deliberately avoids {@link JList}: candidate rows are ordinary components so
+ * future grouping/category/mana affordances can be composed without fighting a list-cell renderer.
+ * Ordering remains authoritative in {@link UnderConsiderationModel}.</p>
+ */
 public final class UnderConsiderationPanel extends JPanel {
-    private final DefaultListModel<Row> rows = new DefaultListModel<>();
-    private final JList<Row> list = new JList<>(rows);
+    private final CandidateSurface surface = new CandidateSurface();
+    private final JScrollPane scroll = new JScrollPane(surface,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     private final JButton remove = new JButton("Remove");
     private final JButton clear = new JButton("Clear");
     private final JButton magicSort = new JButton("Normal MTG sort");
@@ -26,6 +39,7 @@ public final class UnderConsiderationPanel extends JPanel {
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
     private UnderConsiderationModel model;
+    private String selectedIdentity;
 
     public UnderConsiderationPanel() {
         super(new BorderLayout(6, 6));
@@ -34,10 +48,13 @@ public final class UnderConsiderationPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
-        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        list.setCellRenderer(new Renderer());
-        list.setFixedCellHeight(42);
-        JScrollPane scroll = new JScrollPane(list);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getViewport().setOpaque(true);
+        scroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
+        scroll.getVerticalScrollBar().setUnitIncrement(48);
+        scroll.getVerticalScrollBar().getModel().addChangeListener(
+                event -> syncScrollbarEnabled(scroll.getVerticalScrollBar()));
+        surface.setTransferHandler(new CandidateTransferHandler());
         add(scroll, BorderLayout.CENTER);
 
         JPanel actions = new JPanel(new BorderLayout(4, 4));
@@ -53,10 +70,6 @@ public final class UnderConsiderationPanel extends JPanel {
         clear.addActionListener(event -> { if (model != null) model.clear(); });
         magicSort.addActionListener(event -> magicSortAction.run());
         importDeck.addActionListener(event -> importAction.run());
-        list.setDropMode(DropMode.INSERT);
-        list.setTransferHandler(new CandidateTransferHandler());
-        if (!GraphicsEnvironment.isHeadless()) list.setDragEnabled(true);
-        list.addListSelectionListener(event -> updateActions());
         updateActions();
         refreshTheme();
     }
@@ -75,47 +88,76 @@ public final class UnderConsiderationPanel extends JPanel {
 
     public void setEntries(List<UnderConsiderationModel.Entry> entries) {
         assertEdt();
-        String selected = selectedIdentity().orElse(null);
-        rows.clear();
+        String previousSelection = selectedIdentity;
+        surface.removeAll();
+        surface.rows.clear();
+
         for (UnderConsiderationModel.Entry entry : entries) {
-            if (entry.card().isPresent()) {
-                CardInfo card = entry.card().get().group().preferredPrinting();
-                rows.addElement(new Row(entry.identity(), card, false));
-            } else {
-                rows.addElement(new Row(entry.identity(), null, true));
-            }
+            CandidateRow row = new CandidateRow(entry);
+            surface.rows.add(row);
+            surface.add(row);
         }
-        if (selected != null) {
-            for (int index = 0; index < rows.size(); index++) {
-                if (selected.equals(rows.get(index).identity())) {
-                    list.setSelectedIndex(index);
-                    break;
-                }
-            }
-        }
+
+        selectedIdentity = surface.rows.stream()
+                .map(CandidateRow::identity)
+                .filter(identity -> Objects.equals(identity, previousSelection))
+                .findFirst().orElse(null);
+        refreshSelection();
         updateActions();
+        surface.revalidate();
+        surface.repaint();
+        syncScrollbarEnabled(scroll.getVerticalScrollBar());
     }
 
     public List<String> identities() {
-        return java.util.stream.IntStream.range(0, rows.size())
-                .mapToObj(index -> rows.get(index).identity()).toList();
+        return surface.rows.stream().map(CandidateRow::identity).toList();
     }
 
-    private java.util.Optional<String> selectedIdentity() {
-        Row row = list.getSelectedValue();
-        return row == null ? java.util.Optional.empty() : java.util.Optional.of(row.identity());
+    Optional<String> selectedIdentity() {
+        return Optional.ofNullable(selectedIdentity);
+    }
+
+    JComponent candidateSurface() {
+        return surface;
+    }
+
+    List<JComponent> candidateRows() {
+        return List.copyOf(surface.rows);
+    }
+
+    JScrollPane candidateScrollPane() {
+        return scroll;
+    }
+
+    private void select(String identity) {
+        selectedIdentity = Objects.equals(selectedIdentity, identity) ? null : identity;
+        refreshSelection();
+        updateActions();
+    }
+
+    private void refreshSelection() {
+        for (CandidateRow row : surface.rows) {
+            row.setSelected(Objects.equals(row.identity(), selectedIdentity));
+        }
     }
 
     private void updateActions() {
-        boolean selected = list.getSelectedIndex() >= 0;
-        remove.setEnabled(selected);
-        clear.setEnabled(!rows.isEmpty());
-        magicSort.setEnabled(rows.size() > 1);
+        remove.setEnabled(selectedIdentity != null);
+        clear.setEnabled(!surface.rows.isEmpty());
+        magicSort.setEnabled(surface.rows.size() > 1);
     }
 
     private void refreshTheme() {
-        setBackground(AppColors.color("Panel.background", new Color(0x202328)));
+        Color background = AppColors.color("Panel.background", new Color(0x202328));
+        setBackground(background);
         setForeground(AppColors.color("Label.foreground", Color.WHITE));
+        surface.setBackground(background);
+        scroll.getViewport().setBackground(background);
+    }
+
+    private static void syncScrollbarEnabled(JScrollBar scrollBar) {
+        BoundedRangeModel range = scrollBar.getModel();
+        scrollBar.setEnabled(range.getExtent() < range.getMaximum() - range.getMinimum());
     }
 
     private static void assertEdt() {
@@ -124,8 +166,106 @@ public final class UnderConsiderationPanel extends JPanel {
         }
     }
 
+    private final class CandidateSurface extends JPanel {
+        private final List<CandidateRow> rows = new ArrayList<>();
+
+        CandidateSurface() {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+            setOpaque(true);
+        }
+
+        int insertionIndex(Point point) {
+            int y = point == null ? Integer.MAX_VALUE : point.y;
+            for (int index = 0; index < rows.size(); index++) {
+                Rectangle bounds = rows.get(index).getBounds();
+                if (y < bounds.y + bounds.height / 2) return index;
+            }
+            return rows.size();
+        }
+    }
+
+    private final class CandidateRow extends JPanel {
+        private final String identity;
+        private final CardInfo card;
+        private final boolean stale;
+        private final JComponent content;
+        private boolean selected;
+
+        CandidateRow(UnderConsiderationModel.Entry entry) {
+            super(new BorderLayout());
+            identity = entry.identity();
+            stale = entry.card().isEmpty();
+            card = stale ? null : entry.card().get().group().preferredPrinting();
+            setAlignmentX(Component.LEFT_ALIGNMENT);
+            setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+            setPreferredSize(new Dimension(220, 44));
+            setBorder(new EmptyBorder(2, 2, 2, 2));
+            setOpaque(true);
+
+            if (stale) {
+                JLabel label = new JLabel("Unavailable card — stale; keep or remove");
+                label.setBorder(new EmptyBorder(6, 8, 6, 8));
+                content = label;
+            } else {
+                content = new ReplayCardChip(card, false);
+            }
+            add(content, BorderLayout.CENTER);
+
+            MouseAdapter mouse = new MouseAdapter() {
+                private Point pressed;
+
+                @Override public void mousePressed(MouseEvent event) {
+                    pressed = event.getPoint();
+                    select(identity);
+                }
+
+                @Override public void mouseDragged(MouseEvent event) {
+                    if (pressed == null || pressed.distance(event.getPoint()) < 4) return;
+                    getTransferHandler().exportAsDrag(CandidateRow.this, event, TransferHandler.MOVE);
+                    pressed = null;
+                }
+            };
+            addMouseListener(mouse);
+            addMouseMotionListener(mouse);
+            content.addMouseListener(mouse);
+            content.addMouseMotionListener(mouse);
+            setTransferHandler(new CandidateTransferHandler());
+            setSelected(false);
+        }
+
+        String identity() {
+            return identity;
+        }
+
+        CardInfo card() {
+            return card;
+        }
+
+        boolean stale() {
+            return stale;
+        }
+
+        void setSelected(boolean selected) {
+            this.selected = selected;
+            Color base = AppColors.color("Panel.background", new Color(0x202328));
+            Color selectedBackground = AppColors.color("List.selectionBackground", new Color(0x3B4554));
+            setBackground(selected ? selectedBackground : base);
+            if (content instanceof ReplayCardChip chip) {
+                chip.setSelected(selected);
+            } else {
+                content.setBackground(selected ? selectedBackground : base);
+                content.setForeground(AppColors.color("Label.foreground", Color.WHITE));
+                content.setOpaque(true);
+            }
+            repaint();
+        }
+    }
+
     private final class CandidateTransferHandler extends TransferHandler {
         @Override protected Transferable createTransferable(JComponent component) {
+            if (component instanceof CandidateRow row) {
+                return new StringSelection(row.identity());
+            }
             return selectedIdentity().map(StringSelection::new).orElse(null);
         }
 
@@ -134,43 +274,24 @@ public final class UnderConsiderationPanel extends JPanel {
         }
 
         @Override public boolean canImport(TransferSupport support) {
-            return model != null && support.isDrop() && support.isDataFlavorSupported(DataFlavor.stringFlavor)
-                    && support.getDropLocation() instanceof JList.DropLocation;
+            return model != null && support.isDrop()
+                    && support.isDataFlavorSupported(DataFlavor.stringFlavor);
         }
 
         @Override public boolean importData(TransferSupport support) {
             if (!canImport(support)) return false;
             try {
-                String identity = (String) support.getTransferable().getTransferData(DataFlavor.stringFlavor);
-                JList.DropLocation location = (JList.DropLocation) support.getDropLocation();
-                model.moveToIndex(identity, location.getIndex());
+                String identity = (String) support.getTransferable()
+                        .getTransferData(DataFlavor.stringFlavor);
+                Point point = support.getDropLocation().getDropPoint();
+                Point surfacePoint = SwingUtilities.convertPoint(
+                        support.getComponent(), point, surface);
+                model.moveToIndex(identity, surface.insertionIndex(surfacePoint));
+                selectedIdentity = identity;
                 return true;
             } catch (Exception error) {
                 return false;
             }
-        }
-    }
-
-    private record Row(String identity, CardInfo card, boolean stale) {
-    }
-
-    private static final class Renderer implements ListCellRenderer<Row> {
-        @Override
-        public Component getListCellRendererComponent(JList<? extends Row> list, Row row, int index,
-                                                      boolean selected, boolean focus) {
-            if (row == null || row.stale()) {
-                JLabel label = new JLabel("Unavailable card — stale; keep or remove");
-                label.setOpaque(true);
-                label.setBorder(new EmptyBorder(6, 8, 6, 8));
-                label.setFont(list.getFont());
-                label.setBackground(selected ? list.getSelectionBackground() : list.getBackground());
-                label.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
-                return label;
-            }
-            ReplayCardChip chip = new ReplayCardChip(row.card(), selected);
-            chip.setFont(list.getFont());
-            chip.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
-            return chip;
         }
     }
 }

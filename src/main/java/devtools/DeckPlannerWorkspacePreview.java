@@ -5,6 +5,13 @@ import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.collection.CollectionQuantity;
 import app.deckplanner.consideration.UnderConsiderationModel;
 import app.deckplanner.consideration.UnderConsiderationRepository;
+import app.deckplanner.consideration.CardNameRepository;
+import app.deckplanner.consideration.DeckCacheKnownArenaDeckSource;
+import app.deck.persistence.DeckCache;
+import app.enrichment.CardCache;
+import app.enrichment.ScryfallClient;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.ui.CardBrowserPanel;
@@ -80,7 +87,7 @@ public final class DeckPlannerWorkspacePreview {
                         showCatalogFailure(frame, result.status());
                         return;
                     }
-                    PreviewSession created = createSession(
+                    PreviewSession created = createRealSession(
                             DEFAULT_ROOT.resolve("consideration"),
                             result.snapshot().get(),
                             result.availability(),
@@ -117,6 +124,39 @@ public final class DeckPlannerWorkspacePreview {
                                         FormatCatalogRepository.Snapshot snapshot,
                                         DeckPlannerFilterCoordinator.Availability availability,
                                         CardBrowserPanel.ImageSource imageSource) {
+        return createSession(databasePath, snapshot, availability, imageSource,
+                CardNameRepository.local(new CatalogFilterIndex(snapshot)),
+                app.deckplanner.consideration.KnownArenaDeckSource.empty(),
+                null, null, null);
+    }
+
+    private static PreviewSession createRealSession(Path databasePath,
+                                        FormatCatalogRepository.Snapshot snapshot,
+                                        DeckPlannerFilterCoordinator.Availability availability,
+                                        CardBrowserPanel.ImageSource imageSource) {
+        assertEdt();
+        Gson gson = new GsonBuilder().disableHtmlEscaping().create();
+        CatalogFilterIndex index = new CatalogFilterIndex(snapshot);
+        ScryfallClient nameLookup = new ScryfallClient(gson);
+        Path observedDeckDatabase = Path.of(
+                System.getProperty("user.home"), ".arena-log-viewer", "card-cache");
+        CardCache observedCardCache = new CardCache(gson, observedDeckDatabase);
+        DeckCache observedDeckCache = new DeckCache(gson, observedCardCache, observedDeckDatabase);
+        return createSession(databasePath, snapshot, availability, imageSource,
+                new CardNameRepository(index, nameLookup::findByExactName),
+                new DeckCacheKnownArenaDeckSource(observedDeckCache, 24),
+                nameLookup, observedCardCache, observedDeckCache);
+    }
+
+    private static PreviewSession createSession(Path databasePath,
+                                                FormatCatalogRepository.Snapshot snapshot,
+                                                DeckPlannerFilterCoordinator.Availability availability,
+                                                CardBrowserPanel.ImageSource imageSource,
+                                                CardNameRepository cardNames,
+                                                app.deckplanner.consideration.KnownArenaDeckSource knownDecks,
+                                                ScryfallClient nameLookup,
+                                                CardCache observedCardCache,
+                                                DeckCache observedDeckCache) {
         assertEdt();
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
                 r -> daemon(r, "planner-preview-scheduler"));
@@ -125,8 +165,6 @@ public final class DeckPlannerWorkspacePreview {
         CatalogFilterIndex index = new CatalogFilterIndex(snapshot);
 
         UnderConsiderationRepository repository = new UnderConsiderationRepository(databasePath);
-        // The acceptance harness uses a tiny local H2 store and synchronous writes so closing and
-        // relaunching the preview deterministically exercises the same persisted state.
         UnderConsiderationModel consideration =
                 UnderConsiderationModel.persisted(repository, Runnable::run);
         if (consideration.identities().isEmpty()) consideration.add(initialConsideration(snapshot));
@@ -134,17 +172,19 @@ public final class DeckPlannerWorkspacePreview {
         DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(
                 new DeckPlannerFilterModel("standard"), index, imageSource,
                 scheduler, worker, Duration.ofMillis(120), availability,
-                consideration, ignored -> CollectionQuantity.UNKNOWN);
+                consideration, ignored -> CollectionQuantity.UNKNOWN,
+                cardNames, knownDecks);
+
 
         String sampleArenaDeck = sampleArenaDeck(snapshot);
         JTextArea checklist = new JTextArea("""
                 DP-06 HUMAN CLICK ACCEPTANCE — REAL STANDARD CARDS
                 1. Verify the browser is populated with real Arena-available Standard cards and real cached Scryfall images.
                 2. Double-click browser cards; verify they appear at right and get a consideration badge.
-                3. Select candidates at right; verify Up/Down, Remove, and Clear work and ordering is visible.
+                3. Drag candidate chips into a new order; verify Remove/Clear work, then use Normal MTG sort and verify the order visibly changes.
                 4. Apply filters after adding candidates; verify hidden candidates remain at right and badges return when filters reset.
                 5. Verify the seeded "Unavailable card" row remains recoverable and removable.
-                6. Copy the sample Arena deck below, click Import deck, paste it, and verify the listed real cards import while the missing card is reported.
+                6. Click Import deck: if observed Arena decks exist, select one and load it; also paste the sample deck below. Verify local names resolve first, missing exact names use Scryfall fallback when available, and unresolved names are reported.
                 7. Close and relaunch this preview; verify candidate membership/order survives restart.
                 8. Exercise Ready / Partial cache / Offline cache and normal resizing/scrolling. Later DP-06 rework steps will replace row rendering/order/import/filter interactions before final acceptance.
                 """);
@@ -201,7 +241,8 @@ public final class DeckPlannerWorkspacePreview {
         content.setBackground(checklist.getBackground());
         content.add(review, BorderLayout.NORTH);
         content.add(workspace, BorderLayout.CENTER);
-        return new PreviewSession(content, workspace, scheduler, worker, repository);
+        return new PreviewSession(content, workspace, scheduler, worker, repository,
+                nameLookup, observedCardCache, observedDeckCache);
     }
 
     static String sampleArenaDeck(FormatCatalogRepository.Snapshot snapshot) {
@@ -254,12 +295,17 @@ public final class DeckPlannerWorkspacePreview {
 
     record PreviewSession(JComponent content, DeckPlannerWorkspace workspace,
                           ScheduledExecutorService scheduler, ExecutorService worker,
-                          UnderConsiderationRepository repository) implements AutoCloseable {
+                          UnderConsiderationRepository repository,
+                          ScryfallClient nameLookup, CardCache observedCardCache,
+                          DeckCache observedDeckCache) implements AutoCloseable {
         @Override public void close() {
             workspace.close();
             scheduler.shutdownNow();
             worker.shutdownNow();
             repository.close();
+            if (observedDeckCache != null) observedDeckCache.close();
+            if (observedCardCache != null) observedCardCache.close();
+            if (nameLookup != null) nameLookup.close();
         }
     }
 }

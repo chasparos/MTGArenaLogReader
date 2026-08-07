@@ -1,15 +1,10 @@
 package app.deckplanner.consideration;
 
 import app.deckplanner.filter.CatalogFilterIndex;
-import app.deckplanner.filter.IndexedCatalogCard;
-import app.model.card.CardFaceInfo;
-import app.model.card.CardInfo;
 
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -29,7 +24,7 @@ public final class DeckListImporter {
             "deck", "sideboard", "commander", "companion");
 
     public record Result(List<String> identities, List<String> unresolvedNames,
-                         int parsedCardLines) {
+                         int parsedCardLines, int fallbackCards) {
         public Result {
             identities = List.copyOf(identities);
             unresolvedNames = List.copyOf(unresolvedNames);
@@ -46,10 +41,15 @@ public final class DeckListImporter {
 
     public static Result resolve(String deckText, CatalogFilterIndex index) {
         Objects.requireNonNull(index);
-        Resolver resolver = Resolver.from(index);
+        return resolve(deckText, CardNameRepository.local(index));
+    }
+
+    public static Result resolve(String deckText, CardNameRepository cards) {
+        Objects.requireNonNull(cards);
         LinkedHashSet<String> resolved = new LinkedHashSet<>();
         LinkedHashSet<String> unresolved = new LinkedHashSet<>();
         int parsed = 0;
+        int fallback = 0;
 
         if (deckText != null) {
             for (String rawLine : deckText.replace("\r\n", "\n").replace('\r', '\n').split("\n")) {
@@ -68,12 +68,16 @@ public final class DeckListImporter {
                 parsed++;
 
                 CardSpec spec = parseSpec(cardLine.group(2));
-                String identity = resolver.resolve(spec);
-                if (identity == null) unresolved.add(spec.name());
-                else resolved.add(identity);
+                var resolution = cards.resolve(spec.name(), spec.setCode(), spec.collectorNumber());
+                if (resolution.isEmpty()) {
+                    unresolved.add(spec.name());
+                } else {
+                    resolved.add(resolution.get().identity());
+                    if (resolution.get().fallback()) fallback++;
+                }
             }
         }
-        return new Result(List.copyOf(resolved), List.copyOf(unresolved), parsed);
+        return new Result(List.copyOf(resolved), List.copyOf(unresolved), parsed, fallback);
     }
 
     private static CardSpec parseSpec(String value) {
@@ -83,80 +87,5 @@ public final class DeckListImporter {
                     suffix.group(3).strip());
         }
         return new CardSpec(value.strip(), null, null);
-    }
-
-    private static String normalizeName(String value) {
-        return value.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-    }
-
-    private static String printingKey(String name, String setCode, String collectorNumber) {
-        return normalizeName(name) + "|" + setCode.strip().toLowerCase(Locale.ROOT)
-                + "|" + collectorNumber.strip().toLowerCase(Locale.ROOT);
-    }
-
-    private static final class Resolver {
-        private final Map<String, String> identityByPrinting;
-        private final Map<String, LinkedHashSet<String>> identitiesByName;
-
-        private Resolver(Map<String, String> identityByPrinting,
-                         Map<String, LinkedHashSet<String>> identitiesByName) {
-            this.identityByPrinting = identityByPrinting;
-            this.identitiesByName = identitiesByName;
-        }
-
-        static Resolver from(CatalogFilterIndex index) {
-            LinkedHashMap<String, String> byPrinting = new LinkedHashMap<>();
-            LinkedHashMap<String, LinkedHashSet<String>> byName = new LinkedHashMap<>();
-            for (IndexedCatalogCard indexed : index.cards()) {
-                String identity = indexed.group().identity();
-                for (CardInfo printing : indexed.group().printings()) {
-                    indexCard(byPrinting, byName, printing, identity);
-                }
-                indexCard(byPrinting, byName, indexed.group().preferredPrinting(), identity);
-            }
-            return new Resolver(byPrinting, byName);
-        }
-
-        String resolve(CardSpec spec) {
-            if (spec.setCode() != null && spec.collectorNumber() != null) {
-                String exact = identityByPrinting.get(
-                        printingKey(spec.name(), spec.setCode(), spec.collectorNumber()));
-                if (exact != null) return exact;
-            }
-            LinkedHashSet<String> matches = identitiesByName.get(normalizeName(spec.name()));
-            return matches != null && matches.size() == 1 ? matches.getFirst() : null;
-        }
-
-        private static void indexCard(Map<String, String> byPrinting,
-                                      Map<String, LinkedHashSet<String>> byName,
-                                      CardInfo card, String identity) {
-            if (card == null) return;
-            addName(byName, card.getName(), identity);
-            if (hasText(card.getName()) && hasText(card.getSet()) && hasText(card.getCollectorNumber())) {
-                byPrinting.putIfAbsent(
-                        printingKey(card.getName(), card.getSet(), card.getCollectorNumber()), identity);
-            }
-            if (card.getCardFaces() != null) {
-                for (CardFaceInfo face : card.getCardFaces()) {
-                    if (face != null) addName(byName, face.getName(), identity);
-                }
-            }
-        }
-
-        private static void addName(Map<String, LinkedHashSet<String>> result,
-                                    String name, String identity) {
-            if (!hasText(name)) return;
-            result.computeIfAbsent(normalizeName(name), ignored -> new LinkedHashSet<>()).add(identity);
-            int separator = name.indexOf(" // ");
-            if (separator > 0) {
-                String frontName = name.substring(0, separator);
-                result.computeIfAbsent(normalizeName(frontName), ignored -> new LinkedHashSet<>())
-                        .add(identity);
-            }
-        }
-
-        private static boolean hasText(String value) {
-            return value != null && !value.isBlank();
-        }
     }
 }

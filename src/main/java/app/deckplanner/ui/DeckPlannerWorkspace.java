@@ -3,6 +3,9 @@ package app.deckplanner.ui;
 import app.deckplanner.application.DeckPlannerFilterCoordinator;
 import app.deckplanner.collection.CollectionQuantity;
 import app.deckplanner.consideration.DeckListImporter;
+import app.deckplanner.consideration.CardNameRepository;
+import app.deckplanner.consideration.KnownArenaDeck;
+import app.deckplanner.consideration.KnownArenaDeckSource;
 import app.deckplanner.consideration.UnderConsiderationModel;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
@@ -18,6 +21,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.ToIntFunction;
@@ -35,6 +39,9 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private final UnderConsiderationPanel considerationPanel = new UnderConsiderationPanel();
     private final CatalogFilterIndex catalogIndex;
     private final UnderConsiderationModel considerationModel;
+    private final CardNameRepository cardNames;
+    private final KnownArenaDeckSource knownDecks;
+    private final Executor worker;
     private final UnderConsiderationModel.Listener considerationListener;
     private final CardBrowserScrollPane browserScrollPane;
     private final DeckPlannerResultsStatePanel statePanel = new DeckPlannerResultsStatePanel();
@@ -64,11 +71,30 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                                 DeckPlannerFilterCoordinator.Availability availability,
                                 UnderConsiderationModel considerationModel,
                                 ToIntFunction<CardInfo> collectionQuantitySource) {
+        this(model, index, imageSource, scheduler, worker, debounce, availability,
+                considerationModel, collectionQuantitySource,
+                CardNameRepository.local(index), KnownArenaDeckSource.empty());
+    }
+
+    public DeckPlannerWorkspace(DeckPlannerFilterModel model,
+                                CatalogFilterIndex index,
+                                CardBrowserPanel.ImageSource imageSource,
+                                ScheduledExecutorService scheduler,
+                                Executor worker,
+                                Duration debounce,
+                                DeckPlannerFilterCoordinator.Availability availability,
+                                UnderConsiderationModel considerationModel,
+                                ToIntFunction<CardInfo> collectionQuantitySource,
+                                CardNameRepository cardNames,
+                                KnownArenaDeckSource knownDecks) {
         Objects.requireNonNull(model);
         Objects.requireNonNull(index);
         Objects.requireNonNull(imageSource);
         this.catalogIndex = index;
         this.considerationModel = Objects.requireNonNull(considerationModel);
+        this.cardNames = Objects.requireNonNull(cardNames);
+        this.knownDecks = Objects.requireNonNull(knownDecks);
+        this.worker = Objects.requireNonNull(worker);
         this.considerationListener = ignored -> showConsideration();
         assertEdt();
 
@@ -156,7 +182,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
 
     public DeckListImporter.Result importDeckText(String deckText) {
         assertEdt();
-        DeckListImporter.Result result = DeckListImporter.resolve(deckText, catalogIndex);
+        DeckListImporter.Result result = DeckListImporter.resolve(deckText, cardNames);
         considerationModel.add(result.identities());
         return result;
     }
@@ -165,16 +191,58 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         assertEdt();
         JTextArea input = new JTextArea(18, 48);
         input.setLineWrap(false);
-        JScrollPane scroll = new JScrollPane(input);
+        JScrollPane inputScroll = new JScrollPane(input);
+        inputScroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
+
+        List<KnownArenaDeck> decks;
+        try {
+            decks = knownDecks.list();
+        } catch (RuntimeException unavailable) {
+            decks = List.of();
+        }
+        JComboBox<KnownArenaDeck> known = new JComboBox<>(decks.toArray(KnownArenaDeck[]::new));
+        known.setEnabled(!decks.isEmpty());
+        JButton useKnown = new JButton("Use selected Arena deck");
+        useKnown.setEnabled(!decks.isEmpty());
+        useKnown.addActionListener(event -> {
+            KnownArenaDeck selected = (KnownArenaDeck) known.getSelectedItem();
+            if (selected != null) input.setText(selected.deckText());
+        });
+
+        JPanel knownPanel = new JPanel(new BorderLayout(6, 6));
+        knownPanel.setBorder(BorderFactory.createTitledBorder("Known Arena decks"));
+        knownPanel.add(known, BorderLayout.CENTER);
+        knownPanel.add(useKnown, BorderLayout.EAST);
+        if (decks.isEmpty()) {
+            knownPanel.add(new JLabel("No observed Arena decks are available in the deck cache."),
+                    BorderLayout.SOUTH);
+        }
+
         JPanel content = new JPanel(new BorderLayout(6, 6));
-        content.add(new JLabel("Paste an Arena-exported deck list; all deck sections are imported once."),
-                BorderLayout.NORTH);
-        content.add(scroll, BorderLayout.CENTER);
+        content.add(knownPanel, BorderLayout.NORTH);
+        content.add(inputScroll, BorderLayout.CENTER);
+        content.add(new JLabel("Paste or select a deck. Missing exact names may use Scryfall fallback."),
+                BorderLayout.SOUTH);
         int choice = JOptionPane.showConfirmDialog(this, content, "Import deck into consideration",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (choice != JOptionPane.OK_OPTION) return;
 
-        DeckListImporter.Result result = importDeckText(input.getText());
+        String deckText = input.getText();
+        CompletableFuture
+                .supplyAsync(() -> DeckListImporter.resolve(deckText, cardNames), worker)
+                .whenComplete((result, failure) -> SwingUtilities.invokeLater(() -> {
+                    if (failure != null) {
+                        JOptionPane.showMessageDialog(this,
+                                "Deck import failed: " + rootMessage(failure),
+                                "Deck import", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    considerationModel.add(result.identities());
+                    showImportResult(result);
+                }));
+    }
+
+    private void showImportResult(DeckListImporter.Result result) {
         String message;
         if (result.parsedCardLines() == 0) {
             message = "No Arena deck card lines were found.";
@@ -186,8 +254,21 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                     (result.resolvedCards() == 1 ? "" : "s") + ". Could not resolve: " +
                     String.join(", ", result.unresolvedNames());
         }
+        if (result.fallbackCards() > 0) {
+            message += " " + result.fallbackCards() + " name" +
+                    (result.fallbackCards() == 1 ? " was" : "s were") +
+                    " resolved by exact-name Scryfall fallback.";
+        }
         JOptionPane.showMessageDialog(this, message, "Deck import",
-                result.unresolvedNames().isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+                result.unresolvedNames().isEmpty()
+                        ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) current = current.getCause();
+        return current.getMessage() == null
+                ? current.getClass().getSimpleName() : current.getMessage();
     }
 
     public void setAvailability(DeckPlannerFilterCoordinator.Availability availability) {

@@ -33,6 +33,24 @@ class DeckListImporterTest {
         assertEquals(List.of("Missing Card"), result.unresolvedNames());
     }
 
+
+    @Test void fallsBackToExactNameRepositoryWithoutImplyingOwnership() {
+        CatalogFilterIndex index = index();
+        CardInfo remote = card("remote-oracle", "Remote Card", "remote-printing");
+        CardNameRepository names = new CardNameRepository(index,
+                exact -> "Remote Card".equals(exact) ? java.util.Optional.of(remote) : java.util.Optional.empty());
+
+        DeckListImporter.Result result = DeckListImporter.resolve("""
+                Deck
+                2 Remote Card
+                1 Missing Card
+                """, names);
+
+        assertEquals(List.of("oracle:remote-oracle"), result.identities());
+        assertEquals(List.of("Missing Card"), result.unresolvedNames());
+        assertEquals(1, result.fallbackCards());
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();
