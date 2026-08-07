@@ -1,8 +1,8 @@
 package app.deckplanner.ui;
 
 import app.deckplanner.consideration.UnderConsiderationModel;
-import app.deckplanner.collection.CollectionQuantity;
 import app.model.card.CardInfo;
+import app.replay.ReplayCardChip;
 import app.ui.AppColors;
 
 import javax.swing.*;
@@ -23,7 +23,6 @@ public final class UnderConsiderationPanel extends JPanel {
     private final JButton importDeck = new JButton("Import deck");
     private Runnable importAction = () -> { };
     private UnderConsiderationModel model;
-    private ToIntFunction<CardInfo> quantitySource = ignored -> CollectionQuantity.UNKNOWN;
 
     public UnderConsiderationPanel() {
         super(new BorderLayout(6, 6));
@@ -34,6 +33,7 @@ public final class UnderConsiderationPanel extends JPanel {
 
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         list.setCellRenderer(new Renderer());
+        list.setFixedCellHeight(42);
         JScrollPane scroll = new JScrollPane(list);
         add(scroll, BorderLayout.CENTER);
 
@@ -57,9 +57,8 @@ public final class UnderConsiderationPanel extends JPanel {
         refreshTheme();
     }
 
-    public void bind(UnderConsiderationModel model, ToIntFunction<CardInfo> quantitySource) {
+    public void bind(UnderConsiderationModel model, ToIntFunction<CardInfo> ignoredQuantitySource) {
         this.model = Objects.requireNonNull(model);
-        this.quantitySource = quantitySource == null ? ignored -> CollectionQuantity.UNKNOWN : quantitySource;
     }
 
     public void setImportAction(Runnable importAction) {
@@ -73,9 +72,9 @@ public final class UnderConsiderationPanel extends JPanel {
         for (UnderConsiderationModel.Entry entry : entries) {
             if (entry.card().isPresent()) {
                 CardInfo card = entry.card().get().group().preferredPrinting();
-                rows.addElement(new Row(entry.identity(), card.getName(), quantitySource.applyAsInt(card), false));
+                rows.addElement(new Row(entry.identity(), card, false));
             } else {
-                rows.addElement(new Row(entry.identity(), "Unavailable card", CollectionQuantity.UNKNOWN, true));
+                rows.addElement(new Row(entry.identity(), null, true));
             }
         }
         if (selected != null) {
@@ -118,21 +117,26 @@ public final class UnderConsiderationPanel extends JPanel {
         }
     }
 
-    private record Row(String identity, String name, int quantity, boolean stale) {
-        @Override public String toString() {
-            if (stale) return name + " — stale; keep or remove";
-            String owned = quantity < 0 ? "owned: unknown" : "owned: " + quantity;
-            return name + " — " + owned;
-        }
+    private record Row(String identity, CardInfo card, boolean stale) {
     }
 
-    private static final class Renderer extends DefaultListCellRenderer {
-        @Override public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                                boolean selected, boolean focus) {
-            JLabel label = (JLabel) super.getListCellRendererComponent(
-                    list, value, index, selected, focus);
-            label.setBorder(new EmptyBorder(6, 6, 6, 6));
-            return label;
+    private static final class Renderer implements ListCellRenderer<Row> {
+        @Override
+        public Component getListCellRendererComponent(JList<? extends Row> list, Row row, int index,
+                                                      boolean selected, boolean focus) {
+            if (row == null || row.stale()) {
+                JLabel label = new JLabel("Unavailable card — stale; keep or remove");
+                label.setOpaque(true);
+                label.setBorder(new EmptyBorder(6, 8, 6, 8));
+                label.setFont(list.getFont());
+                label.setBackground(selected ? list.getSelectionBackground() : list.getBackground());
+                label.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
+                return label;
+            }
+            ReplayCardChip chip = new ReplayCardChip(row.card(), selected);
+            chip.setFont(list.getFont());
+            chip.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
+            return chip;
         }
     }
 }

@@ -534,31 +534,10 @@ public final class GameView extends AsyncVirtualListPanel<GameView.ReplayRenderN
 
     private Object eventKey(GameEvent event) { return new EventPanelKey(event); }
 
-    private final class PreviewCardChip extends JComponent {
-        private final CardInfo card;
-        private final BoardPermanentSnapshot permanent;
-
+    private final class PreviewCardChip extends ReplayCardChip {
         private PreviewCardChip(CardInfo card, BoardPermanentSnapshot permanent) {
-            this.card = card;
-            this.permanent = permanent;
-            setOpaque(false);
+            super(card, permanent == null ? "" : roomStateLabel(permanent), permanent, false);
             setPreferredSize(new Dimension(320, 42));
-        }
-
-        @Override protected void paintComponent(Graphics graphics) {
-            Graphics2D g = (Graphics2D) graphics.create();
-            try {
-                configureGraphics(g);
-                CardFragment fragment = new CardFragment(card,
-                        card == null ? "Unknown card" : nullToEmpty(card.getName()),
-                        permanent == null ? "" : roomStateLabel(permanent), permanent);
-                int width = replayFragmentRenderer.width(g, fragment);
-                int x = Math.max(7, (getWidth() - width) / 2);
-                replayFragmentRenderer.paint(
-                        g, fragment, x, 2, getHeight() - 4, null, false);
-            } finally {
-                g.dispose();
-            }
         }
     }
 
