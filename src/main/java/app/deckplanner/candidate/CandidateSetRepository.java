@@ -8,11 +8,13 @@ import java.util.*;
 /** Persists candidate categories and named Candidate Sets beside candidate membership. */
 public final class CandidateSetRepository implements AutoCloseable {
     public record CandidateSet(String name, List<String> identities,
-                               CandidateWorkspaceState.Snapshot workspace) {
+                               CandidateWorkspaceState.Snapshot workspace,
+                               String note) {
         public CandidateSet {
             name = name == null ? "" : name.strip();
             identities = List.copyOf(identities == null ? List.of() : identities);
             workspace = workspace == null ? CandidateWorkspaceState.defaults() : workspace;
+            note = note == null ? "" : note;
         }
         @Override public String toString() { return name; }
     }
@@ -88,13 +90,15 @@ public final class CandidateSetRepository implements AutoCloseable {
     public synchronized Optional<CandidateSet> load(String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         try {
-            boolean exists;
+            String note;
             try (PreparedStatement st = connection.prepareStatement(
-                    "SELECT 1 FROM deck_planner_candidate_sets WHERE set_name=?")) {
+                    "SELECT note FROM deck_planner_candidate_sets WHERE set_name=?")) {
                 st.setString(1, name.strip());
-                try (ResultSet row = st.executeQuery()) { exists = row.next(); }
+                try (ResultSet row = st.executeQuery()) {
+                    if (!row.next()) return Optional.empty();
+                    note = Optional.ofNullable(row.getString(1)).orElse("");
+                }
             }
-            if (!exists) return Optional.empty();
             List<String> identities = new ArrayList<>();
             try (PreparedStatement st = connection.prepareStatement("""
                     SELECT card_identity FROM deck_planner_candidate_set_cards
@@ -126,7 +130,7 @@ public final class CandidateSetRepository implements AutoCloseable {
             CandidateWorkspaceState.Snapshot workspace = categories.isEmpty()
                     ? CandidateWorkspaceState.defaults()
                     : new CandidateWorkspaceState.Snapshot(categories, assignments);
-            return Optional.of(new CandidateSet(name.strip(), identities, workspace));
+            return Optional.of(new CandidateSet(name.strip(), identities, workspace, note));
         } catch (SQLException error) {
             throw new IllegalStateException("Could not load Candidate Set", error);
         }
@@ -134,14 +138,23 @@ public final class CandidateSetRepository implements AutoCloseable {
 
     public synchronized void save(String name, List<String> identities,
                                   CandidateWorkspaceState.Snapshot workspace) {
+        save(name, identities, workspace, "");
+    }
+
+    public synchronized void save(String name, List<String> identities,
+                                  CandidateWorkspaceState.Snapshot workspace,
+                                  String note) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Candidate Set name is required");
         String setName = name.strip();
+        String setNote = note == null ? "" : note;
         try {
             connection.setAutoCommit(false);
             deleteSetChildren(setName);
             try (PreparedStatement upsert = connection.prepareStatement("""
-                    MERGE INTO deck_planner_candidate_sets (set_name) KEY(set_name) VALUES (?)""")) {
-                upsert.setString(1, setName); upsert.executeUpdate();
+                    MERGE INTO deck_planner_candidate_sets (set_name, note) KEY(set_name) VALUES (?, ?)""")) {
+                upsert.setString(1, setName);
+                upsert.setString(2, setNote);
+                upsert.executeUpdate();
             }
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO deck_planner_candidate_set_cards(set_name, position_no, card_identity)
@@ -166,7 +179,8 @@ public final class CandidateSetRepository implements AutoCloseable {
         try (Statement s = connection.createStatement()) {
             s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_categories(position_no INT PRIMARY KEY, category_id VARCHAR(128) UNIQUE NOT NULL, category_name VARCHAR(256) NOT NULL)");
             s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_assignments(card_identity VARCHAR(256) PRIMARY KEY, category_id VARCHAR(128) NOT NULL)");
-            s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_sets(set_name VARCHAR(256) PRIMARY KEY)");
+            s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_sets(set_name VARCHAR(256) PRIMARY KEY, note CLOB DEFAULT '' NOT NULL)");
+            s.executeUpdate("ALTER TABLE deck_planner_candidate_sets ADD COLUMN IF NOT EXISTS note CLOB DEFAULT '' NOT NULL");
             s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_set_cards(set_name VARCHAR(256) NOT NULL, position_no INT NOT NULL, card_identity VARCHAR(256) NOT NULL, PRIMARY KEY(set_name, position_no))");
             s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_set_categories(set_name VARCHAR(256) NOT NULL, position_no INT NOT NULL, category_id VARCHAR(128) NOT NULL, category_name VARCHAR(256) NOT NULL, PRIMARY KEY(set_name, position_no))");
             s.executeUpdate("CREATE TABLE IF NOT EXISTS deck_planner_candidate_set_assignments(set_name VARCHAR(256) NOT NULL, card_identity VARCHAR(256) NOT NULL, category_id VARCHAR(128) NOT NULL, PRIMARY KEY(set_name, card_identity))");

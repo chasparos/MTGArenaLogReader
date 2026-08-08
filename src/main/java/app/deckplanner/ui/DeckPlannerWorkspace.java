@@ -183,10 +183,13 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             candidatePanel.setCandidateSetActions(
                     () -> candidateSets.list().stream().map(CandidateSetRepository.CandidateSet::name).toList(),
                     name -> {
-                        candidateSets.save(name, candidateModel.identities(), workspaceState.snapshot());
+                        candidateSets.save(name, candidateModel.identities(), workspaceState.snapshot(),
+                                candidatePanel.candidateSetNoteFor(name));
+                        candidatePanel.setCandidateSetNote(name, candidatePanel.candidateSetNoteFor(name));
                         candidatePanel.refreshCandidateSetNames();
                     },
                     name -> candidateSets.load(name).ifPresent(set -> {
+                        candidatePanel.setCandidateSetNote(set.name(), set.note());
                         workspaceState.replace(set.workspace());
                         candidateModel.replace(set.identities());
                     }));

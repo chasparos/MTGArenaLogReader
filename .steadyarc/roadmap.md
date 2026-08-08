@@ -228,6 +228,12 @@ Accepted constraints:
 - The human note is separate from the general instruction and from authoritative card data. The model should use it as design intent, not reinterpret it as card fact.
 - There is no single fixed closing question. The request should invite analysis and possible directions rather than forcing one canned `What deck would you build...` prompt.
 
+Implementation sequence:
+
+- **DP-07.1 Candidate Set note contract — implemented; validation pending.** Persist the free-form note in the named Candidate Set record with backward-compatible schema migration, expose `Edit note` in the planner, restore the note when a set is loaded, and use the existing preview harness for human review before exporter work begins.
+- **DP-07.2 Export schema and authoritative card payload — planned.** Define and golden-test deterministic `MTGA_DECK_BUILD_REQUEST_V1` card/category/note encoding.
+- **DP-07.3 Deck-analysis instruction brief and preview export review — planned.** Add the stable analysis framing/instructions, expose generated export in the preview harness, and iterate through human click review before DP-07 acceptance.
+
 Acceptance evidence:
 
 - Payload includes target format, Candidate Set name and note, candidate membership/category organization, collection quantity with unknown distinguished from zero, stable identities, name, mana cost/value, type line, complete oracle text, colors/color identity, power/toughness/loyalty/defense when applicable, keywords, produced mana, and every relevant face of multi-face cards.

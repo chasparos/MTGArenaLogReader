@@ -35,6 +35,7 @@ public final class CandidatePanel extends JPanel {
     private final JComboBox<String> candidateSets = new JComboBox<>();
     private final JButton saveSet = new JButton("Save set");
     private final JButton loadSet = new JButton("Load set");
+    private final JButton editNote = new JButton("Edit note");
 
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
@@ -44,6 +45,8 @@ public final class CandidatePanel extends JPanel {
     private Supplier<List<String>> candidateSetNames = List::of;
     private Consumer<String> saveSetAction = ignored -> { };
     private Consumer<String> loadSetAction = ignored -> { };
+    private String noteSetName = "";
+    private String candidateSetNote = "";
 
     private CandidateModel model;
     private CandidateWorkspaceState workspaceState = CandidateWorkspaceState.transientState();
@@ -82,9 +85,10 @@ public final class CandidatePanel extends JPanel {
         JPanel setActions = new JPanel(new BorderLayout(4, 4));
         candidateSets.setEditable(true);
         setActions.add(candidateSets, BorderLayout.CENTER);
-        JPanel setButtons = new JPanel(new GridLayout(1, 2, 4, 4));
+        JPanel setButtons = new JPanel(new GridLayout(1, 3, 4, 4));
         setButtons.add(saveSet);
         setButtons.add(loadSet);
+        setButtons.add(editNote);
         setActions.add(setButtons, BorderLayout.EAST);
         actions.add(setActions, BorderLayout.CENTER);
 
@@ -103,6 +107,7 @@ public final class CandidatePanel extends JPanel {
         importDeck.addActionListener(event -> importAction.run());
         saveSet.addActionListener(event -> selectedSetName().ifPresent(saveSetAction));
         loadSet.addActionListener(event -> selectedSetName().ifPresent(loadSetAction));
+        editNote.addActionListener(event -> editCandidateSetNote());
         updateActions();
         refreshTheme();
     }
@@ -208,6 +213,51 @@ public final class CandidatePanel extends JPanel {
                 ? candidateSets.getEditor().getItem() : candidateSets.getSelectedItem();
         if (value == null || value.toString().isBlank()) return Optional.empty();
         return Optional.of(value.toString().strip());
+    }
+
+    public String candidateSetNoteFor(String setName) {
+        if (setName == null || !setName.strip().equals(noteSetName)) return "";
+        return candidateSetNote;
+    }
+
+    public void setCandidateSetNote(String setName, String note) {
+        noteSetName = setName == null ? "" : setName.strip();
+        candidateSetNote = note == null ? "" : note;
+    }
+
+    private void editCandidateSetNote() {
+        selectedSetName().ifPresent(name -> {
+            JTextArea editor = new JTextArea(candidateSetNoteFor(name), 14, 52);
+            editor.setLineWrap(true);
+            editor.setWrapStyleWord(true);
+
+            JDialog dialog = new JDialog(
+                    SwingUtilities.getWindowAncestor(this),
+                    "Candidate Set note — " + name,
+                    Dialog.ModalityType.MODELESS);
+            dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+            JPanel content = new JPanel(new BorderLayout(6, 6));
+            content.setBorder(new EmptyBorder(8, 8, 8, 8));
+            content.add(new JScrollPane(editor), BorderLayout.CENTER);
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+            JButton cancel = new JButton("Cancel");
+            JButton save = new JButton("Save note");
+            buttons.add(cancel);
+            buttons.add(save);
+            content.add(buttons, BorderLayout.SOUTH);
+            cancel.addActionListener(event -> dialog.dispose());
+            save.addActionListener(event -> {
+                setCandidateSetNote(name, editor.getText());
+                saveSetAction.accept(name);
+                refreshCandidateSetNames();
+                dialog.dispose();
+            });
+            dialog.setContentPane(content);
+            dialog.pack();
+            dialog.setLocationRelativeTo(this);
+            dialog.setVisible(true);
+            SwingUtilities.invokeLater(editor::requestFocusInWindow);
+        });
     }
 
     public void setEntries(List<CandidateModel.Entry> entries) {
@@ -417,9 +467,10 @@ public final class CandidatePanel extends JPanel {
         remove.setEnabled(!surface.selectedIdentities().isEmpty());
         clear.setEnabled(!surface.identities().isEmpty());
         magicSort.setEnabled(surface.identities().size() > 1);
-        loadSet.setEnabled(candidateSets.getItemCount() > 0
-                || (candidateSets.getEditor().getItem() != null
-                    && !candidateSets.getEditor().getItem().toString().isBlank()));
+        boolean hasSetName = candidateSets.getEditor().getItem() != null
+                && !candidateSets.getEditor().getItem().toString().isBlank();
+        loadSet.setEnabled(candidateSets.getItemCount() > 0 || hasSetName);
+        editNote.setEnabled(hasSetName);
     }
 
     private void refreshTheme() {

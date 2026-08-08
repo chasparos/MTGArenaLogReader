@@ -58,7 +58,7 @@ class DeckPlannerWorkspacePreviewTest {
     }
 
     @Test
-    void createsDp06HumanReviewSurfaceOnEdt() throws Exception {
+    void createsDeckPlannerHumanReviewSurfaceOnEdt() throws Exception {
         FormatCatalogRepository.Snapshot snapshot = snapshot(8);
         AtomicReference<DeckPlannerWorkspacePreview.PreviewSession> session = new AtomicReference<>();
         SwingUtilities.invokeAndWait(() ->
@@ -72,6 +72,7 @@ class DeckPlannerWorkspacePreviewTest {
             CandidatePanel candidates =
                     find(session.get().content(), CandidatePanel.class);
             assertNotNull(candidates);
+            assertNotNull(findButton(candidates, "Edit note"));
             assertTrue(candidates.identities().contains("preview-stale-card"));
             assertTrue(candidates.identities().contains(snapshot.cardGroups().get(0).identity()));
 
@@ -125,16 +126,16 @@ class DeckPlannerWorkspacePreviewTest {
         SwingUtilities.invokeAndWait(() -> checklist.set(DeckPlannerWorkspacePreview.acceptanceChecklist()));
 
         List<JCheckBox> steps = findAll(checklist.get(), JCheckBox.class);
-        JLabel status = findNamed(checklist.get(), JLabel.class, "dp06-acceptance-status");
-        assertEquals(5, steps.size());
+        JLabel status = findNamed(checklist.get(), JLabel.class, "dp07-review-status");
+        assertEquals(3, steps.size());
         assertNotNull(status);
-        assertTrue(status.getText().contains("0/5 checked"));
-        assertTrue(status.getText().contains("remains active"));
+        assertTrue(status.getText().contains("0/3 checked"));
+        assertTrue(status.getText().contains("DP-07 remains active"));
 
         SwingUtilities.invokeAndWait(() -> steps.forEach(AbstractButton::doClick));
-        assertTrue(status.getText().contains("5/5 checked"));
-        assertTrue(status.getText().contains("explicit ACCEPT"));
-        assertTrue(status.getText().contains("does not close DP-06"));
+        assertTrue(status.getText().contains("3/3 checked"));
+        assertTrue(status.getText().contains("note-workflow feedback"));
+        assertTrue(status.getText().contains("DP-07 remains active"));
     }
 
     private static FormatCatalogRepository.Snapshot snapshot(int count) {
@@ -179,6 +180,17 @@ class DeckPlannerWorkspacePreviewTest {
             if (type.isInstance(child) && name.equals(child.getName())) return type.cast(child);
             if (child instanceof Container container) {
                 T nested = findNamed(container, type, name);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
+
+    private static AbstractButton findButton(Container root, String text) {
+        for (Component child : root.getComponents()) {
+            if (child instanceof AbstractButton button && text.equals(button.getText())) return button;
+            if (child instanceof Container container) {
+                AbstractButton nested = findButton(container, text);
                 if (nested != null) return nested;
             }
         }

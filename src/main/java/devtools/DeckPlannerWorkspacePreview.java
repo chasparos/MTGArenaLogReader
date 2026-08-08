@@ -43,7 +43,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Standalone human click-test harness for DP-06 acceptance. */
+/** Standalone human click-test harness for Deck Planner human review. */
 public final class DeckPlannerWorkspacePreview {
     private static final String STALE_IDENTITY = "preview-stale-card";
     private static final Path DEFAULT_ROOT =
@@ -60,7 +60,7 @@ public final class DeckPlannerWorkspacePreview {
 
     private static void launchRealStandardPreview() {
         assertEdt();
-        JFrame frame = new JFrame("Deck Planner DP-06 Acceptance Review");
+        JFrame frame = new JFrame("Deck Planner DP-07 Design Review");
         frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         JLabel loading = new JLabel("Loading real Arena-available Standard cards through the catalog pipeline…",
                 SwingConstants.CENTER);
@@ -116,7 +116,7 @@ public final class DeckPlannerWorkspacePreview {
         JLabel title = new JLabel("Real Standard catalog unavailable");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 20f));
         JTextArea detail = new JTextArea(message + "\n\n"
-                + "The DP-06 acceptance preview does not substitute synthetic cards. "
+                + "The Deck Planner review preview does not substitute synthetic cards. "
                 + "Restore network access or prime a completed cached Standard snapshot, then relaunch.");
         detail.setEditable(false);
         detail.setLineWrap(true);
@@ -248,22 +248,20 @@ public final class DeckPlannerWorkspacePreview {
 
     static JPanel acceptanceChecklist() {
         String[] steps = {
-                "Candidate workspace UX: do the category layout, larger chips, spacing, scrolling, and overall panel width feel readable with a large real card pool?",
-                "Planning flow: does adding, removing, dragging, normal-MTG sorting, and moving between catalog and candidates feel natural for how you actually build a deck?",
-                "Import experience: do Known Arena deck selection, pasted deck text, progress/failure feedback, and unresolved-card reporting make sense without exposing implementation details?",
-                "Interaction feedback: are selection, candidate-only focus, drag insertion markers, stale-card recovery, and empty/offline states visually clear and discoverable?",
-                "Design acceptance: after resizing, filtering, importing, rearranging, closing, and relaunching, is this the workspace you intended to design—or what should change next?"
+                "Design-note UX: does Edit note feel like a natural place to explain what you are building, why cards are grouped this way, and what direction you want to explore?",
+                "Candidate Set continuity: after Save set / Load set and relaunch, does the note feel attached to the named Candidate Set rather than to a temporary export action?",
+                "DP-07 direction: does this note workflow give you the right human-authored context to carry into the upcoming AI deck-analysis export, or should the editor/persistence behavior change first?"
         };
 
         Color background = AppColors.color("Panel.background", new Color(0x202328));
         Color foreground = AppColors.color("Label.foreground", Color.WHITE);
         JPanel checklist = new JPanel();
-        checklist.setName("dp06-acceptance-checklist");
+        checklist.setName("dp07-review-checklist");
         checklist.setLayout(new BoxLayout(checklist, BoxLayout.Y_AXIS));
         checklist.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         checklist.setBackground(background);
 
-        JLabel title = new JLabel("DP-06 HUMAN CLICK ACCEPTANCE — REAL STANDARD CARDS");
+        JLabel title = new JLabel("DP-07 HUMAN DESIGN REVIEW — CANDIDATE SET NOTES");
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         title.setForeground(foreground);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -271,7 +269,7 @@ public final class DeckPlannerWorkspacePreview {
         checklist.add(Box.createVerticalStrut(4));
 
         JLabel status = new JLabel();
-        status.setName("dp06-acceptance-status");
+        status.setName("dp07-review-status");
         status.setForeground(foreground);
         status.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -280,16 +278,16 @@ public final class DeckPlannerWorkspacePreview {
             long checked = boxes.stream().filter(AbstractButton::isSelected).count();
             if (checked == steps.length) {
                 status.setText("Acceptance status: " + checked + "/" + steps.length
-                        + " checked — report explicit ACCEPT or defects; this harness does not close DP-06.");
+                        + " checked — report note-workflow feedback; DP-07 remains active.");
             } else {
                 status.setText("Acceptance status: " + checked + "/" + steps.length
-                        + " checked — DP-06 remains active.");
+                        + " checked — DP-07 remains active.");
             }
         };
 
         for (int index = 0; index < steps.length; index++) {
             JCheckBox box = new JCheckBox((index + 1) + ". " + steps[index]);
-            box.setName("dp06-acceptance-step-" + (index + 1));
+            box.setName("dp07-review-step-" + (index + 1));
             box.setOpaque(false);
             box.setForeground(foreground);
             box.setAlignmentX(Component.LEFT_ALIGNMENT);

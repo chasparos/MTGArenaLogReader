@@ -300,4 +300,19 @@ class CandidatePanelTest {
         assertTrue(importButton.isEnabled());
     }
 
+
+    @Test
+    void candidateSetNoteTracksLoadedSetAndDoesNotLeakAcrossNames() throws Exception {
+        AtomicReference<CandidatePanel> ref = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.setCandidateSetNote("Control shell", "Keep sweepers separate from finishers.");
+            ref.set(panel);
+        });
+
+        assertEquals("Keep sweepers separate from finishers.",
+                ref.get().candidateSetNoteFor("Control shell"));
+        assertEquals("", ref.get().candidateSetNoteFor("Different set"));
+        assertNotNull(findButton(ref.get(), "Edit note"));
+    }
 }

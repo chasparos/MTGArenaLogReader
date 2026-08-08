@@ -16,7 +16,7 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - **Active roadmap item:** `DP-07 — Authoritative AI deck-building protocol`.
 - **DP-07 direction:** Persist a free-form planning note with each Candidate Set, edit it in the planner, include it verbatim in `MTGA_DECK_BUILD_REQUEST_V1`, and replace the old fixed-question design with a stable deck-analysis brief covering plausible directions, synergies, interaction, engines, curve/mana, weaknesses, and win conditions while preserving authoritative card facts.
 - **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click review throughout DP-07; automated tests cover encoding/schema mechanics, while the human reviews whether the note and generated request express the intended design problem.
-- **Safe next action:** Implement the first DP-07 slice: Candidate Set note persistence/editor plus focused tests, then expose it in the preview before implementing the full exporter.
+- **Safe next action:** Apply and validate the DP-07.1 Candidate Set note patch. If green, human click-review the note edit/save/load flow in `DeckPlannerWorkspacePreview` before starting DP-07.2 exporter schema work.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
 
 ### DP-06 interaction-polish amendment — 2026-08-08
@@ -42,3 +42,13 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - DP-07 begins with persisted Candidate Set planning notes and a richer strategic-analysis instruction contract.
 - `DeckPlannerWorkspacePreview` remains the human click-test harness for DP-07.
 - Ownership remains with the human until the next bounded DP-07 implementation delegation.
+
+
+### DP-07.1 Candidate Set note implementation amendment — 2026-08-08
+
+- Human delegated the first DP-07 implementation slice.
+- Candidate Set persistence now carries an optional free-form note with a backward-compatible schema migration.
+- Candidate UI exposes `Edit note`; saving the note saves the named Candidate Set, and loading the set restores the note.
+- `DeckPlannerWorkspacePreview` is retargeted from DP-06 acceptance wording to DP-07 note-workflow human review while remaining the same repository-owned click-test harness.
+- No AI export schema or instruction payload is implemented in this slice.
+- Return owner after patch delivery: Human repository owner for application, automated validation, and click review.
