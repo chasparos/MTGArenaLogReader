@@ -80,6 +80,31 @@ class CardCollectionSurfaceTest {
         assertEquals(3, bodyRef.get().getComponentCount());
     }
 
+
+    @Test void supportsWindowsStyleMultiSelectionInDisplayOrder() throws Exception {
+        AtomicReference<CardCollectionSurface> surfaceRef = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardCollectionSurface surface = new CardCollectionSurface();
+            surface.setRows(List.of(row("a"), row("b"), row("c"), row("d")));
+            surfaceRef.set(surface);
+
+            JComponent a = surface.rowComponents().get(0);
+            JComponent c = surface.rowComponents().get(2);
+            JComponent d = surface.rowComponents().get(3);
+            a.dispatchEvent(new MouseEvent(a, MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), 0, 3, 3, 1, false));
+            c.dispatchEvent(new MouseEvent(c, MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), java.awt.event.InputEvent.CTRL_DOWN_MASK,
+                    3, 3, 1, false));
+            d.dispatchEvent(new MouseEvent(d, MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), java.awt.event.InputEvent.SHIFT_DOWN_MASK,
+                    3, 3, 1, false));
+        });
+
+        assertEquals(List.of("c", "d"), surfaceRef.get().selectedIdentities());
+        assertEquals(Optional.of("d"), surfaceRef.get().selectedIdentity());
+    }
+
     private static CardCollectionSurface.Row row(String identity) {
         return sizedRow(identity, 80, 32);
     }

@@ -2,13 +2,12 @@ package app.ui;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -30,6 +29,11 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         void setSelected(boolean selected);
     }
 
+    @FunctionalInterface
+    public interface DropHandler {
+        void dropped(String source, List<String> identities, int insertionIndex, String groupId);
+    }
+
     public record Group(String id, String title, List<? extends Row> rows, JComponent trailingHeader) {
         public Group(String id, String title, List<? extends Row> rows) {
             this(id, title, rows, null);
@@ -44,7 +48,16 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
     private final List<Row> rows = new ArrayList<>();
     private Consumer<Optional<String>> selectionListener = ignored -> { };
     private BiConsumer<String, Integer> moveHandler = (identity, index) -> { };
+    private BiConsumer<List<String>, Integer> moveManyHandler =
+            (identities, index) -> identities.forEach(identity -> moveHandler.accept(identity, index));
+    private BiConsumer<List<String>, Integer> importHandler = (identities, index) -> { };
+    private DropHandler dropHandler;
+    private java.util.function.Function<List<String>, Image> dragImageProvider = identities -> null;
+    private final java.util.Map<String, String> groupByIdentity = new java.util.LinkedHashMap<>();
+    private String transferSource = "surface";
+    private final LinkedHashSet<String> selectedIdentities = new LinkedHashSet<>();
     private String selectedIdentity;
+    private int selectionAnchor = -1;
     private int dropIndex = -1;
     private JComponent footer;
 
@@ -82,6 +95,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         String previousSelection = selectedIdentity;
         removeAll();
         rows.clear();
+        groupByIdentity.clear();
         clearDropMarker();
 
         if (groups != null) {
@@ -111,6 +125,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                 for (Row row : group.rows()) {
                     Row accepted = Objects.requireNonNull(row);
                     rows.add(accepted);
+                    groupByIdentity.put(accepted.identity(), group.id());
                     installInteraction(accepted);
                     body.add(accepted.component());
                 }
@@ -124,10 +139,19 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
             add(footer);
         }
 
-        selectedIdentity = rows.stream()
-                .map(Row::identity)
-                .filter(identity -> Objects.equals(identity, previousSelection))
-                .findFirst().orElse(null);
+        selectedIdentities.retainAll(rows.stream().map(Row::identity).toList());
+        if (selectedIdentities.isEmpty() && previousSelection != null
+                && rows.stream().anyMatch(row -> Objects.equals(row.identity(), previousSelection))) {
+            selectedIdentities.add(previousSelection);
+        }
+        if (selectedIdentities.isEmpty()) {
+            selectedIdentity = null;
+            selectionAnchor = -1;
+        } else {
+            selectedIdentity = rows.stream().map(Row::identity)
+                    .filter(selectedIdentities::contains).reduce((left, right) -> right).orElse(null);
+            selectionAnchor = indexOfIdentity(selectedIdentity);
+        }
         refreshSelection();
         revalidate();
         repaint();
@@ -164,12 +188,40 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         return Optional.ofNullable(selectedIdentity);
     }
 
+    public List<String> selectedIdentities() {
+        return rows.stream().map(Row::identity).filter(selectedIdentities::contains).toList();
+    }
+
     public void setSelectionListener(Consumer<Optional<String>> listener) {
         selectionListener = listener == null ? ignored -> { } : listener;
     }
 
     public void setMoveHandler(BiConsumer<String, Integer> handler) {
         moveHandler = handler == null ? (identity, index) -> { } : handler;
+        moveManyHandler = (identities, index) -> {
+            int target = index;
+            for (String identity : identities) moveHandler.accept(identity, target++);
+        };
+    }
+
+    public void setMoveManyHandler(BiConsumer<List<String>, Integer> handler) {
+        moveManyHandler = handler == null ? (identities, index) -> { } : handler;
+    }
+
+    public void setImportHandler(BiConsumer<List<String>, Integer> handler) {
+        importHandler = handler == null ? (identities, index) -> { } : handler;
+    }
+
+    public void setDropHandler(DropHandler handler) {
+        dropHandler = handler;
+    }
+
+    public void setTransferSource(String source) {
+        transferSource = source == null || source.isBlank() ? "surface" : source;
+    }
+
+    public void setDragImageProvider(java.util.function.Function<List<String>, Image> provider) {
+        dragImageProvider = provider == null ? identities -> null : provider;
     }
 
     public int insertionIndex(Point point) {
@@ -187,6 +239,14 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         return rows.size();
     }
 
+    private String groupForInsertion(int insertionIndex) {
+        if (rows.isEmpty()) return null;
+        int index = insertionIndex >= rows.size()
+                ? rows.size() - 1
+                : Math.max(0, insertionIndex);
+        return groupByIdentity.get(rows.get(index).identity());
+    }
+
     private Rectangle rowBounds(Row row) {
         JComponent component = row.component();
         Container parent = component.getParent();
@@ -201,13 +261,21 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
 
             @Override public void mousePressed(MouseEvent event) {
                 pressed = event.getPoint();
-                select(row.identity());
+                select(row.identity(), event.isControlDown(), event.isShiftDown());
             }
 
             @Override public void mouseDragged(MouseEvent event) {
                 if (pressed == null || pressed.distance(event.getPoint()) < 4) return;
                 if (event.getComponent() instanceof JComponent source) {
-                    source.getTransferHandler().exportAsDrag(source, event, TransferHandler.MOVE);
+                    TransferHandler handler = source.getTransferHandler();
+                    if (handler instanceof SurfaceTransferHandler surfaceHandler) {
+                        Image image = dragImageProvider.apply(selectedIdentities());
+                        surfaceHandler.setDragImage(image);
+                        if (image != null) surfaceHandler.setDragImageOffset(
+                                new Point(Math.min(24, image.getWidth(null) / 3),
+                                        Math.min(18, image.getHeight(null) / 3)));
+                    }
+                    handler.exportAsDrag(source, event, TransferHandler.MOVE);
                 }
                 pressed = null;
             }
@@ -228,15 +296,41 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         }
     }
 
-    private void select(String identity) {
-        selectedIdentity = Objects.equals(selectedIdentity, identity) ? null : identity;
+    private void select(String identity, boolean control, boolean shift) {
+        int index = indexOfIdentity(identity);
+        if (index < 0) return;
+        if (shift) {
+            int anchor = selectionAnchor >= 0 ? selectionAnchor : index;
+            if (!control) selectedIdentities.clear();
+            int from = Math.min(anchor, index);
+            int to = Math.max(anchor, index);
+            for (int current = from; current <= to; current++) {
+                selectedIdentities.add(rows.get(current).identity());
+            }
+        } else if (control) {
+            if (!selectedIdentities.remove(identity)) selectedIdentities.add(identity);
+            selectionAnchor = index;
+        } else {
+            selectedIdentities.clear();
+            selectedIdentities.add(identity);
+            selectionAnchor = index;
+        }
+        selectedIdentity = selectedIdentities.contains(identity) ? identity
+                : selectedIdentities.stream().reduce((left, right) -> right).orElse(null);
         refreshSelection();
         selectionListener.accept(selectedIdentity());
     }
 
+    private int indexOfIdentity(String identity) {
+        for (int index = 0; index < rows.size(); index++) {
+            if (Objects.equals(rows.get(index).identity(), identity)) return index;
+        }
+        return -1;
+    }
+
     private void refreshSelection() {
         for (Row row : rows) {
-            row.setSelected(Objects.equals(row.identity(), selectedIdentity));
+            row.setSelected(selectedIdentities.contains(row.identity()));
         }
     }
 
@@ -328,10 +422,20 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
 
     private final class SurfaceTransferHandler extends TransferHandler {
         @Override protected Transferable createTransferable(JComponent component) {
-            for (Row row : rows) {
-                if (row.component() == component) return new StringSelection(row.identity());
+            String dragged = rows.stream()
+                    .filter(row -> row.component() == component
+                            || SwingUtilities.isDescendingFrom(component, row.component()))
+                    .map(Row::identity).findFirst().orElse(selectedIdentity);
+            if (dragged == null) return null;
+            if (!selectedIdentities.contains(dragged)) {
+                selectedIdentities.clear();
+                selectedIdentities.add(dragged);
+                selectedIdentity = dragged;
+                selectionAnchor = indexOfIdentity(dragged);
+                refreshSelection();
+                selectionListener.accept(selectedIdentity());
             }
-            return selectedIdentity().map(StringSelection::new).orElse(null);
+            return new CardDragTransfer(transferSource, selectedIdentities());
         }
 
         @Override public int getSourceActions(JComponent component) {
@@ -340,8 +444,18 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
 
         @Override public boolean canImport(TransferSupport support) {
             boolean accepted = support.isDrop()
-                    && support.isDataFlavorSupported(DataFlavor.stringFlavor);
+                    && support.isDataFlavorSupported(CardDragTransfer.FLAVOR);
             if (!accepted) {
+                clearDropMarker();
+                return false;
+            }
+            try {
+                CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
+                if (payload.identities().isEmpty()) {
+                    clearDropMarker();
+                    return false;
+                }
+            } catch (Exception error) {
                 clearDropMarker();
                 return false;
             }
@@ -355,11 +469,21 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         @Override public boolean importData(TransferSupport support) {
             if (!canImport(support)) return false;
             try {
-                String identity = (String) support.getTransferable()
-                        .getTransferData(DataFlavor.stringFlavor);
+                CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
                 int insertion = dropIndex < 0 ? rows.size() : dropIndex;
-                moveHandler.accept(identity, insertion);
-                selectedIdentity = identity;
+                String groupId = groupForInsertion(insertion);
+                if (dropHandler != null) {
+                    dropHandler.dropped(payload.source(), payload.identities(), insertion, groupId);
+                } else if (Objects.equals(payload.source(), transferSource)) {
+                    moveManyHandler.accept(payload.identities(), insertion);
+                } else {
+                    importHandler.accept(payload.identities(), insertion);
+                }
+                selectedIdentities.clear();
+                selectedIdentities.addAll(payload.identities());
+                selectedIdentities.retainAll(rows.stream().map(Row::identity).toList());
+                selectedIdentity = selectedIdentities.stream().reduce((left, right) -> right).orElse(null);
+                selectionAnchor = indexOfIdentity(selectedIdentity);
                 refreshSelection();
                 selectionListener.accept(selectedIdentity());
                 return true;

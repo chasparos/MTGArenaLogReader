@@ -46,7 +46,9 @@ public final class CandidatePanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
-        surface.setMoveHandler(this::moveDisplayedCandidate);
+        surface.setTransferSource("candidates");
+        surface.setDropHandler(this::handleDrop);
+        surface.setDragImageProvider(this::dragImage);
         surface.setSelectionListener(selection -> {
             updateActions();
             selectionAction.accept(selection);
@@ -72,7 +74,9 @@ public final class CandidatePanel extends JPanel {
         actions.add(candidateActions, BorderLayout.SOUTH);
         add(actions, BorderLayout.SOUTH);
 
-        remove.addActionListener(event -> selectedIdentity().ifPresent(model::remove));
+        remove.addActionListener(event -> {
+            if (model != null) model.remove(selectedIdentities());
+        });
         clear.addActionListener(event -> { if (model != null) model.clear(); });
         magicSort.addActionListener(event -> magicSortAction.run());
         importDeck.addActionListener(event -> importAction.run());
@@ -96,17 +100,41 @@ public final class CandidatePanel extends JPanel {
         });
     }
 
-    private void moveDisplayedCandidate(String identity, int insertionIndex) {
-        if (model == null || identity == null) return;
-        ArrayList<String> order = new ArrayList<>(surface.identities());
-        int from = order.indexOf(identity);
-        if (from < 0) return;
-        int target = Math.max(0, Math.min(order.size(), insertionIndex));
-        order.remove(from);
-        if (from < target) target--;
-        target = Math.max(0, Math.min(order.size(), target));
-        order.add(target, identity);
-        model.reorder(order);
+    private void handleDrop(String source, List<String> identities,
+                            int insertionIndex, String groupId) {
+        if (model == null || identities == null || identities.isEmpty()) return;
+        if ("candidates".equals(source)) moveDisplayedCandidates(identities, insertionIndex);
+        else model.addAt(identities, insertionIndex);
+
+        if (groupId != null && !CandidateWorkspaceState.UNAVAILABLE.equals(groupId)) {
+            workspaceState.assign(identities, groupId);
+        }
+    }
+
+    private void moveDisplayedCandidates(List<String> identities, int insertionIndex) {
+        if (model == null || identities == null || identities.isEmpty()) return;
+        ArrayList<String> displayed = new ArrayList<>(surface.identities());
+        LinkedHashSet<String> moving = new LinkedHashSet<>(identities);
+        List<String> orderedMoving = displayed.stream().filter(moving::contains).toList();
+        int bounded = Math.max(0, Math.min(displayed.size(), insertionIndex));
+        int removedBeforeTarget = 0;
+        for (int index = 0; index < bounded; index++) {
+            if (moving.contains(displayed.get(index))) removedBeforeTarget++;
+        }
+        displayed.removeIf(moving::contains);
+        int target = Math.max(0, Math.min(displayed.size(), bounded - removedBeforeTarget));
+        displayed.addAll(target, orderedMoving);
+        model.reorder(displayed);
+    }
+
+    private Image dragImage(List<String> identities) {
+        if (identities == null || identities.isEmpty()) return null;
+        LinkedHashSet<String> wanted = new LinkedHashSet<>(identities);
+        List<CardInfo> cards = currentEntries.stream()
+                .filter(entry -> wanted.contains(entry.identity()) && entry.card().isPresent())
+                .map(entry -> entry.card().orElseThrow().group().preferredPrinting())
+                .toList();
+        return ReplayCardChip.createDragImage(cards);
     }
 
     public void setImportAction(Runnable importAction) {
@@ -239,12 +267,13 @@ public final class CandidatePanel extends JPanel {
 
     public List<String> identities() { return surface.identities(); }
     Optional<String> selectedIdentity() { return surface.selectedIdentity(); }
+    List<String> selectedIdentities() { return surface.selectedIdentities(); }
     JComponent candidateSurface() { return surface; }
     List<JComponent> candidateRows() { return surface.rowComponents(); }
     JScrollPane candidateScrollPane() { return scroll; }
 
     private void updateActions() {
-        remove.setEnabled(surface.selectedIdentity().isPresent());
+        remove.setEnabled(!surface.selectedIdentities().isEmpty());
         clear.setEnabled(!surface.identities().isEmpty());
         magicSort.setEnabled(surface.identities().size() > 1);
         loadSet.setEnabled(candidateSets.getItemCount() > 0

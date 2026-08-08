@@ -1,10 +1,12 @@
 package app.deckplanner.ui;
 
 import app.ui.AppColors;
+import app.ui.CardDragTransfer;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.datatransfer.Transferable;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +31,10 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     public interface CandidateListener {
         void added(java.util.Collection<String> identities);
         void removed(String identity);
+        default void removed(java.util.Collection<String> identities) {
+            if (identities == null) return;
+            for (String identity : identities) removed(identity);
+        }
     }
 
     public record BrowserCard(String identity, String name) {
@@ -70,6 +76,8 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private int hoveredIndex = -1;
     private int previousViewportY;
     private long generation;
+    private Point dragPressed;
+    private java.util.function.Function<List<String>, Image> dragImageProvider = identities -> null;
 
     public CardBrowserPanel(CardGridLayout gridLayout,
                             ViewportImageWindow imageWindow,
@@ -81,10 +89,15 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         add(rendererPane);
         setOpaque(true);
         refreshThemeColors();
+        setTransferHandler(new BrowserTransferHandler());
         addMouseListener(new MouseAdapter() {
             @Override public void mousePressed(MouseEvent event) {
                 requestFocusInWindow();
+                dragPressed = event.getPoint();
                 handleMousePressed(event);
+            }
+            @Override public void mouseReleased(MouseEvent event) {
+                dragPressed = null;
             }
             @Override public void mouseExited(MouseEvent event) {
                 setHoveredIndex(-1);
@@ -94,6 +107,25 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             @Override public void mouseMoved(MouseEvent event) {
                 ensureLayout();
                 setHoveredIndex(layoutResult.indexAt(event.getX(), event.getY()));
+            }
+            @Override public void mouseDragged(MouseEvent event) {
+                if (dragPressed == null || dragPressed.distance(event.getPoint()) < 5) return;
+                ensureLayout();
+                int index = layoutResult.indexAt(dragPressed.x, dragPressed.y);
+                if (index < 0) return;
+                String identity = cards.get(index).identity();
+                if (!selectedIdentities.contains(identity)) applySelection(index, false, false);
+                TransferHandler handler = getTransferHandler();
+                if (handler instanceof BrowserTransferHandler browserHandler) {
+                    Image image = dragImageProvider.apply(selectedCards().stream()
+                            .map(BrowserCard::identity).toList());
+                    browserHandler.setDragImage(image);
+                    if (image != null) browserHandler.setDragImageOffset(
+                            new Point(Math.min(24, image.getWidth(null) / 3),
+                                    Math.min(18, image.getHeight(null) / 3)));
+                }
+                handler.exportAsDrag(CardBrowserPanel.this, event, TransferHandler.COPY);
+                dragPressed = null;
             }
         });
         addFocusListener(new FocusAdapter() {
@@ -174,6 +206,11 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             @Override public void added(java.util.Collection<String> identities) { }
             @Override public void removed(String identity) { }
         } : listener;
+    }
+
+    public void setDragImageProvider(java.util.function.Function<List<String>, Image> provider) {
+        assertEdt();
+        dragImageProvider = provider == null ? identities -> null : provider;
     }
 
     public void addCandidateIdentities(java.util.Collection<String> identities) {
@@ -495,6 +532,38 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private void repaintIndex(int index) {
         if (index >= 0 && layoutResult != null && index < layoutResult.bounds().size()) {
             repaint(layoutResult.bounds().get(index));
+        }
+    }
+
+    private final class BrowserTransferHandler extends TransferHandler {
+        @Override protected Transferable createTransferable(JComponent component) {
+            List<String> identities = selectedCards().stream().map(BrowserCard::identity).toList();
+            return identities.isEmpty() ? null : new CardDragTransfer("catalog", identities);
+        }
+
+        @Override public int getSourceActions(JComponent component) {
+            return COPY;
+        }
+
+        @Override public boolean canImport(TransferSupport support) {
+            if (!support.isDrop() || !support.isDataFlavorSupported(CardDragTransfer.FLAVOR)) return false;
+            try {
+                CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
+                return "candidates".equals(payload.source()) && !payload.identities().isEmpty();
+            } catch (Exception error) {
+                return false;
+            }
+        }
+
+        @Override public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            try {
+                CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
+                candidateListener.removed(payload.identities());
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
         }
     }
 

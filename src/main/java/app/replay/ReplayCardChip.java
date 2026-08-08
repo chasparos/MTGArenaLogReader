@@ -6,6 +6,8 @@ import app.model.game.BoardPermanentSnapshot;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.util.List;
 
 /**
  * Reusable Swing wrapper around the replay card-fragment painter.
@@ -139,6 +141,54 @@ public class ReplayCardChip extends JComponent {
         } finally {
             g.dispose();
         }
+    }
+
+    /**
+     * Builds a compact translucent drag ghost from the same vector replay-chip painter used on
+     * candidate rows. Up to three cards are shown; an additional-count badge covers larger drags.
+     */
+    public static Image createDragImage(List<CardInfo> cards) {
+        if (cards == null || cards.isEmpty()) return null;
+        int shown = Math.min(3, cards.size());
+        int chipWidth = 220;
+        int chipHeight = 30;
+        int overlap = 8;
+        int width = chipWidth + (shown - 1) * overlap;
+        int height = chipHeight + (shown - 1) * overlap;
+        BufferedImage image = new BufferedImage(width + 18, height + 18, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = image.createGraphics();
+        try {
+            applyQualityHints(g);
+            g.setComposite(AlphaComposite.SrcOver.derive(.92f));
+            for (int index = shown - 1; index >= 0; index--) {
+                ReplayCardChip chip = new ReplayCardChip(cards.get(index), false,
+                        chipHeight / BASE_HEIGHT);
+                chip.setSize(chipWidth, chipHeight);
+                Graphics2D cg = (Graphics2D) g.create(index * overlap, index * overlap,
+                        chipWidth, chipHeight);
+                try {
+                    chip.paint(cg);
+                } finally {
+                    cg.dispose();
+                }
+            }
+            if (cards.size() > shown) {
+                String label = "+" + (cards.size() - shown);
+                g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
+                FontMetrics metrics = g.getFontMetrics();
+                int badgeWidth = Math.max(20, metrics.stringWidth(label) + 10);
+                int x = image.getWidth() - badgeWidth - 2;
+                int y = image.getHeight() - 20;
+                g.setColor(new Color(0xCC202328, true));
+                g.fillRoundRect(x, y, badgeWidth, 18, 9, 9);
+                g.setColor(Color.WHITE);
+                g.drawString(label, x + (badgeWidth - metrics.stringWidth(label)) / 2,
+                        y + 13);
+            }
+        } finally {
+            g.dispose();
+        }
+        return image;
     }
 
     private static void applyQualityHints(Graphics2D g) {

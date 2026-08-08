@@ -125,6 +125,28 @@ class CandidateModelTest {
         assertEquals(model.identities(), saved.getLast());
     }
 
+
+    @Test void addAtPlacesCatalogDropAtInsertionPointAndDeduplicates() {
+        CandidateModel model = new CandidateModel(
+                List.of("oracle:a", "oracle:d"), ignored -> { });
+
+        model.addAt(List.of("oracle:b", "oracle:c", "oracle:b"), 1);
+
+        assertEquals(List.of("oracle:a", "oracle:b", "oracle:c", "oracle:d"),
+                model.identities());
+    }
+
+    @Test void moveManyPreservesSelectedRelativeOrderAtDropPoint() {
+        CandidateModel model = new CandidateModel(
+                List.of("oracle:a", "oracle:b", "oracle:c", "oracle:d", "oracle:e"),
+                ignored -> { });
+
+        model.moveManyToIndex(List.of("oracle:b", "oracle:d"), 5);
+
+        assertEquals(List.of("oracle:a", "oracle:c", "oracle:e", "oracle:b", "oracle:d"),
+                model.identities());
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();

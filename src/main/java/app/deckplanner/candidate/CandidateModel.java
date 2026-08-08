@@ -80,8 +80,37 @@ public final class CandidateModel {
         if (changed) commit();
     }
 
+    /** Adds candidates at a requested insertion point while preserving the incoming relative order. */
+    public void addAt(Collection<String> additions, int insertionIndex) {
+        LinkedHashSet<String> incoming = new LinkedHashSet<>();
+        if (additions != null) {
+            for (String identity : additions) {
+                if (identity != null && !identity.isBlank()) incoming.add(identity.strip());
+            }
+        }
+        if (incoming.isEmpty()) return;
+
+        ArrayList<String> reordered = new ArrayList<>(identities);
+        reordered.removeIf(incoming::contains);
+        int target = Math.max(0, Math.min(reordered.size(), insertionIndex));
+        reordered.addAll(target, incoming);
+        if (reordered.equals(new ArrayList<>(identities))) return;
+        identities.clear();
+        identities.addAll(reordered);
+        commit();
+    }
+
     public void remove(String identity) {
         if (identity != null && identities.remove(identity)) commit();
+    }
+
+    public void remove(Collection<String> removals) {
+        if (removals == null || removals.isEmpty()) return;
+        boolean changed = false;
+        for (String identity : removals) {
+            if (identity != null) changed |= identities.remove(identity);
+        }
+        if (changed) commit();
     }
 
     public void clear() {
@@ -114,6 +143,32 @@ public final class CandidateModel {
         reordered.add(to, identity);
         identities.clear();
         identities.addAll(reordered);
+        commit();
+    }
+
+    /** Moves a selected group to an insertion point while preserving its displayed relative order. */
+    public void moveManyToIndex(Collection<String> moved, int insertionIndex) {
+        LinkedHashSet<String> requested = new LinkedHashSet<>();
+        if (moved != null) {
+            for (String identity : moved) {
+                if (identity != null && identities.contains(identity)) requested.add(identity);
+            }
+        }
+        if (requested.isEmpty()) return;
+        ArrayList<String> current = new ArrayList<>(identities);
+        ArrayList<String> moving = new ArrayList<>();
+        for (String identity : current) if (requested.contains(identity)) moving.add(identity);
+        int removedBeforeTarget = 0;
+        int bounded = Math.max(0, Math.min(current.size(), insertionIndex));
+        for (int index = 0; index < bounded; index++) {
+            if (requested.contains(current.get(index))) removedBeforeTarget++;
+        }
+        current.removeIf(requested::contains);
+        int target = Math.max(0, Math.min(current.size(), bounded - removedBeforeTarget));
+        current.addAll(target, moving);
+        if (current.equals(new ArrayList<>(identities))) return;
+        identities.clear();
+        identities.addAll(current);
         commit();
     }
 

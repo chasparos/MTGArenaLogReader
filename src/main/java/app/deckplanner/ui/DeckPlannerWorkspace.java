@@ -14,6 +14,7 @@ import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.filter.IndexedCatalogCard;
 import app.ui.AppColors;
 import app.ui.AppScrollBarUI;
+import app.replay.ReplayCardChip;
 import app.model.card.CardInfo;
 import app.model.card.MagicCardOrdering;
 
@@ -138,7 +139,11 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             @Override public void removed(String identity) {
                 candidateModel.remove(identity);
             }
+            @Override public void removed(Collection<String> identities) {
+                candidateModel.remove(identities);
+            }
         });
+        browser.setDragImageProvider(this::catalogDragImage);
         browserScrollPane = new CardBrowserScrollPane(browser);
         candidatePanel.bind(candidateModel, workspaceState, collectionQuantitySource);
         if (candidateSets != null) {
@@ -214,6 +219,16 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     public CardBrowserPanel browser() { return browser; }
     public DeckPlannerFilterPanel filters() { return filters; }
     public CandidatePanel candidates() { return candidatePanel; }
+
+    private Image catalogDragImage(List<String> identities) {
+        if (identities == null || identities.isEmpty()) return null;
+        Set<String> wanted = new java.util.LinkedHashSet<>(identities);
+        List<CardInfo> cards = catalogIndex.cards().stream()
+                .filter(card -> wanted.contains(card.group().identity()))
+                .map(card -> card.group().preferredPrinting())
+                .toList();
+        return ReplayCardChip.createDragImage(cards);
+    }
 
     private void showCandidates() {
         assertEdt();
