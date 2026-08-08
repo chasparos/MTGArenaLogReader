@@ -9,6 +9,7 @@ import app.deckplanner.candidate.KnownArenaDeckSource;
 import app.deckplanner.candidate.CandidateModel;
 import app.deckplanner.candidate.CandidateWorkspaceState;
 import app.deckplanner.candidate.CandidateSetRepository;
+import app.deckplanner.candidate.AlternateArtResolver;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.filter.IndexedCatalogCard;
@@ -51,6 +52,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private final CardNameRepository cardNames;
     private final KnownArenaDeckSource knownDecks;
     private final Executor worker;
+    private final AlternateArtResolver alternateArtResolver;
     private volatile Set<String> candidateFilterIdentities = Set.of();
     private final CandidateModel.Listener candidateListener;
     private final CardBrowserScrollPane browserScrollPane;
@@ -115,6 +117,25 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                                 KnownArenaDeckSource knownDecks,
                                 CandidateWorkspaceState workspaceState,
                                 CandidateSetRepository candidateSets) {
+        this(model, index, imageSource, scheduler, worker, debounce, availability,
+                candidateModel, collectionQuantitySource, cardNames, knownDecks,
+                workspaceState, candidateSets, null);
+    }
+
+    public DeckPlannerWorkspace(DeckPlannerFilterModel model,
+                                CatalogFilterIndex index,
+                                CardBrowserPanel.ImageSource imageSource,
+                                ScheduledExecutorService scheduler,
+                                Executor worker,
+                                Duration debounce,
+                                DeckPlannerFilterCoordinator.Availability availability,
+                                CandidateModel candidateModel,
+                                ToIntFunction<CardInfo> collectionQuantitySource,
+                                CardNameRepository cardNames,
+                                KnownArenaDeckSource knownDecks,
+                                CandidateWorkspaceState workspaceState,
+                                CandidateSetRepository candidateSets,
+                                AlternateArtResolver alternateArtResolver) {
         Objects.requireNonNull(model);
         Objects.requireNonNull(index);
         Objects.requireNonNull(imageSource);
@@ -124,6 +145,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         this.cardNames = Objects.requireNonNull(cardNames);
         this.knownDecks = Objects.requireNonNull(knownDecks);
         this.worker = Objects.requireNonNull(worker);
+        this.alternateArtResolver = alternateArtResolver;
         this.candidateListener = ignored -> onCandidatesChanged();
         assertEdt();
 
@@ -144,6 +166,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             }
         });
         browser.setDragImageProvider(this::catalogDragImage);
+        if (alternateArtResolver != null) browser.setAlternateArtListener(this::showAlternateArtPicker);
         browserScrollPane = new CardBrowserScrollPane(browser);
         candidatePanel.bind(candidateModel, workspaceState, collectionQuantitySource);
         if (candidateSets != null) {
@@ -163,6 +186,10 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         candidatePanel.setSelectionAction(selection -> selection
                 .filter(this::isResolvedCandidate)
                 .ifPresent(ignored -> filterModel.setCandidateOnly(true)));
+        if (alternateArtResolver != null) {
+            candidatePanel.setAlternateArtAction(this::showAlternateArtPicker,
+                    identity -> alternateArtResolver.resolve(identity).preferred());
+        }
         candidatePanel.setPreferredSize(new Dimension(470, 600));
         candidatePanel.setMinimumSize(new Dimension(360, 300));
 
@@ -235,7 +262,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         List<String> identities = candidateModel.identities();
         candidateFilterIdentities = Set.copyOf(identities);
         browser.setCandidateIdentities(new java.util.LinkedHashSet<>(identities));
-        candidatePanel.setEntries(candidateModel.resolve(catalogIndex));
+        candidatePanel.setEntries(candidateModel.resolve(catalogIndex, cardNames::resolveIdentity));
     }
 
     private void onCandidatesChanged() {
@@ -453,10 +480,56 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                             : left.group().identity().compareToIgnoreCase(right.group().identity());
                 })
                 .map(card -> new CardBrowserPanel.BrowserCard(
-                        card.group().identity(), card.group().preferredPrinting().getName()))
+                        card.group().identity(), card.group().preferredPrinting().getName(),
+                        card.group().printings().size()))
                 .toList();
     }
 
+
+    private void showAlternateArtPicker(String identity) {
+        if (alternateArtResolver == null || identity == null) return;
+        CompletableFuture.supplyAsync(() -> alternateArtResolver.resolve(identity), worker)
+                .whenComplete((artSet, failure) -> SwingUtilities.invokeLater(() -> {
+                    if (failure != null || artSet == null || artSet.printings().isEmpty()) {
+                        JOptionPane.showMessageDialog(this, "No alternate printings could be resolved.",
+                                "Card art", JOptionPane.INFORMATION_MESSAGE);
+                        return;
+                    }
+                    DefaultListModel<CardInfo> model = new DefaultListModel<>();
+                    artSet.printings().forEach(model::addElement);
+                    JList<CardInfo> list = new JList<>(model);
+                    list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+                    list.setCellRenderer((values, card, index, selected, focus) -> {
+                        String label = (card.getSet() == null ? "?" : card.getSet().toUpperCase())
+                                + " #" + (card.getCollectorNumber() == null ? "?" : card.getCollectorNumber())
+                                + " — " + (card.getArtist() == null ? "Unknown artist" : card.getArtist());
+                        JLabel rendered = new JLabel(label);
+                        rendered.setOpaque(true);
+                        rendered.setBackground(selected ? AppColors.color("List.selectionBackground",
+                                new Color(0x4C566A)) : values.getBackground());
+                        rendered.setForeground(selected ? AppColors.color("List.selectionForeground",
+                                Color.WHITE) : values.getForeground());
+                        rendered.setBorder(new EmptyBorder(7, 8, 7, 8));
+                        return rendered;
+                    });
+                    artSet.favoriteScryfallId().ifPresent(favorite -> {
+                        for (int i = 0; i < model.size(); i++) {
+                            if (favorite.equals(model.get(i).getId())) list.setSelectedIndex(i);
+                        }
+                    });
+                    if (list.getSelectedIndex() < 0) list.setSelectedIndex(0);
+                    JScrollPane scroll = new JScrollPane(list);
+                    scroll.setPreferredSize(new Dimension(520, 260));
+                    String legality = artSet.legal() ? "Legal in selected format" : "ILLEGAL in selected format";
+                    int result = JOptionPane.showConfirmDialog(this, scroll,
+                            "Choose favorite printing — " + legality,
+                            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+                    if (result == JOptionPane.OK_OPTION && list.getSelectedValue() != null) {
+                        alternateArtResolver.favorite(identity, list.getSelectedValue());
+                        showCandidates();
+                    }
+                }));
+    }
 
     private static void syncScrollbarEnabled(JScrollBar scrollBar) {
         BoundedRangeModel model = scrollBar.getModel();

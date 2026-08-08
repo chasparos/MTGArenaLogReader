@@ -31,6 +31,8 @@ public final class CandidatePanel extends JPanel {
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
     private Consumer<Optional<String>> selectionAction = ignored -> { };
+    private Consumer<String> alternateArtAction = ignored -> { };
+    private java.util.function.Function<String, CardInfo> preferredPrinting = ignored -> null;
     private Supplier<List<String>> candidateSetNames = List::of;
     private Consumer<String> saveSetAction = ignored -> { };
     private Consumer<String> loadSetAction = ignored -> { };
@@ -147,6 +149,11 @@ public final class CandidatePanel extends JPanel {
 
     public void setSelectionAction(Consumer<Optional<String>> selectionAction) {
         this.selectionAction = selectionAction == null ? ignored -> { } : selectionAction;
+    }
+    public void setAlternateArtAction(Consumer<String> alternateArtAction,
+                                      java.util.function.Function<String, CardInfo> preferredPrinting) {
+        this.alternateArtAction = alternateArtAction == null ? ignored -> { } : alternateArtAction;
+        this.preferredPrinting = preferredPrinting == null ? ignored -> null : preferredPrinting;
     }
 
     public void setCandidateSetActions(Supplier<List<String>> names,
@@ -309,8 +316,9 @@ public final class CandidatePanel extends JPanel {
         CandidateRow(CandidateModel.Entry entry) {
             super(new BorderLayout());
             identity = entry.identity();
-            stale = entry.card().isEmpty();
-            card = stale ? null : entry.card().get().group().preferredPrinting();
+            stale = entry.stale();
+            CardInfo favorite = preferredPrinting.apply(identity);
+            card = stale ? null : (favorite != null ? favorite : entry.resolvedCard().orElse(null));
             setPreferredSize(new Dimension(330, 60));
             setMinimumSize(new Dimension(270, 60));
             setMaximumSize(new Dimension(460, 60));
@@ -321,9 +329,25 @@ public final class CandidatePanel extends JPanel {
                 label.setBorder(new EmptyBorder(6, 8, 6, 8));
                 content = label;
             } else {
-                content = new ReplayCardChip(card, false, 1.35f);
+                ReplayCardChip chip = new ReplayCardChip(card, false, 1.35f);
+                chip.setToolTipText((entry.legal() ? "" : "Illegal in selected format — ")
+                        + (card.getName() == null ? "Unknown card" : card.getName())
+                        + " — click to choose printing");
+                chip.addMouseListener(new java.awt.event.MouseAdapter() {
+                    @Override public void mouseClicked(java.awt.event.MouseEvent event) {
+                        if (event.getClickCount() == 1) alternateArtAction.accept(identity);
+                    }
+                });
+                content = chip;
             }
             add(content, BorderLayout.CENTER);
+            if (!stale && !entry.legal()) {
+                JLabel illegal = new JLabel("ILLEGAL");
+                illegal.setForeground(new Color(0xF06A63));
+                illegal.setFont(illegal.getFont().deriveFont(Font.BOLD, 10f));
+                illegal.setBorder(new EmptyBorder(0, 5, 0, 3));
+                add(illegal, BorderLayout.EAST);
+            }
             setSelected(false);
         }
 

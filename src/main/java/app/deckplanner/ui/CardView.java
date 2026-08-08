@@ -35,6 +35,7 @@ public final class CardView extends JComponent {
     private boolean selected;
     private boolean candidate;
     private boolean focused;
+    private int alternateArtCount;
 
     public CardView() {
         setOpaque(false);
@@ -46,12 +47,23 @@ public final class CardView extends JComponent {
                           boolean selected,
                           boolean candidate,
                           boolean focused) {
+        configure(name, image, hovered, selected, candidate, focused, 1);
+    }
+
+    public void configure(String name,
+                          BufferedImage image,
+                          boolean hovered,
+                          boolean selected,
+                          boolean candidate,
+                          boolean focused,
+                          int alternateArtCount) {
         this.name = name == null || name.isBlank() ? "Unknown card" : name;
         this.image = image;
         this.hovered = hovered;
         this.selected = selected;
         this.candidate = candidate;
         this.focused = focused;
+        this.alternateArtCount = Math.max(1, alternateArtCount);
     }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -75,12 +87,30 @@ public final class CardView extends JComponent {
             if (hovered) stroke(g, width, height, HOVERED, 2f);
             if (selected) stroke(g, width, height, SELECTED, 3f);
             if (candidate) paintCandidateBadge(g, width);
+            if (alternateArtCount > 1) paintAlternateArtBadge(g, width, alternateArtCount);
             if (focused) stroke(g, width, height, FOCUSED, 2f);
         } finally {
             g.dispose();
         }
     }
 
+
+    static Rectangle alternateArtBadgeBounds(int width) {
+        return new Rectangle(6, 6, 38, 24);
+    }
+
+    private static void paintAlternateArtBadge(Graphics2D g, int width, int count) {
+        Rectangle badge = alternateArtBadgeBounds(width);
+        Color background = new Color(0xCC202328, true);
+        g.setColor(background);
+        g.fillRoundRect(badge.x, badge.y, badge.width, badge.height, 12, 12);
+        g.setColor(new Color(0xE8C66A));
+        g.setFont(g.getFont().deriveFont(Font.BOLD, 11f));
+        String label = "×" + count;
+        FontMetrics metrics = g.getFontMetrics();
+        g.drawString(label, badge.x + (badge.width - metrics.stringWidth(label)) / 2,
+                badge.y + (badge.height + metrics.getAscent() - metrics.getDescent()) / 2);
+    }
 
     static Rectangle candidateBadgeBounds(int width) {
         int size = 38;

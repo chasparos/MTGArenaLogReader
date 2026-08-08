@@ -117,6 +117,33 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
         return parseCard(response, "exactName=\"" + exactName + "\"", null);
     }
 
+    /** Returns every known Scryfall printing for an exact card name. */
+    public List<CardInfo> findPrintingsByExactName(String exactName) {
+        if (exactName == null || exactName.isBlank()) return List.of();
+        String nextPage = null;
+        List<CardInfo> result = new ArrayList<>();
+        do {
+            String pageUrl = nextPage;
+            HttpResponse<String> response = request(() -> pageUrl == null
+                    ? unirest.get("https://api.scryfall.com/cards/search")
+                    .queryString("q", "!\"" + exactName.strip() + "\"")
+                    .queryString("unique", "prints")
+                    .queryString("order", "released")
+                    .asString()
+                    : unirest.get(pageUrl).asString(), "printings for exactName=\"" + exactName + "\"");
+            if (response.getStatus() == 404) return List.of();
+            requireSuccess(response, "printings for exactName=\"" + exactName + "\"");
+            JsonObject page = JsonParser.parseString(response.getBody()).getAsJsonObject();
+            for (JsonElement element : page.getAsJsonArray("data")) {
+                if (!element.isJsonObject()) continue;
+                CardInfo card = gson.fromJson(element, CardInfo.class);
+                if (card != null) result.add(card);
+            }
+            nextPage = bool(page, "has_more") ? string(page, "next_page") : null;
+        } while (nextPage != null && !nextPage.isBlank());
+        return List.copyOf(result);
+    }
+
     public Optional<CardInfo> findByScryfallId(String scryfallId) {
         if (scryfallId == null || scryfallId.isBlank()) return Optional.empty();
 

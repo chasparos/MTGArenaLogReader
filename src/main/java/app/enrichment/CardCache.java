@@ -91,6 +91,32 @@ public final class CardCache implements AutoCloseable {
         }
     }
 
+    /**
+     * Resolves a cached card by Deck Planner logical identity without requiring Arena legality.
+     * This lets imported cards remain inspectable even when they are outside the active format.
+     */
+    public synchronized Optional<CardInfo> findByCatalogIdentity(String identity) {
+        if (identity == null || identity.isBlank()) return Optional.empty();
+        String wanted = identity.strip().toLowerCase(java.util.Locale.ROOT);
+        String sql = "SELECT card_json FROM arena_card_cache WHERE found = TRUE AND card_json IS NOT NULL";
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                CardInfo card = gson.fromJson(rows.getString(1), CardInfo.class);
+                if (card == null) continue;
+                String actual = card.getOracleId() != null && !card.getOracleId().isBlank()
+                        ? "oracle:" + card.getOracleId().strip().toLowerCase(java.util.Locale.ROOT)
+                        : card.getId() != null && !card.getId().isBlank()
+                        ? "scryfall:" + card.getId().strip().toLowerCase(java.util.Locale.ROOT)
+                        : null;
+                if (wanted.equals(actual)) return Optional.of(card);
+            }
+            return Optional.empty();
+        } catch (SQLException error) {
+            throw new IllegalStateException("Could not resolve cached card identity=" + identity, error);
+        }
+    }
+
     public synchronized void put(long arenaId, Optional<CardInfo> card) {
         String sql = """
                 MERGE INTO arena_card_cache (arena_id, found, card_json, updated_at, cache_version)

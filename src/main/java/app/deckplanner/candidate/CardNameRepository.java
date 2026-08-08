@@ -5,6 +5,7 @@ import app.deckplanner.filter.CatalogFilterIndex;
 import app.enrichment.CardCache;
 import app.model.card.CardInfo;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -17,18 +18,27 @@ public final class CardNameRepository {
     private final CatalogFilterIndex index;
     private final CardCache persistentCache;
     private final Function<String, Optional<CardInfo>> exactNameFallback;
+    private final Function<String, List<CardInfo>> printingsFallback;
 
     public CardNameRepository(CatalogFilterIndex index,
                               Function<String, Optional<CardInfo>> exactNameFallback) {
-        this(index, null, exactNameFallback);
+        this(index, null, exactNameFallback, ignored -> List.of());
     }
 
     public CardNameRepository(CatalogFilterIndex index,
                               CardCache persistentCache,
                               Function<String, Optional<CardInfo>> exactNameFallback) {
+        this(index, persistentCache, exactNameFallback, ignored -> List.of());
+    }
+
+    public CardNameRepository(CatalogFilterIndex index,
+                              CardCache persistentCache,
+                              Function<String, Optional<CardInfo>> exactNameFallback,
+                              Function<String, List<CardInfo>> printingsFallback) {
         this.index = Objects.requireNonNull(index);
         this.persistentCache = persistentCache;
         this.exactNameFallback = Objects.requireNonNull(exactNameFallback);
+        this.printingsFallback = Objects.requireNonNull(printingsFallback);
     }
 
     public static CardNameRepository local(CatalogFilterIndex index) {
@@ -64,6 +74,32 @@ public final class CardNameRepository {
         return exactNameFallback.apply(wantedName)
                 .filter(Objects::nonNull)
                 .map(this::rememberFallback);
+    }
+
+    public Optional<CardInfo> resolveIdentity(String identity) {
+        if (identity == null || identity.isBlank()) return Optional.empty();
+        for (var indexed : index.cards()) {
+            if (identity.equals(indexed.group().identity())) {
+                return Optional.of(indexed.group().preferredPrinting());
+            }
+        }
+        return persistentCache == null ? Optional.empty()
+                : persistentCache.findByCatalogIdentity(identity);
+    }
+
+    public List<CardInfo> printings(String identity) {
+        Optional<app.deckplanner.filter.IndexedCatalogCard> local = index.cards().stream()
+                .filter(card -> identity != null && identity.equals(card.group().identity()))
+                .findFirst();
+        if (local.isPresent()) {
+            String name = local.get().group().preferredPrinting().getName();
+            List<CardInfo> remote = printingsFallback.apply(name);
+            return remote == null || remote.isEmpty() ? local.get().group().printings() : List.copyOf(remote);
+        }
+        Optional<CardInfo> cached = resolveIdentity(identity);
+        if (cached.isEmpty()) return List.of();
+        List<CardInfo> remote = printingsFallback.apply(cached.get().getName());
+        return remote == null || remote.isEmpty() ? List.of(cached.get()) : List.copyOf(remote);
     }
 
     private Resolution rememberFallback(CardInfo card) {

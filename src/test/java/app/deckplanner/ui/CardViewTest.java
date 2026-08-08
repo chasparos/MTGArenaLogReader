@@ -5,10 +5,12 @@ import org.junit.jupiter.api.Test;
 import javax.swing.SwingUtilities;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CardViewTest {
     @Test
@@ -53,6 +55,14 @@ class CardViewTest {
         Color edge = new Color(rendered.getRGB(2, 84), true);
         assertEquals(new Color(214, 168, 75).getRed(), edge.getRed());
         assertEquals(new Color(214, 168, 75).getGreen(), edge.getGreen());
+    }
+
+    @Test
+    void alternateArtBadgeHasStableClickableBounds() {
+        Rectangle bounds = CardView.alternateArtBadgeBounds(300);
+        assertTrue(bounds.width > 0);
+        assertTrue(bounds.height > 0);
+        assertTrue(bounds.x < 50);
     }
 
 }

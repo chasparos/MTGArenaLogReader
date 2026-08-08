@@ -30,12 +30,18 @@ public final class CandidateModel {
         void changed(List<String> identities);
     }
 
-    public record Entry(String identity, Optional<IndexedCatalogCard> card) {
+    public record Entry(String identity, Optional<IndexedCatalogCard> card,
+                        Optional<app.model.card.CardInfo> resolvedCard) {
         public Entry {
             Objects.requireNonNull(identity);
             card = card == null ? Optional.empty() : card;
+            resolvedCard = resolvedCard == null ? Optional.empty() : resolvedCard;
         }
-        public boolean stale() { return card.isEmpty(); }
+        public Entry(String identity, Optional<IndexedCatalogCard> card) {
+            this(identity, card, card.map(indexed -> indexed.group().preferredPrinting()));
+        }
+        public boolean legal() { return card.isPresent(); }
+        public boolean stale() { return resolvedCard.isEmpty(); }
     }
 
     private final LinkedHashSet<String> identities = new LinkedHashSet<>();
@@ -241,6 +247,21 @@ public final class CandidateModel {
         return identities.stream()
                 .map(identity -> new Entry(identity, Optional.ofNullable(byIdentity.get(identity))))
                 .toList();
+    }
+
+    public List<Entry> resolve(CatalogFilterIndex index,
+                               java.util.function.Function<String, Optional<app.model.card.CardInfo>> fallback) {
+        Objects.requireNonNull(index);
+        Objects.requireNonNull(fallback);
+        java.util.Map<String, IndexedCatalogCard> byIdentity = index.cards().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        card -> card.group().identity(), card -> card, (left, right) -> left,
+                        java.util.LinkedHashMap::new));
+        return identities.stream().map(identity -> {
+            IndexedCatalogCard legal = byIdentity.get(identity);
+            if (legal != null) return new Entry(identity, Optional.of(legal));
+            return new Entry(identity, Optional.empty(), fallback.apply(identity));
+        }).toList();
     }
 
     public void addListener(Listener listener) {

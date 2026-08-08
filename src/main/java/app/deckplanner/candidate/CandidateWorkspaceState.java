@@ -142,7 +142,7 @@ public final class CandidateWorkspaceState {
 
     private String defaultCategory(CandidateModel.Entry entry) {
         if (entry.stale()) return UNAVAILABLE;
-        CardInfo card = entry.card().orElseThrow().group().preferredPrinting();
+        CardInfo card = entry.resolvedCard().orElseThrow();
         String typeLine = Optional.ofNullable(card.effectiveTypeLine()).orElse("").toLowerCase(Locale.ROOT);
         String candidate = typeLine.contains("creature") ? CREATURES
                 : typeLine.contains("land") && !typeLine.contains("basic land") ? NONBASIC_LANDS

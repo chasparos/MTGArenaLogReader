@@ -8,6 +8,8 @@ import app.deckplanner.candidate.CandidateRepository;
 import app.deckplanner.candidate.CandidateSetRepository;
 import app.deckplanner.candidate.CandidateWorkspaceState;
 import app.deckplanner.candidate.CardNameRepository;
+import app.deckplanner.candidate.PrintingPreferenceRepository;
+import app.deckplanner.candidate.AlternateArtResolver;
 import app.deckplanner.candidate.DeckCacheKnownArenaDeckSource;
 import app.deck.persistence.DeckCache;
 import app.enrichment.CardCache;
@@ -147,7 +149,8 @@ public final class DeckPlannerWorkspacePreview {
         CardCache observedCardCache = new CardCache(gson, observedDeckDatabase);
         DeckCache observedDeckCache = new DeckCache(gson, observedCardCache, observedDeckDatabase);
         return createSession(databasePath, snapshot, availability, imageSource,
-                new CardNameRepository(index, observedCardCache, nameLookup::findByExactName),
+                new CardNameRepository(index, observedCardCache, nameLookup::findByExactName,
+                        nameLookup::findPrintingsByExactName),
                 new DeckCacheKnownArenaDeckSource(observedDeckCache, 24),
                 nameLookup, observedCardCache, observedDeckCache);
     }
@@ -170,6 +173,7 @@ public final class DeckPlannerWorkspacePreview {
 
         CandidateRepository repository = new CandidateRepository(databasePath);
         CandidateSetRepository candidateSets = new CandidateSetRepository(databasePath);
+        PrintingPreferenceRepository printingPreferences = new PrintingPreferenceRepository(databasePath);
         CandidateWorkspaceState workspaceState = new CandidateWorkspaceState(
                 candidateSets.loadWorkspace(), candidateSets::replaceWorkspace);
         CandidateModel candidates =
@@ -180,7 +184,8 @@ public final class DeckPlannerWorkspacePreview {
                 new DeckPlannerFilterModel("standard"), index, imageSource,
                 scheduler, worker, Duration.ofMillis(120), availability,
                 candidates, ignored -> CollectionQuantity.UNKNOWN,
-                cardNames, knownDecks, workspaceState, candidateSets);
+                cardNames, knownDecks, workspaceState, candidateSets,
+                new AlternateArtResolver(index, cardNames, printingPreferences));
 
 
         String sampleArenaDeck = sampleArenaDeck(snapshot);
@@ -233,7 +238,7 @@ public final class DeckPlannerWorkspacePreview {
         content.add(review, BorderLayout.NORTH);
         content.add(workspace, BorderLayout.CENTER);
         return new PreviewSession(content, workspace, scheduler, worker, repository, candidateSets,
-                nameLookup, observedCardCache, observedDeckCache);
+                printingPreferences, nameLookup, observedCardCache, observedDeckCache);
     }
 
     static JPanel acceptanceChecklist() {
@@ -344,6 +349,7 @@ public final class DeckPlannerWorkspacePreview {
     record PreviewSession(JComponent content, DeckPlannerWorkspace workspace,
                           ScheduledExecutorService scheduler, ExecutorService worker,
                           CandidateRepository repository, CandidateSetRepository candidateSets,
+                          PrintingPreferenceRepository printingPreferences,
                           ScryfallClient nameLookup, CardCache observedCardCache,
                           DeckCache observedDeckCache) implements AutoCloseable {
         @Override public void close() {
@@ -352,6 +358,7 @@ public final class DeckPlannerWorkspacePreview {
             worker.shutdownNow();
             repository.close();
             candidateSets.close();
+            printingPreferences.close();
             if (observedDeckCache != null) observedDeckCache.close();
             if (observedCardCache != null) observedCardCache.close();
             if (nameLookup != null) nameLookup.close();

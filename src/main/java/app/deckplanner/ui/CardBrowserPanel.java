@@ -37,10 +37,14 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         }
     }
 
-    public record BrowserCard(String identity, String name) {
+    public record BrowserCard(String identity, String name, int alternateArtCount) {
+        public BrowserCard(String identity, String name) {
+            this(identity, name, 1);
+        }
         public BrowserCard {
             if (identity == null || identity.isBlank()) throw new IllegalArgumentException("identity required");
             name = name == null || name.isBlank() ? "Unknown card" : name;
+            alternateArtCount = Math.max(1, alternateArtCount);
         }
     }
 
@@ -78,6 +82,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private long generation;
     private Point dragPressed;
     private java.util.function.Function<List<String>, Image> dragImageProvider = identities -> null;
+    private java.util.function.Consumer<String> alternateArtListener = ignored -> { };
 
     public CardBrowserPanel(CardGridLayout gridLayout,
                             ViewportImageWindow imageWindow,
@@ -213,6 +218,11 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         dragImageProvider = provider == null ? identities -> null : provider;
     }
 
+    public void setAlternateArtListener(java.util.function.Consumer<String> listener) {
+        assertEdt();
+        alternateArtListener = listener == null ? ignored -> { } : listener;
+    }
+
     public void addCandidateIdentities(java.util.Collection<String> identities) {
         assertEdt();
         if (identities == null) return;
@@ -308,6 +318,11 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             selectedIndexBeforeClick = selectedIndex;
         }
 
+        if (cards.get(index).alternateArtCount() > 1
+                && CardView.alternateArtBadgeBounds(bounds.width).contains(localX, localY)) {
+            alternateArtListener.accept(identity);
+            return;
+        }
         if (candidateIdentities.contains(identity)
                 && CardView.candidateBadgeBounds(bounds.width).contains(localX, localY)) {
             if (event.getClickCount() == 1) removeCandidateIdentity(identity);
@@ -461,7 +476,8 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
                 index == hoveredIndex,
                 selectedIdentities.contains(card.identity()),
                 candidateIdentities.contains(card.identity()),
-                hasFocus() && index == focusedIndex);
+                hasFocus() && index == focusedIndex,
+                card.alternateArtCount());
         rendererPane.paintComponent(g, cardView, this,
                 bounds.x, bounds.y, bounds.width, bounds.height, true);
     }
