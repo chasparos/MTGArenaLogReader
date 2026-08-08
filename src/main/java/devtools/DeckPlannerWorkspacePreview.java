@@ -44,6 +44,8 @@ public final class DeckPlannerWorkspacePreview {
     private static final String STALE_IDENTITY = "preview-stale-card";
     private static final Path DEFAULT_ROOT =
             Path.of("target", "deck-planner-dp06-preview");
+    private static final Path PERSISTENT_ROOT =
+            Path.of(System.getProperty("user.home"), ".arena-log-viewer");
 
     private DeckPlannerWorkspacePreview() { }
 
@@ -76,7 +78,7 @@ public final class DeckPlannerWorkspacePreview {
         });
 
         CompletableFuture
-                .supplyAsync(() -> DeckPlannerStandardPreviewCatalog.load(DEFAULT_ROOT), loader)
+                .supplyAsync(() -> DeckPlannerStandardPreviewCatalog.load(PERSISTENT_ROOT), loader)
                 .whenComplete((result, failure) -> SwingUtilities.invokeLater(() -> {
                     if (!frame.isDisplayable()) return;
                     if (failure != null) {
@@ -143,7 +145,7 @@ public final class DeckPlannerWorkspacePreview {
         CardCache observedCardCache = new CardCache(gson, observedDeckDatabase);
         DeckCache observedDeckCache = new DeckCache(gson, observedCardCache, observedDeckDatabase);
         return createSession(databasePath, snapshot, availability, imageSource,
-                new CardNameRepository(index, nameLookup::findByExactName),
+                new CardNameRepository(index, observedCardCache, nameLookup::findByExactName),
                 new DeckCacheKnownArenaDeckSource(observedDeckCache, 24),
                 nameLookup, observedCardCache, observedDeckCache);
     }
@@ -231,16 +233,11 @@ public final class DeckPlannerWorkspacePreview {
 
     static JPanel acceptanceChecklist() {
         String[] steps = {
-                "Real Standard catalog and images: verify the browser contains real Arena-available Standard cards and real cached Scryfall images.",
-                "Candidate presentation: add/remove/clear cards and verify resolved candidates use replay-style card chips with no owned-count display.",
-                "Manual ordering: drag candidate chips into a new order and verify the visible order changes without disturbing candidate membership.",
-                "Normal MTG sorting: use Normal MTG sort and verify type → mana value → color → name ordering replaces the manual order.",
-                "Filter layer control: apply ordinary filters, enable Consideration only in the filter rail, and verify the catalog is intersected with candidates.",
-                "Candidate-selection filter: select a resolved candidate and verify Consideration only activates; disable it and verify the prior ordinary filters remain intact.",
-                "Stale recovery: verify the seeded Unavailable card remains visible/recoverable and can be removed without affecting valid candidates.",
-                "Deck import: load a Known Arena deck when available, then paste the sample deck; verify local resolution, exact-name Scryfall fallback, and unresolved-name reporting.",
-                "Surface behavior: exercise Ready / Partial cache / Offline cache plus resizing and scrolling; verify the custom candidate surface uses the project-local scrollbar.",
-                "Persistence: close and relaunch the preview and verify candidate membership and manual/sorted order survive restart."
+                "Candidate workspace UX: do the category layout, larger chips, spacing, scrolling, and overall panel width feel readable with a large real card pool?",
+                "Planning flow: does adding, removing, dragging, normal-MTG sorting, and moving between catalog and candidates feel natural for how you actually build a deck?",
+                "Import experience: do Known Arena deck selection, pasted deck text, progress/failure feedback, and unresolved-card reporting make sense without exposing implementation details?",
+                "Interaction feedback: are selection, consideration-only focus, drag insertion markers, stale-card recovery, and empty/offline states visually clear and discoverable?",
+                "Design acceptance: after resizing, filtering, importing, rearranging, closing, and relaunching, is this the workspace you intended to design—or what should change next?"
         };
 
         Color background = AppColors.color("Panel.background", new Color(0x202328));
@@ -322,7 +319,7 @@ public final class DeckPlannerWorkspacePreview {
         for (FormatCatalogRepository.CardGroup group : snapshot.cardGroups()) {
             cards.put(group.identity(), group.preferredPrinting());
         }
-        CardImageCache imageCache = new CardImageCache(DEFAULT_ROOT.resolve("images"));
+        CardImageCache imageCache = new CardImageCache(PERSISTENT_ROOT.resolve("images"));
         return new CardImageCacheSource(imageCache,
                 identity -> Optional.ofNullable(cards.get(identity)));
     }

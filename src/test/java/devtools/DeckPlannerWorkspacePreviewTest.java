@@ -29,7 +29,7 @@ class DeckPlannerWorkspacePreviewTest {
     @TempDir Path tempDir;
 
     @Test
-    void realPreviewCatalogUsesBoundedProductionCatalogPipeline() {
+    void previewCatalogTestHookUsesProductionCatalogPipeline() {
         AtomicReference<String> requestedFormat = new AtomicReference<>();
         AtomicInteger enriched = new AtomicInteger();
         List<CardInfo> first = cards(0, 5);
@@ -126,13 +126,13 @@ class DeckPlannerWorkspacePreviewTest {
 
         List<JCheckBox> steps = findAll(checklist.get(), JCheckBox.class);
         JLabel status = findNamed(checklist.get(), JLabel.class, "dp06-acceptance-status");
-        assertEquals(10, steps.size());
+        assertEquals(5, steps.size());
         assertNotNull(status);
-        assertTrue(status.getText().contains("0/10 checked"));
+        assertTrue(status.getText().contains("0/5 checked"));
         assertTrue(status.getText().contains("remains active"));
 
         SwingUtilities.invokeAndWait(() -> steps.forEach(AbstractButton::doClick));
-        assertTrue(status.getText().contains("10/10 checked"));
+        assertTrue(status.getText().contains("5/5 checked"));
         assertTrue(status.getText().contains("explicit ACCEPT"));
         assertTrue(status.getText().contains("does not close DP-06"));
     }

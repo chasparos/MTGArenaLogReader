@@ -30,3 +30,13 @@ Deck import is a planner entry path rather than only a text parser. The import s
 
 The consideration-only catalog view is an additive filter layer. It must leave the user's structured/tag filter state intact. Selecting a candidate may activate that layer for focused browsing; a visible filter-panel control turns the layer on or off explicitly.
 
+## DP-06 real-card review follow-up (2026-08-08)
+
+Human acceptance is primarily a product/design review surface. The visible checklist should group subjective UX questions rather than ask the human to manually re-prove automated source, legality, persistence, or regression contracts.
+
+The consideration workspace should read as a category workspace, not a conventional list. Its default visual groups are Creatures, Noncreatures, and Nonbasic Lands; cards wrap into rows, use larger replay-style chips, and expose precise insertion feedback while dragging. The component model should continue to permit later planner-owned semantic groups such as card advantage, recursion, or win conditions without changing the persisted candidate identity/order contract.
+
+Real-card breadth is part of acceptance quality. The preview should use the full current Arena-available Standard catalog and the same persistent metadata/image caches as the application. Import should favor already-observed local card metadata, especially for decks the application has seen before, and only then use Scryfall as a metadata fallback.
+
+Subtype/tribal filtering is expected to need a dedicated long-list interaction rather than being dropped into the existing compact tag cloud unchanged. That design is deferred from the current candidate-workspace pass.
+

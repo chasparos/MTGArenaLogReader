@@ -58,6 +58,39 @@ public final class CardCache implements AutoCloseable {
         }
     }
 
+    /**
+     * Finds a positively cached card by exact name without touching the network.
+     *
+     * <p>This is intentionally a cache scan rather than a second source of truth. The cache is
+     * small enough for interactive deck import and it lets name-based workflows reuse metadata
+     * already observed through Arena/log enrichment before considering Scryfall fallback.</p>
+     */
+    public synchronized Optional<CardInfo> findByExactName(String exactName) {
+        if (exactName == null || exactName.isBlank()) return Optional.empty();
+        String wanted = exactName.strip();
+        String sql = """
+                SELECT card_json, cache_version
+                FROM arena_card_cache
+                WHERE found = TRUE AND card_json IS NOT NULL
+                ORDER BY updated_at DESC
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                if (result.getInt("cache_version") < CURRENT_CACHE_VERSION) continue;
+                CardInfo card = gson.fromJson(result.getString("card_json"), CardInfo.class);
+                if (card != null && card.getName() != null
+                        && card.getName().equalsIgnoreCase(wanted)) {
+                    return Optional.of(card);
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException error) {
+            throw new IllegalStateException(
+                    "Could not read card cache for exact name=" + wanted, error);
+        }
+    }
+
     public synchronized void put(long arenaId, Optional<CardInfo> card) {
         String sql = """
                 MERGE INTO arena_card_cache (arena_id, found, card_json, updated_at, cache_version)

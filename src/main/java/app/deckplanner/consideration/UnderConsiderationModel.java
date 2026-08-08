@@ -119,6 +119,27 @@ public final class UnderConsiderationModel {
         commit();
     }
 
+    /**
+     * Persists a caller-supplied presentation order while preserving exactly the current membership.
+     *
+     * <p>Unknown/duplicate identities in the request are ignored and any current identity omitted
+     * by the caller is appended. This makes grouped drag/drop robust against a stale UI snapshot
+     * without allowing presentation code to add or delete candidates.</p>
+     */
+    public void reorder(List<String> requestedOrder) {
+        LinkedHashSet<String> reordered = new LinkedHashSet<>();
+        if (requestedOrder != null) {
+            for (String identity : requestedOrder) {
+                if (identity != null && identities.contains(identity)) reordered.add(identity);
+            }
+        }
+        for (String identity : identities) reordered.add(identity);
+        if (List.copyOf(reordered).equals(identities())) return;
+        identities.clear();
+        identities.addAll(reordered);
+        commit();
+    }
+
     /** Applies the shared conventional MTG ordering while keeping stale identities recoverable. */
     public void sortByMagic(CatalogFilterIndex index) {
         Objects.requireNonNull(index);

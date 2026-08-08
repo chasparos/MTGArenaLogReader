@@ -74,6 +74,22 @@ class UnderConsiderationModelTest {
         assertEquals(model.identities(), saved.getLast());
     }
 
+
+    @Test void groupedPresentationCanPersistACompleteDisplayOrderWithoutChangingMembership() {
+        List<List<String>> saved = new ArrayList<>();
+        UnderConsiderationModel model = new UnderConsiderationModel(
+                List.of("oracle:land", "oracle:creature-a", "oracle:spell", "oracle:creature-b"),
+                identities -> saved.add(List.copyOf(identities)));
+
+        model.reorder(List.of(
+                "oracle:creature-b", "oracle:creature-a", "oracle:spell", "oracle:land"));
+
+        assertEquals(List.of(
+                "oracle:creature-b", "oracle:creature-a", "oracle:spell", "oracle:land"),
+                model.identities());
+        assertEquals(model.identities(), saved.getLast());
+    }
+
     @Test void normalMagicSortUsesSharedTypeManaColorNameOrderAndKeepsStaleLast() {
         CardInfo redCreature = card("red", "Red creature");
         redCreature.setColors(List.of("R"));

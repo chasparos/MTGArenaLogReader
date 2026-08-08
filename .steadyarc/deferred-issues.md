@@ -28,3 +28,12 @@
 - **Retained implementation:** The strict parser, `-1 / 0 / positive` quantity contract, provenance-bearing snapshot, persistence repository, observer wiring, and focused tests remain in place so integration can resume without redesign when authoritative records return.
 - **Resume trigger:** A sanitized current-client log record containing a complete authoritative owned-card map, with enough framing context to establish how it reaches the observer.
 - **Status:** Open — blocked by upstream Arena logging behavior.
+
+### SA-MTGA-DEF-004 — Card subtype / tribe tag taxonomy and long-list interaction
+
+- **Summary:** Add filter/tag resolution for creature tribes and other card subtypes without flooding the compact Deck Planner tag surface.
+- **Observed evidence:** DP-06 real-Standard click review on 2026-08-08 exposed that subtype/tribal terms are not currently represented by the semantic tag resolver and will produce a substantially longer vocabulary than the existing curated tag categories.
+- **Why deferred:** The current DP-06 pass is intentionally limited to candidate caching/import, category presentation, scalable rendering, and drag feedback. Subtype tags need their own taxonomy, count/faceting rules, search/navigation interaction, and human review rather than being appended opportunistically.
+- **Resume trigger:** A bounded Deck Planner filter/tag item explicitly designs long-list subtype discovery and selection against the real Standard catalog.
+- **Status:** Open — product/filter design work required.
+

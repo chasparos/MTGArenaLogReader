@@ -125,8 +125,8 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         considerationPanel.setSelectionAction(selection -> selection
                 .filter(this::isResolvedCandidate)
                 .ifPresent(ignored -> filterModel.setConsiderationOnly(true)));
-        considerationPanel.setPreferredSize(new Dimension(280, 600));
-        considerationPanel.setMinimumSize(new Dimension(230, 300));
+        considerationPanel.setPreferredSize(new Dimension(470, 600));
+        considerationPanel.setMinimumSize(new Dimension(360, 300));
 
         JScrollPane filterScroll = new JScrollPane(filters,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,

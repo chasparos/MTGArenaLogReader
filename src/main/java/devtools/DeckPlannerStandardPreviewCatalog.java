@@ -21,12 +21,11 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * Loads the bounded real-card catalog used by the DP-06 human preview through the same catalog
- * service/repository boundary as the product.
+ * Loads the real Standard Arena catalog used by the DP-06 human preview through the same
+ * persistent catalog/card-cache boundary as the product.
  */
 final class DeckPlannerStandardPreviewCatalog {
     static final String FORMAT = "standard";
-    static final int DEFAULT_CARD_LIMIT = 96;
     static final Duration FRESH_CACHE_AGE = Duration.ofHours(12);
 
     private DeckPlannerStandardPreviewCatalog() { }
@@ -45,7 +44,14 @@ final class DeckPlannerStandardPreviewCatalog {
             }
             CardEnrichmentService enrichment = new CardEnrichmentService(
                     scryfall, cardCache, Duration.ofMillis(110));
-            return refresh(repository, scryfall, enrichment::acceptCatalogCard, DEFAULT_CARD_LIMIT);
+            FormatCatalogService service = new FormatCatalogService(
+                    scryfall, repository, enrichment::acceptCatalogCard);
+            service.refresh(FORMAT, () -> false);
+            Optional<FormatCatalogRepository.Snapshot> snapshot = repository.current(FORMAT);
+            return new LoadResult(snapshot, DeckPlannerFilterCoordinator.Availability.READY,
+                    snapshot.map(value -> "Loaded and cached the full Standard Arena catalog ("
+                                    + value.cardGroups().size() + " logical cards).")
+                            .orElse("Catalog refresh completed without a published snapshot."));
         } catch (RuntimeException error) {
             try (FormatCatalogRepository repository =
                          new FormatCatalogRepository(gson, catalogPath)) {

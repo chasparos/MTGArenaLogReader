@@ -3,6 +3,7 @@ package app.ui;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.*;
+import java.awt.Container;
 import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +35,27 @@ class CardCollectionSurfaceTest {
         assertInstanceOf(AppScrollBarUI.class, scroll.get().getVerticalScrollBar().getUI());
     }
 
+
+    @Test void groupedSurfaceKeepsProjectOwnedRowsAndTracksViewportWidth() throws Exception {
+        AtomicReference<CardCollectionSurface> surfaceRef = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardCollectionSurface surface = new CardCollectionSurface();
+            surface.setGroups(List.of(
+                    new CardCollectionSurface.Group(
+                            "creatures", "Creatures", List.of(row("a"), row("b"))),
+                    new CardCollectionSurface.Group(
+                            "lands", "Nonbasic Lands", List.of(row("c")))));
+            surfaceRef.set(surface);
+        });
+
+        CardCollectionSurface surface = surfaceRef.get();
+        assertEquals(List.of("a", "b", "c"), surface.identities());
+        assertTrue(surface.getScrollableTracksViewportWidth());
+        assertEquals(3, surface.rowComponents().size());
+        assertNotNull(findNamed(surface, "card-collection-group-creatures"));
+        assertNotNull(findNamed(surface, "card-collection-group-lands"));
+    }
+
     private static CardCollectionSurface.Row row(String identity) {
         JPanel component = new JPanel();
         return new CardCollectionSurface.Row() {
@@ -44,4 +66,15 @@ class CardCollectionSurfaceTest {
             }
         };
     }
+    private static JComponent findNamed(Container root, String name) {
+        for (java.awt.Component child : root.getComponents()) {
+            if (child instanceof JComponent swing && name.equals(swing.getName())) return swing;
+            if (child instanceof Container container) {
+                JComponent nested = findNamed(container, name);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
+
 }

@@ -2,16 +2,23 @@ package app.deckplanner.consideration;
 
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.filter.CatalogFilterIndex;
+import app.enrichment.CardCache;
 import app.model.card.CardInfo;
+import com.google.gson.Gson;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class DeckListImporterTest {
+    @TempDir Path temporary;
     @Test void importsArenaDeckSectionsByNameAndCollapsesAlternatePrintings() {
         CardInfo optA = card("opt", "Opt", "opt-a");
         CardInfo optB = card("opt", "Opt", "opt-b");
@@ -49,6 +56,32 @@ class DeckListImporterTest {
         assertEquals(List.of("oracle:remote-oracle"), result.identities());
         assertEquals(List.of("Missing Card"), result.unresolvedNames());
         assertEquals(1, result.fallbackCards());
+    }
+
+
+
+    @Test void persistentCardCacheResolvesPlayedDeckNamesBeforeNetworkFallback() {
+        CatalogFilterIndex index = index();
+        CardInfo cached = card("cached-oracle", "Played Extensively", "cached-printing");
+        AtomicInteger networkLookups = new AtomicInteger();
+
+        try (CardCache cache = new CardCache(new Gson(), temporary.resolve("cards"))) {
+            cache.put(cached.getArenaId(), Optional.of(cached));
+            CardNameRepository names = new CardNameRepository(
+                    index, cache, ignored -> {
+                        networkLookups.incrementAndGet();
+                        return Optional.empty();
+                    });
+
+            DeckListImporter.Result result = DeckListImporter.resolve("""
+                    Deck
+                    4 Played Extensively
+                    """, names);
+
+            assertEquals(List.of("oracle:cached-oracle"), result.identities());
+            assertEquals(0, result.fallbackCards());
+            assertEquals(0, networkLookups.get());
+        }
     }
 
     private static CatalogFilterIndex index(CardInfo... cards) {

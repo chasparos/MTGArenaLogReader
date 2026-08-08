@@ -84,7 +84,7 @@ final class ReplayFragmentRenderer {
         int baseline = topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent();
         if (fragment instanceof TextFragment t) {
             g.setColor(host.colorOr("TextArea.foreground", host.foreground()));
-            g.drawString(t.text(), x, baseline);
+            drawGlyphText(g, t.text(), x, baseline);
             return;
         }
         if (fragment instanceof ManaFragment mana) {
@@ -146,7 +146,7 @@ final class ReplayFragmentRenderer {
             textX += SYMBOL_SIZE + 3;
         }
         int textBaseline = chipY + (chipHeight - chipMetrics.getHeight()) / 2 + chipMetrics.getAscent();
-        g.drawString(cardFragment.label(), textX, textBaseline);
+        drawGlyphText(g, cardFragment.label(), textX, textBaseline);
         textX += chipMetrics.stringWidth(cardFragment.label());
         if (unlocks[1]) {
             int rightLockX = textX + 3;
@@ -167,7 +167,7 @@ final class ReplayFragmentRenderer {
             Font badgeFont = chipFont.deriveFont(Font.PLAIN, Math.max(8f, chipFont.getSize2D() - 2f));
             g.setFont(badgeFont);
             FontMetrics badgeMetrics = g.getFontMetrics();
-            g.drawString(cardFragment.stateLabel(), badgeX + 5,
+            drawGlyphText(g, cardFragment.stateLabel(), badgeX + 5,
                     badgeY + (badgeHeight - badgeMetrics.getHeight()) / 2 + badgeMetrics.getAscent());
             g.setFont(chipFont);
         }
@@ -310,7 +310,7 @@ final class ReplayFragmentRenderer {
             if (counter.getCount() > 1) {
                 String count = String.valueOf(counter.getCount());
                 g.setColor(contrast(base));
-                g.drawString(count, cursor,
+                drawGlyphText(g, count, cursor,
                         y + (14 - metrics.getHeight()) / 2 + metrics.getAscent());
                 cursor += metrics.stringWidth(count);
             }
@@ -337,7 +337,7 @@ final class ReplayFragmentRenderer {
         paintStateMiniChip(g, x, y, width, 14, base);
         g.setFont(compact);
         g.setColor(contrast(base));
-        g.drawString(value, x + (width - metrics.stringWidth(value)) / 2,
+        drawGlyphText(g, value, x + (width - metrics.stringWidth(value)) / 2,
                 y + (14 - metrics.getHeight()) / 2 + metrics.getAscent());
         g.setFont(old);
     }
@@ -506,7 +506,7 @@ final class ReplayFragmentRenderer {
         if (!badge.textCost().isBlank()) {
             if (cursor > x + padding) cursor += gap;
             g.setColor(contrast(base)); g.setFont(compact);
-            g.drawString(badge.textCost(), cursor,
+            drawGlyphText(g, badge.textCost(), cursor,
                     y + (height - metrics.getHeight()) / 2 + metrics.getAscent());
             cursor += metrics.stringWidth(badge.textCost());
         }
@@ -537,7 +537,7 @@ final class ReplayFragmentRenderer {
         int baseline = y + (height - metrics.getHeight()) / 2 + metrics.getAscent();
 
         g.setColor(contrast(base));
-        g.drawString(": ", x, baseline);
+        drawGlyphText(g, ": ", x, baseline);
         int cursor = x + metrics.stringWidth(": ");
 
         for (int i = 0; i < options.size(); i++) {
@@ -548,7 +548,7 @@ final class ReplayFragmentRenderer {
 
             if (i + 1 < options.size()) {
                 g.setColor(contrast(base));
-                g.drawString(" | ", cursor, baseline);
+                drawGlyphText(g, " | ", cursor, baseline);
                 cursor += metrics.stringWidth(" | ");
             }
         }
@@ -576,7 +576,7 @@ final class ReplayFragmentRenderer {
         g.draw(chip);
         g.setColor(contrast(base));
         g.setFont(compact);
-        g.drawString(value, x + 4,
+        drawGlyphText(g, value, x + 4,
                 y + (height - compactMetrics.getHeight()) / 2 + compactMetrics.getAscent());
         g.setFont(old);
     }
@@ -597,7 +597,7 @@ final class ReplayFragmentRenderer {
         int iconY = topY + (lineHeight - SYMBOL_SIZE) / 2;
         paintKeyword(g, keyword.keyword(), x + CHIP_X_PADDING, iconY);
         g.setColor(contrast(base));
-        g.drawString(keyword.label(), x + CHIP_X_PADDING + SYMBOL_SIZE + 4,
+        drawGlyphText(g, keyword.label(), x + CHIP_X_PADDING + SYMBOL_SIZE + 4,
                 topY + (lineHeight - fm.getHeight()) / 2 + fm.getAscent());
     }
 
@@ -637,7 +637,7 @@ final class ReplayFragmentRenderer {
         g.setFont(old.deriveFont(Font.BOLD, text.length() > 2 ? 8f : 10f));
         FontMetrics metrics = g.getFontMetrics();
         String clipped = text.length() > 3 ? text.substring(0, 3) : text;
-        g.drawString(clipped, x + (size - metrics.stringWidth(clipped)) / 2,
+        drawGlyphText(g, clipped, x + (size - metrics.stringWidth(clipped)) / 2,
                 y + (size - metrics.getHeight()) / 2 + metrics.getAscent());
         g.setFont(old);
     }
@@ -695,6 +695,13 @@ final class ReplayFragmentRenderer {
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    static void drawGlyphText(Graphics2D graphics, String text, float x, float baseline) {
+        String value = text == null ? "" : text;
+        var glyphs = graphics.getFont().createGlyphVector(
+                graphics.getFontRenderContext(), value);
+        graphics.drawGlyphVector(glyphs, x, baseline);
     }
 
 }

@@ -13,21 +13,32 @@ import kong.unirest.core.HttpResponse;
 import kong.unirest.core.Unirest;
 import kong.unirest.core.UnirestInstance;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /** Small client for Scryfall card lookups, including Arena variant aliases.
  * <p><strong>Architectural role:</strong> This type belongs to the optional enrichment boundary; external metadata may supplement but never replace Arena-observed truth.</p>
  */
 public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
+    private static final Duration MINIMUM_REQUEST_SPACING = Duration.ofMillis(110);
+    private static final int MAX_RATE_LIMIT_ATTEMPTS = 5;
+
     private final Gson gson;
     private final UnirestInstance unirest;
     private final CardAliasRegistry aliases = new CardAliasRegistry();
+    private final Object requestLock = new Object();
+    private long nextRequestNanos;
 
     public ScryfallClient(Gson gson) {
         this.gson = gson;
@@ -49,9 +60,10 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
             return Optional.empty();
         }
 
-        HttpResponse<String> response = unirest.get("https://api.scryfall.com/cards/arena/{id}")
-                .routeParam("id", Long.toString(arenaId))
-                .asString();
+        HttpResponse<String> response = request(() ->
+                unirest.get("https://api.scryfall.com/cards/arena/{id}")
+                        .routeParam("id", Long.toString(arenaId))
+                        .asString(), "arenaId=" + arenaId);
 
         if (response.getStatus() == 404) {
             Optional<CardAliasRegistry.Alias> alias = aliases.find(arenaId);
@@ -88,9 +100,10 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
     public Optional<CardInfo> findByExactName(String exactName) {
         if (exactName == null || exactName.isBlank()) return Optional.empty();
 
-        HttpResponse<String> response = unirest.get("https://api.scryfall.com/cards/named")
-                .queryString("exact", exactName)
-                .asString();
+        HttpResponse<String> response = request(() ->
+                unirest.get("https://api.scryfall.com/cards/named")
+                        .queryString("exact", exactName)
+                        .asString(), "exactName=\"" + exactName + "\"");
 
         if (response.getStatus() == 404) {
             System.out.println("[Scryfall] No exact-name card for \"" + exactName + "\"");
@@ -107,9 +120,10 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
     public Optional<CardInfo> findByScryfallId(String scryfallId) {
         if (scryfallId == null || scryfallId.isBlank()) return Optional.empty();
 
-        HttpResponse<String> response = unirest.get("https://api.scryfall.com/cards/{id}")
-                .routeParam("id", scryfallId)
-                .asString();
+        HttpResponse<String> response = request(() ->
+                unirest.get("https://api.scryfall.com/cards/{id}")
+                        .routeParam("id", scryfallId)
+                        .asString(), "scryfallId=" + scryfallId);
 
         if (response.getStatus() == 404) return Optional.empty();
         if (response.getStatus() < 200 || response.getStatus() >= 300) {
@@ -121,9 +135,9 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
     }
 
     public List<DraftSet> listSets() {
-        HttpResponse<String> response = unirest
+        HttpResponse<String> response = request(() -> unirest
                 .get("https://api.scryfall.com/sets")
-                .asString();
+                .asString(), "set catalog");
         requireSuccess(response, "set catalog");
         JsonObject root = JsonParser.parseString(response.getBody()).getAsJsonObject();
         List<DraftSet> result = new ArrayList<>();
@@ -155,13 +169,14 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
         String nextPage = null;
         List<CardInfo> result = new ArrayList<>();
         do {
-            HttpResponse<String> response = nextPage == null
+            String pageUrl = nextPage;
+            HttpResponse<String> response = request(() -> pageUrl == null
                     ? unirest.get("https://api.scryfall.com/cards/search")
                     .queryString("q", "e:" + setCode.strip().toLowerCase() + " game:arena")
                     .queryString("unique", "prints")
                     .queryString("order", "set")
                     .asString()
-                    : unirest.get(nextPage).asString();
+                    : unirest.get(pageUrl).asString(), "cards for set=" + setCode);
             requireSuccess(response, "cards for set=" + setCode);
             JsonObject page = JsonParser.parseString(response.getBody()).getAsJsonObject();
             for (JsonElement element : page.getAsJsonArray("data")) {
@@ -170,9 +185,6 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
                 if (card != null) result.add(card);
             }
             nextPage = bool(page, "has_more") ? string(page, "next_page") : null;
-            if (nextPage != null && !nextPage.isBlank()) {
-                pauseForScryfall();
-            }
         } while (nextPage != null && !nextPage.isBlank());
         return List.copyOf(result);
     }
@@ -184,12 +196,12 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
             throw new IllegalArgumentException(
                     "Invalid normalized Scryfall format: " + normalizedFormat);
         }
-        HttpResponse<String> response = unirest
+        HttpResponse<String> response = request(() -> unirest
                 .get("https://api.scryfall.com/cards/search")
                 .queryString("q", formatCatalogQuery(normalizedFormat))
                 .queryString("unique", "prints")
                 .queryString("order", "set")
-                .asString();
+                .asString(), "format=" + normalizedFormat);
         return parseCatalogPage(response, "format=" + normalizedFormat);
     }
 
@@ -199,8 +211,9 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
                 || !cursor.startsWith("https://api.scryfall.com/")) {
             throw new IllegalArgumentException("Invalid Scryfall page cursor");
         }
-        pauseForScryfall();
-        return parseCatalogPage(unirest.get(cursor).asString(), "catalog page");
+        return parseCatalogPage(
+                request(() -> unirest.get(cursor).asString(), "catalog page"),
+                "catalog page");
     }
 
     public static String formatCatalogQuery(String normalizedFormat) {
@@ -231,13 +244,62 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
         return new CardCatalogPage(cards, cursor);
     }
 
-    private void pauseForScryfall() {
+    private HttpResponse<String> request(
+            Supplier<HttpResponse<String>> operation, String lookup) {
+        synchronized (requestLock) {
+            HttpResponse<String> response = null;
+            for (int attempt = 0; attempt < MAX_RATE_LIMIT_ATTEMPTS; attempt++) {
+                throttle();
+                response = operation.get();
+                if (response.getStatus() != 429) return response;
+
+                String retryAfter = response.getHeaders().getFirst("Retry-After");
+                Duration delay = retryDelay(retryAfter, attempt, Instant.now());
+                System.err.println("[Scryfall] HTTP 429 for " + lookup
+                        + "; retrying after " + delay.toMillis() + " ms");
+                sleep(delay, "rate-limit backoff");
+            }
+            return response;
+        }
+    }
+
+    static Duration retryDelay(String retryAfter, int attempt, Instant now) {
+        Duration fallback = Duration.ofMillis(
+                Math.min(8_000L, 500L << Math.min(Math.max(0, attempt), 4)));
+        if (retryAfter == null || retryAfter.isBlank()) return fallback;
+        String value = retryAfter.strip();
         try {
-            Thread.sleep(110);
+            long seconds = Long.parseLong(value);
+            return Duration.ofSeconds(Math.max(0L, seconds));
+        } catch (NumberFormatException ignored) {
+            try {
+                Instant requested = ZonedDateTime.parse(
+                        value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+                Duration delay = Duration.between(now, requested);
+                return delay.isNegative() ? Duration.ZERO : delay;
+            } catch (DateTimeParseException invalidDate) {
+                return fallback;
+            }
+        }
+    }
+
+    private void throttle() {
+        long waitNanos = nextRequestNanos - System.nanoTime();
+        if (waitNanos > 0) {
+            sleep(Duration.ofNanos(waitNanos), "request throttle");
+        }
+        nextRequestNanos = System.nanoTime() + MINIMUM_REQUEST_SPACING.toNanos();
+    }
+
+    private void sleep(Duration duration, String purpose) {
+        if (duration == null || duration.isZero() || duration.isNegative()) return;
+        long nanos = duration.toNanos();
+        try {
+            Thread.sleep(nanos / 1_000_000L, (int) (nanos % 1_000_000L));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(
-                    "Interrupted while paging Scryfall", interrupted);
+                    "Interrupted during Scryfall " + purpose, interrupted);
         }
     }
 

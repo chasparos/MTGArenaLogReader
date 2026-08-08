@@ -10,33 +10,53 @@ import java.awt.*;
 /**
  * Reusable Swing wrapper around the replay card-fragment painter.
  *
- * <p>This keeps compact card presentation consistent between replay hover previews
- * and other workspaces without copying replay painting rules into those UIs.</p>
+ * <p>The component paints at a logical replay-chip size and scales the vector/SVG/text surface to
+ * the requested presentation size. This keeps replay and planning views visually consistent while
+ * allowing larger candidate chips without rasterizing text.</p>
  */
 public class ReplayCardChip extends JComponent {
+    private static final float BASE_WIDTH = 320f;
+    private static final float BASE_HEIGHT = 38f;
+
     private final CardInfo card;
     private final String stateLabel;
     private final BoardPermanentSnapshot permanent;
+    private final float presentationScale;
     private boolean selected;
     private final ReplayFragmentRenderer renderer;
 
     public ReplayCardChip(CardInfo card) {
-        this(card, "", null, false);
+        this(card, "", null, false, 1f);
     }
 
     public ReplayCardChip(CardInfo card, boolean selected) {
-        this(card, "", null, selected);
+        this(card, "", null, selected, 1f);
+    }
+
+    public ReplayCardChip(CardInfo card, boolean selected, float presentationScale) {
+        this(card, "", null, selected, presentationScale);
     }
 
     public ReplayCardChip(CardInfo card, String stateLabel,
                           BoardPermanentSnapshot permanent, boolean selected) {
+        this(card, stateLabel, permanent, selected, 1f);
+    }
+
+    public ReplayCardChip(CardInfo card, String stateLabel,
+                          BoardPermanentSnapshot permanent, boolean selected,
+                          float presentationScale) {
         this.card = card;
         this.stateLabel = stateLabel == null ? "" : stateLabel;
         this.permanent = permanent;
         this.selected = selected;
+        this.presentationScale = Math.max(.75f, presentationScale);
         setOpaque(false);
-        setPreferredSize(new Dimension(320, 38));
-        setMinimumSize(new Dimension(180, 38));
+        setPreferredSize(new Dimension(
+                Math.round(BASE_WIDTH * this.presentationScale),
+                Math.round(BASE_HEIGHT * this.presentationScale)));
+        setMinimumSize(new Dimension(
+                Math.round(180f * this.presentationScale),
+                Math.round(BASE_HEIGHT * this.presentationScale)));
         if (card != null && card.getName() != null && !card.getName().isBlank()) {
             setToolTipText(card.getName());
         }
@@ -47,7 +67,9 @@ public class ReplayCardChip extends JComponent {
                 Color color = UIManager.getColor(key);
                 return color == null ? fallback : color;
             }
-            @Override public boolean isHovered(Rectangle bounds) { return ReplayCardChip.this.selected; }
+            @Override public boolean isHovered(Rectangle bounds) {
+                return ReplayCardChip.this.selected;
+            }
             @Override public void registerHitbox(Rectangle bounds, CardInfo renderedCard,
                                                  GameEvent event,
                                                  BoardPermanentSnapshot renderedPermanent) {
@@ -71,26 +93,51 @@ public class ReplayCardChip extends JComponent {
         return selected;
     }
 
+    public float presentationScale() {
+        return presentationScale;
+    }
+
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g = (Graphics2D) graphics.create();
         try {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
+            applyQualityHints(g);
+            double scale = getHeight() <= 0
+                    ? presentationScale
+                    : Math.max(.5d, getHeight() / (double) BASE_HEIGHT);
+            g.scale(scale, scale);
+
+            int logicalHeight = Math.max(1, (int) Math.round(getHeight() / scale));
             if (card == null) {
                 g.setColor(effectiveForeground());
                 g.setFont(effectiveFont());
-                g.drawString("Unknown card", 8,
-                        (getHeight() + g.getFontMetrics().getAscent()) / 2 - 2);
+                ReplayFragmentRenderer.drawGlyphText(
+                        g, "Unknown card", 8f,
+                        (logicalHeight + g.getFontMetrics().getAscent()) / 2f - 2f);
                 return;
             }
             String label = card.getName() == null || card.getName().isBlank()
                     ? "Unknown card" : card.getName();
             CardFragment fragment = new CardFragment(card, label, stateLabel, permanent);
-            renderer.paint(g, fragment, 4, 2, getHeight() - 4, null, false);
+            renderer.paint(g, fragment, 4, 2, logicalHeight - 4, null, false);
         } finally {
             g.dispose();
         }
+    }
+
+    private static void applyQualityHints(Graphics2D g) {
+        g.setRenderingHint(RenderingHints.KEY_RENDERING,
+                RenderingHints.VALUE_RENDER_QUALITY);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS,
+                RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
+                RenderingHints.VALUE_STROKE_PURE);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BICUBIC);
     }
 
     private Font effectiveFont() {

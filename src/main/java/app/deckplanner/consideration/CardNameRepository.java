@@ -2,6 +2,7 @@ package app.deckplanner.consideration;
 
 import app.deckplanner.catalog.CatalogCardIdentity;
 import app.deckplanner.filter.CatalogFilterIndex;
+import app.enrichment.CardCache;
 import app.model.card.CardInfo;
 
 import java.util.Locale;
@@ -14,11 +15,19 @@ public final class CardNameRepository {
     public record Resolution(String identity, CardInfo card, boolean fallback) { }
 
     private final CatalogFilterIndex index;
+    private final CardCache persistentCache;
     private final Function<String, Optional<CardInfo>> exactNameFallback;
 
     public CardNameRepository(CatalogFilterIndex index,
                               Function<String, Optional<CardInfo>> exactNameFallback) {
+        this(index, null, exactNameFallback);
+    }
+
+    public CardNameRepository(CatalogFilterIndex index,
+                              CardCache persistentCache,
+                              Function<String, Optional<CardInfo>> exactNameFallback) {
         this.index = Objects.requireNonNull(index);
+        this.persistentCache = persistentCache;
         this.exactNameFallback = Objects.requireNonNull(exactNameFallback);
     }
 
@@ -45,9 +54,23 @@ public final class CardNameRepository {
         }
         if (nameMatch != null) return Optional.of(localResolution(nameMatch));
 
+        if (persistentCache != null) {
+            Optional<CardInfo> cached = persistentCache.findByExactName(wantedName);
+            if (cached.isPresent()) {
+                return Optional.of(localResolution(cached.get()));
+            }
+        }
+
         return exactNameFallback.apply(wantedName)
                 .filter(Objects::nonNull)
-                .map(card -> new Resolution(CatalogCardIdentity.of(card), card, true));
+                .map(this::rememberFallback);
+    }
+
+    private Resolution rememberFallback(CardInfo card) {
+        if (persistentCache != null && card.getArenaId() != null && card.getArenaId() > 0) {
+            persistentCache.put(card.getArenaId(), Optional.of(card));
+        }
+        return new Resolution(CatalogCardIdentity.of(card), card, true);
     }
 
     private Resolution localResolution(CardInfo card) {

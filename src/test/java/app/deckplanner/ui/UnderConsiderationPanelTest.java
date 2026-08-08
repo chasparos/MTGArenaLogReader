@@ -82,6 +82,37 @@ class UnderConsiderationPanelTest {
         assertTrue(findButton(panel, "Normal MTG sort").isEnabled());
     }
 
+
+    @Test
+    void candidateSurfaceGroupsPlanningCategoriesAndUsesLargerScalableReplayChips() throws Exception {
+        CardInfo creature = card("oracle:creature", "Creature Card");
+        creature.setTypeLine("Creature — Wizard");
+        CardInfo spell = card("oracle:spell", "Spell Card");
+        spell.setTypeLine("Sorcery");
+        CardInfo land = card("oracle:land", "Utility Land");
+        land.setTypeLine("Land");
+        UnderConsiderationModel model = new UnderConsiderationModel(
+                List.of("oracle:creature", "oracle:spell", "oracle:land"), ignored -> { });
+        AtomicReference<UnderConsiderationPanel> ref = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            UnderConsiderationPanel panel = new UnderConsiderationPanel();
+            panel.bind(model, ignored -> -1);
+            panel.setEntries(model.resolve(index(creature, spell, land)));
+            ref.set(panel);
+        });
+
+        UnderConsiderationPanel panel = ref.get();
+        String text = componentText(panel);
+        assertTrue(text.contains("Creatures (1)"));
+        assertTrue(text.contains("Noncreatures (1)"));
+        assertTrue(text.contains("Nonbasic Lands (1)"));
+        ReplayCardChip chip = find(panel, ReplayCardChip.class);
+        assertNotNull(chip);
+        assertTrue(chip.presentationScale() > 1f);
+        assertTrue(chip.getPreferredSize().height > 38);
+    }
+
     private static String componentText(Component component) {
         if (component instanceof JLabel label) return Optional.ofNullable(label.getText()).orElse("");
         if (!(component instanceof Container container)) return "";

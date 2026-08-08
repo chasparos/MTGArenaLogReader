@@ -9,7 +9,9 @@ import app.ui.CardCollectionSurface;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -18,9 +20,9 @@ import java.util.function.ToIntFunction;
 /**
  * Ordered DP-06 candidate workspace backed by the project-owned {@link CardCollectionSurface}.
  *
- * <p>Candidate rows are ordinary components so future grouping/category/mana affordances can be
- * composed without fighting a list-cell renderer. Ordering remains authoritative in
- * {@link UnderConsiderationModel}.</p>
+ * <p>Candidate cards are grouped into stable planning categories and rendered as ordinary
+ * components. Ordering remains authoritative in {@link UnderConsiderationModel}; category
+ * layout is presentation only and therefore leaves room for future semantic planner groupings.</p>
  */
 public final class UnderConsiderationPanel extends JPanel {
     private final CardCollectionSurface surface = new CardCollectionSurface();
@@ -41,9 +43,7 @@ public final class UnderConsiderationPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
-        surface.setMoveHandler((identity, insertionIndex) -> {
-            if (model != null) model.moveToIndex(identity, insertionIndex);
-        });
+        surface.setMoveHandler(this::moveDisplayedCandidate);
         surface.setSelectionListener(selection -> {
             updateActions();
             selectionAction.accept(selection);
@@ -71,6 +71,19 @@ public final class UnderConsiderationPanel extends JPanel {
         this.model = Objects.requireNonNull(model);
     }
 
+    private void moveDisplayedCandidate(String identity, int insertionIndex) {
+        if (model == null || identity == null) return;
+        ArrayList<String> order = new ArrayList<>(surface.identities());
+        int from = order.indexOf(identity);
+        if (from < 0) return;
+        int target = Math.max(0, Math.min(order.size(), insertionIndex));
+        order.remove(from);
+        if (from < target) target--;
+        target = Math.max(0, Math.min(order.size(), target));
+        order.add(target, identity);
+        model.reorder(order);
+    }
+
     public void setImportAction(Runnable importAction) {
         this.importAction = importAction == null ? () -> { } : importAction;
     }
@@ -85,11 +98,49 @@ public final class UnderConsiderationPanel extends JPanel {
 
     public void setEntries(List<UnderConsiderationModel.Entry> entries) {
         assertEdt();
-        List<CandidateRow> rows = (entries == null ? List.<UnderConsiderationModel.Entry>of() : entries)
-                .stream().map(CandidateRow::new).toList();
-        surface.setRows(rows);
+        List<CandidateRow> creatures = new ArrayList<>();
+        List<CandidateRow> noncreatures = new ArrayList<>();
+        List<CandidateRow> nonbasicLands = new ArrayList<>();
+        List<CandidateRow> unavailable = new ArrayList<>();
+
+        for (UnderConsiderationModel.Entry entry :
+                entries == null ? List.<UnderConsiderationModel.Entry>of() : entries) {
+            CandidateRow row = new CandidateRow(entry);
+            switch (category(row.card(), row.stale())) {
+                case CREATURES -> creatures.add(row);
+                case NONCREATURES -> noncreatures.add(row);
+                case NONBASIC_LANDS -> nonbasicLands.add(row);
+                case UNAVAILABLE -> unavailable.add(row);
+            }
+        }
+
+        List<CardCollectionSurface.Group> groups = new ArrayList<>();
+        groups.add(group("creatures", "Creatures", creatures));
+        groups.add(group("noncreatures", "Noncreatures", noncreatures));
+        groups.add(group("nonbasic-lands", "Nonbasic Lands", nonbasicLands));
+        if (!unavailable.isEmpty()) {
+            groups.add(group("unavailable", "Unavailable", unavailable));
+        }
+        surface.setGroups(groups);
         updateActions();
         syncScrollbarEnabled(scroll.getVerticalScrollBar());
+    }
+
+    private static CardCollectionSurface.Group group(
+            String id, String title, List<? extends CardCollectionSurface.Row> rows) {
+        return new CardCollectionSurface.Group(
+                id, title + " (" + rows.size() + ")", new ArrayList<>(rows));
+    }
+
+    private static CandidateCategory category(CardInfo card, boolean stale) {
+        if (stale || card == null) return CandidateCategory.UNAVAILABLE;
+        String typeLine = Optional.ofNullable(card.effectiveTypeLine())
+                .orElse("").toLowerCase(Locale.ROOT);
+        if (typeLine.contains("creature")) return CandidateCategory.CREATURES;
+        if (typeLine.contains("land") && !typeLine.contains("basic land")) {
+            return CandidateCategory.NONBASIC_LANDS;
+        }
+        return CandidateCategory.NONCREATURES;
     }
 
     public List<String> identities() {
@@ -137,22 +188,28 @@ public final class UnderConsiderationPanel extends JPanel {
         }
     }
 
+    private enum CandidateCategory {
+        CREATURES,
+        NONCREATURES,
+        NONBASIC_LANDS,
+        UNAVAILABLE
+    }
+
     private final class CandidateRow extends JPanel implements CardCollectionSurface.Row {
         private final String identity;
         private final CardInfo card;
         private final boolean stale;
         private final JComponent content;
-        private boolean selected;
 
         CandidateRow(UnderConsiderationModel.Entry entry) {
             super(new BorderLayout());
             identity = entry.identity();
             stale = entry.card().isEmpty();
             card = stale ? null : entry.card().get().group().preferredPrinting();
-            setAlignmentX(Component.LEFT_ALIGNMENT);
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
-            setPreferredSize(new Dimension(220, 44));
-            setBorder(new EmptyBorder(2, 2, 2, 2));
+            setPreferredSize(new Dimension(330, 60));
+            setMinimumSize(new Dimension(270, 60));
+            setMaximumSize(new Dimension(460, 60));
+            setBorder(new EmptyBorder(3, 3, 3, 3));
             setOpaque(true);
 
             if (stale) {
@@ -160,10 +217,9 @@ public final class UnderConsiderationPanel extends JPanel {
                 label.setBorder(new EmptyBorder(6, 8, 6, 8));
                 content = label;
             } else {
-                content = new ReplayCardChip(card, false);
+                content = new ReplayCardChip(card, false, 1.35f);
             }
             add(content, BorderLayout.CENTER);
-
             setSelected(false);
         }
 
@@ -184,9 +240,9 @@ public final class UnderConsiderationPanel extends JPanel {
         }
 
         @Override public void setSelected(boolean selected) {
-            this.selected = selected;
             Color base = AppColors.color("Panel.background", new Color(0x202328));
-            Color selectedBackground = AppColors.color("List.selectionBackground", new Color(0x3B4554));
+            Color selectedBackground =
+                    AppColors.color("List.selectionBackground", new Color(0x3B4554));
             setBackground(selected ? selectedBackground : base);
             if (content instanceof ReplayCardChip chip) {
                 chip.setSelected(selected);
@@ -198,5 +254,4 @@ public final class UnderConsiderationPanel extends JPanel {
             repaint();
         }
     }
-
 }

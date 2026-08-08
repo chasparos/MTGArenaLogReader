@@ -176,6 +176,16 @@ Human-feedback rework plan (2026-08-07), in implementation order:
 6. **Human click acceptance.** Update `DeckPlannerWorkspacePreview` and its visible checklist to exercise real Standard cards, replay-style chips, drag/drop persistence, normal MTG sorting, known-deck and pasted-text import, Scryfall-name fallback behavior, the consideration-only filter layer, stale-card recovery, resizing/scrolling, and restart persistence. DP-06 closes only after the full Maven suite is green and the human explicitly accepts this real-card preview.
    Current implementation slice turns the checklist into an interactive ten-check human acceptance surface covering every completed DP-06 rework behavior. Reaching 10/10 records only that the click checks were performed; the harness deliberately cannot close DP-06 or manufacture acceptance. The human must still report explicit acceptance or defects after repository-side validation is green.
 
+
+Human-feedback iteration (2026-08-08):
+
+- **Acceptance review is design review, not manual regression duplication.** The click harness should ask the human to assess UX/design categories and whether the implemented design still feels right with representative real data. Automated contracts such as Scryfall legality/source integrity remain automated evidence rather than checkbox prompts.
+- **Persistent full Standard cache.** The preview should prefetch the full Arena-available Standard catalog through the same persistent application cache roots (`format-catalog`, `card-cache`, and images) rather than a bounded `target/`-local metadata cache. More real cards are intentionally part of the human design surface.
+- **Local-first import and polite Scryfall fallback.** Deck import must search the persistent played-card cache before exact-name Scryfall fallback. Scryfall access is globally throttled, and HTTP 429 handling honors `Retry-After` with bounded backoff rather than issuing a burst of independent exact-name requests.
+- **Category workspace rather than list-shaped surface.** Default candidate presentation groups cards into Creatures, Noncreatures, and Nonbasic Lands, wraps cards without horizontal overflow, uses larger scalable replay chips, and shows a visible insertion marker during drag/drop. Stale cards remain a recoverable special group.
+- **High-quality scalable chip rendering.** Replay card chips remain shared between replay and planner, but their rendering must scale without raster-text artifacts; text is drawn through glyph vectors with high-quality antialiasing/fractional metrics.
+- **This pass does not expand filter taxonomy.** Tribe/subtype tag resolution is explicitly deferred as `SA-MTGA-DEF-004`; it will require a dedicated long-list interaction/taxonomy design.
+
 #### DP-07 — Authoritative AI deck-building protocol
 
 **State:** planned
@@ -205,11 +215,11 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-06 — Under consideration workspace` is active at rework step 6, the human click-acceptance gate. Steps 1–5 are integrated through the clean 232-test baseline at `e16406021090074b006e31706387b7c973245892`. Apply and validate the interactive real-card acceptance-harness patch, then run the preview and report explicit acceptance or observed defects. Do not start DP-07 until DP-06 is explicitly accepted.
+`DP-06 — Under consideration workspace` remains active after the first real-card click review. The acceptance harness itself is validated at the clean 233-test baseline `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; the 2026-08-08 human review opened the bounded cache/import/category/rendering iteration recorded above. Apply and validate that pass, then return to UX/design-focused human review. Do not start DP-07 until DP-06 is explicitly accepted.
 
 ### Current planning decisions
 
-- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 rework steps 1–3 are validated through commit `f20a751b0f9820f1fc030fa3e669b4777baa9eee` with 226 tests green; human review on 2026-08-07 keeps the item open for the remaining import/filter/click-acceptance work. Ownership-dependent consideration displays are omitted while `SA-MTGA-DEF-003` remains open.
+- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 remains active after a clean 233-test acceptance-harness baseline at `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; real-card human review on 2026-08-08 opened another bounded UX/cache/import iteration rather than accepting the item. Ownership-dependent consideration displays are omitted while `SA-MTGA-DEF-003` remains open.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.
