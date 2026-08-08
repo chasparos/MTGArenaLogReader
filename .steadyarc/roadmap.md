@@ -140,7 +140,7 @@ Acceptance evidence:
 
 #### DP-06 — Candidate workspace
 
-**State:** active
+**State:** complete — 2026-08-08; human accepted after 272-test green baseline at `6a67dcfef2a3298ee8b1794dcd7a166576d6db75`.
 
 Favorite-art/layout polish feedback (2026-08-08): changing an explicit favorite printing must immediately refresh the Catalog image for the same logical identity; Candidate wrap/panel spacing should be about half the current padding; floating panel-boundary controls must be transparent circular overlays whose bounds update immediately whenever the controlled regions resize or hide/show. This is a bounded DP-06 polish slice and does not reopen deferred filtering taxonomy.
 
@@ -210,17 +210,31 @@ Filtering/tag-taxonomy rework remains outside these slices; subtype/tribal handl
 
 #### DP-07 — Authoritative AI deck-building protocol
 
-**State:** planned
+**State:** active
 
-Create `MTGA_DECK_BUILD_REQUEST_V1`, following the established authoritative/provenance discipline of game reconstruction exports while using a deck-planning-specific schema.
+Create `MTGA_DECK_BUILD_REQUEST_V1`, following the established authoritative/provenance discipline of game reconstruction exports while using a deck-planning-specific schema and the Candidate Set as the human-authored planning context.
+
+Mission:
+
+The export should let the human send a Candidate Set plus their own design intent to an AI deck-building assistant without collapsing authoritative card facts into strategic inference. The human writes a free-form note describing what they are trying to build, why cards are grouped as they are, constraints or themes they care about, and what kind of deck direction they are exploring. That note travels with the Candidate Set and is included verbatim in the exported request.
+
+Accepted constraints:
+
+- A Candidate Set owns an optional persisted free-form planning note. Editing it is a normal planner action, not a one-off export prompt.
+- The planner opens a text editor for that note from the Candidate Set workspace. Saving the Candidate Set saves its note; loading the set restores the same note.
+- `DeckPlannerWorkspacePreview` remains the human click-test harness for DP-07. Human acceptance should focus on whether the note/edit/export workflow and resulting AI brief feel useful and accurately represent the human's design intent; automated tests cover deterministic payload mechanics.
+- The exported general instruction begins from: `I'm working on designing a MTGArena deck and I am looking at the included set of cards.` It then asks the model to analyze the supplied cards as authoritative facts and suggest plausible deck directions.
+- Strategic guidance should explicitly ask the model to identify and compare likely archetypes, synergies/packages, interaction, card-advantage/recursion engines, mana curve and mana-base implications, resilience/weaknesses, and plausible win conditions. Suggestions may infer strategy but must not invent or substitute card rules.
+- The human note is separate from the general instruction and from authoritative card data. The model should use it as design intent, not reinterpret it as card fact.
+- There is no single fixed closing question. The request should invite analysis and possible directions rather than forcing one canned `What deck would you build...` prompt.
 
 Acceptance evidence:
 
-- Payload includes target format, candidate membership, collection quantity with unknown distinguished from zero, stable identities, name, mana cost/value, type line, complete oracle text, colors/color identity, power/toughness/loyalty/defense when applicable, keywords, produced mana, and every relevant face of multi-face cards.
+- Payload includes target format, Candidate Set name and note, candidate membership/category organization, collection quantity with unknown distinguished from zero, stable identities, name, mana cost/value, type line, complete oracle text, colors/color identity, power/toughness/loyalty/defense when applicable, keywords, produced mana, and every relevant face of multi-face cards.
 - Repeated values use a compact alias/table mechanism where it saves tokens without making rules ambiguous.
-- Export is deterministic, escapes delimiters/newlines, states that supplied card data is authoritative, forbids substitution/invented rules, and separates observed facts from strategic inference.
-- Golden tests cover ordinary, token-producing, split/adventure, transform/modal, and metadata-incomplete cards plus the `-1/0/positive` collection states.
-- The final request text is exactly `What deck would you build with these cards?`
+- Export is deterministic, escapes delimiters/newlines, states that supplied card data is authoritative, forbids substitution/invented rules, and separates authoritative facts, human design intent, and strategic inference instructions.
+- Golden tests cover ordinary, token-producing, split/adventure, transform/modal, and metadata-incomplete cards plus the `-1/0/positive` collection states, Candidate Set note escaping, and deterministic category/note export.
+- The DP-07 preview harness exposes note editing and export generation so the human can review whether the generated request communicates the intended deck-design problem and produces useful analysis directions before DP-07 can be accepted.
 
 #### DP-08 — Integration, performance, and release evidence
 
@@ -237,11 +251,12 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-06 — Candidate workspace` remains active. The latest accepted baseline before this slice is `77da21656969c2b66cc8af0100c9d03e2c621205` with 259 tests passing. Human click review then found that automatic alternate-art enrichment can make startup/import appear frozen under Scryfall 429 backoff, and requested cache-first non-blocking behavior plus workspace visibility controls and a richer missing-image placeholder. Continue DP-06; do not start DP-07 until explicit human acceptance.
+`DP-07 — Authoritative AI deck-building protocol` is active. DP-06 was explicitly accepted by the human on 2026-08-08 after the clean `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` baseline with 272 tests passing. Begin DP-07 with the Candidate Set planning-note persistence/editor contract and export schema/instruction design; retain `DeckPlannerWorkspacePreview` as the human click-test harness throughout DP-07.
+
 
 ### Current planning decisions
 
-- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 remains active after a clean 233-test acceptance-harness baseline at `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; real-card human review on 2026-08-08 opened another bounded UX/cache/import iteration rather than accepting the item. Ownership-dependent candidate displays are omitted while `SA-MTGA-DEF-003` remains open.
+- DP-01, DP-03, DP-04, DP-05, and DP-06 are complete. DP-06 was explicitly human-accepted on 2026-08-08 at clean commit `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` with 272 tests passing. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-07 is active. Ownership-dependent displays remain omitted while `SA-MTGA-DEF-003` remains open.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.

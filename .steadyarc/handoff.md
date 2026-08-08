@@ -8,15 +8,16 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 
 ## Current ownership
 
-- **Owner:** Human repository owner
-- **Repository baseline inspected for DP-06 favorite/layout polish slice:** `18de527a300d105507fb4ae5827124eea06dff7c` on `main`.
-- **Transferred validation:** `.\mvnw.cmd test` passed 254 tests with zero failures/errors/skips at `0a6a409499e685e40857244e86671b389d9aa08d` on a clean tree.
+- **Owner:** Human repository owner.
+- **Repository baseline inspected for DP-07 transition:** `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` on `main`.
+- **Transferred validation:** `.\mvnw.cmd test` passed 272 tests with zero failures/errors/skips on a clean tree.
 - **Current arc:** Deck Planner.
-- **Active roadmap item:** `DP-06 — Candidate workspace`.
-- **DP-06 direction:** Human click review on 2026-08-08 opened candidate-workspace iteration 2. The accepted sequence is vocabulary/layout/presentation first; editable categories and named Candidate Sets second; multi-select/cross-surface drag/drop third; alternate-art/favorite/legal-state resolution fourth. Filtering taxonomy remains deferred.
-- **Safe next action:** Apply and validate the bounded favorite-art refresh/Candidate-spacing/overlay-control polish patch. If green, return to human click review; do not advance to deferred filtering taxonomy yet.
+- **Completed roadmap item:** `DP-06 — Candidate workspace`; explicitly accepted by the human on 2026-08-08.
+- **Active roadmap item:** `DP-07 — Authoritative AI deck-building protocol`.
+- **DP-07 direction:** Persist a free-form planning note with each Candidate Set, edit it in the planner, include it verbatim in `MTGA_DECK_BUILD_REQUEST_V1`, and replace the old fixed-question design with a stable deck-analysis brief covering plausible directions, synergies, interaction, engines, curve/mana, weaknesses, and win conditions while preserving authoritative card facts.
+- **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click review throughout DP-07; automated tests cover encoding/schema mechanics, while the human reviews whether the note and generated request express the intended design problem.
+- **Safe next action:** Implement the first DP-07 slice: Candidate Set note persistence/editor plus focused tests, then expose it in the preview before implementing the full exporter.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
-
 
 ### DP-06 interaction-polish amendment — 2026-08-08
 
@@ -31,3 +32,13 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - Scope is immediate favorite-art refresh for Catalog presentation, approximately halved Candidate spacing, and transparent circular boundary controls with deterministic post-layout positioning.
 - Filtering/tag taxonomy remains outside this amendment.
 - Ownership remains with the patch-exchange assistant for this bounded patch; return to the human for repository-side validation and click review.
+
+
+### DP-06 acceptance / DP-07 activation amendment — 2026-08-08
+
+- Human explicitly accepted DP-06 after real-card click review and the clean 272-test `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` baseline.
+- DP-06 is closed; DP-07 becomes the active Deck Planner roadmap item.
+- The prior DP-07 fixed closing question is withdrawn.
+- DP-07 begins with persisted Candidate Set planning notes and a richer strategic-analysis instruction contract.
+- `DeckPlannerWorkspacePreview` remains the human click-test harness for DP-07.
+- Ownership remains with the human until the next bounded DP-07 implementation delegation.

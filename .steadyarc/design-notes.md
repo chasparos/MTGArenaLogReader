@@ -80,3 +80,14 @@ Candidate categories are compact planning lanes. They may be collapsed, reordere
 Workspace visibility controls belong to a parent overlay layer centered over the panel boundary they control rather than consuming layout width. Candidate selection should help visual comparison by scrolling the Catalog to the same card when that card is already present under the current filters.
 
 Candidate category transfer is planner-local UI state. The category drag flavor must not be accepted by the Catalog or other card surfaces.
+
+## DP-07 AI deck-design context (2026-08-08)
+
+The Candidate Set is not only a bag of cards; it carries the human's current deck-design intent. Each named Candidate Set should persist an optional free-form note authored in a planner text editor. The note may explain why cards were grouped, themes or packages under consideration, constraints, uncertainty, and the kind of deck the human is trying to build. Loading a Candidate Set restores its note, and exporting the set includes that note verbatim as human design context.
+
+The AI request should begin from the framing: `I'm working on designing a MTGArena deck and I am looking at the included set of cards.` The rest of the general instruction should ask for strategic analysis rather than a single canned answer: identify plausible archetype directions, important synergies/packages, interaction, card-advantage and recursion engines, curve and mana-base implications, resilience and weaknesses, and credible win conditions. Compare promising directions when more than one exists and explain trade-offs.
+
+Authoritative supplied card data and the human-authored note have different roles. Card rules/metadata are facts and must not be invented or substituted. The note expresses human intent and may guide emphasis. Strategic conclusions are inference and should be presented as such.
+
+Human acceptance for DP-07 remains click-driven through `DeckPlannerWorkspacePreview`. The human should review whether editing/saving/loading the note feels natural and whether the generated request accurately communicates the deck-design problem; deterministic encoding, escaping, schema completeness, and card-fact preservation belong to automated tests.
+
