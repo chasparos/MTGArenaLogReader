@@ -7,6 +7,8 @@ import app.deckplanner.candidate.CardNameRepository;
 import app.deckplanner.candidate.KnownArenaDeck;
 import app.deckplanner.candidate.KnownArenaDeckSource;
 import app.deckplanner.candidate.CandidateModel;
+import app.deckplanner.candidate.CandidateWorkspaceState;
+import app.deckplanner.candidate.CandidateSetRepository;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.filter.IndexedCatalogCard;
@@ -94,6 +96,24 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                                 ToIntFunction<CardInfo> collectionQuantitySource,
                                 CardNameRepository cardNames,
                                 KnownArenaDeckSource knownDecks) {
+        this(model, index, imageSource, scheduler, worker, debounce, availability,
+                candidateModel, collectionQuantitySource, cardNames, knownDecks,
+                CandidateWorkspaceState.transientState(), null);
+    }
+
+    public DeckPlannerWorkspace(DeckPlannerFilterModel model,
+                                CatalogFilterIndex index,
+                                CardBrowserPanel.ImageSource imageSource,
+                                ScheduledExecutorService scheduler,
+                                Executor worker,
+                                Duration debounce,
+                                DeckPlannerFilterCoordinator.Availability availability,
+                                CandidateModel candidateModel,
+                                ToIntFunction<CardInfo> collectionQuantitySource,
+                                CardNameRepository cardNames,
+                                KnownArenaDeckSource knownDecks,
+                                CandidateWorkspaceState workspaceState,
+                                CandidateSetRepository candidateSets) {
         Objects.requireNonNull(model);
         Objects.requireNonNull(index);
         Objects.requireNonNull(imageSource);
@@ -120,7 +140,19 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             }
         });
         browserScrollPane = new CardBrowserScrollPane(browser);
-        candidatePanel.bind(candidateModel, collectionQuantitySource);
+        candidatePanel.bind(candidateModel, workspaceState, collectionQuantitySource);
+        if (candidateSets != null) {
+            candidatePanel.setCandidateSetActions(
+                    () -> candidateSets.list().stream().map(CandidateSetRepository.CandidateSet::name).toList(),
+                    name -> {
+                        candidateSets.save(name, candidateModel.identities(), workspaceState.snapshot());
+                        candidatePanel.refreshCandidateSetNames();
+                    },
+                    name -> candidateSets.load(name).ifPresent(set -> {
+                        workspaceState.replace(set.workspace());
+                        candidateModel.replace(set.identities());
+                    }));
+        }
         candidatePanel.setImportAction(this::showDeckImportDialog);
         candidatePanel.setMagicSortAction(() -> candidateModel.sortByMagic(catalogIndex));
         candidatePanel.setSelectionAction(selection -> selection

@@ -90,6 +90,20 @@ public final class CandidateModel {
         commit();
     }
 
+    /** Replaces the complete ordered membership, used when loading a named Candidate Set. */
+    public void replace(Collection<String> replacement) {
+        LinkedHashSet<String> next = new LinkedHashSet<>();
+        if (replacement != null) {
+            for (String identity : replacement) {
+                if (identity != null && !identity.isBlank()) next.add(identity.strip());
+            }
+        }
+        if (List.copyOf(next).equals(identities())) return;
+        identities.clear();
+        identities.addAll(next);
+        commit();
+    }
+
     public void move(String identity, int delta) {
         if (identity == null || delta == 0 || !identities.contains(identity)) return;
         ArrayList<String> reordered = new ArrayList<>(identities);

@@ -113,6 +113,18 @@ class CandidateModelTest {
                 model.identities());
     }
 
+
+    @Test void loadingCandidateSetCanReplaceCompleteMembershipInOrder() {
+        List<List<String>> saved = new ArrayList<>();
+        CandidateModel model = new CandidateModel(
+                List.of("oracle:a", "oracle:b"), identities -> saved.add(List.copyOf(identities)));
+
+        model.replace(List.of("oracle:c", "oracle:a", "oracle:c"));
+
+        assertEquals(List.of("oracle:c", "oracle:a"), model.identities());
+        assertEquals(model.identities(), saved.getLast());
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();

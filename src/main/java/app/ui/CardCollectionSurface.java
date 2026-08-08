@@ -30,7 +30,10 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         void setSelected(boolean selected);
     }
 
-    public record Group(String id, String title, List<? extends Row> rows) {
+    public record Group(String id, String title, List<? extends Row> rows, JComponent trailingHeader) {
+        public Group(String id, String title, List<? extends Row> rows) {
+            this(id, title, rows, null);
+        }
         public Group {
             id = id == null ? "" : id;
             title = title == null ? "" : title;
@@ -43,6 +46,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
     private BiConsumer<String, Integer> moveHandler = (identity, index) -> { };
     private String selectedIdentity;
     private int dropIndex = -1;
+    private JComponent footer;
 
     public CardCollectionSurface() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -92,12 +96,16 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                 section.setOpaque(false);
                 section.setAlignmentX(Component.LEFT_ALIGNMENT);
                 section.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
-                if (!group.title().isBlank()) {
+                if (!group.title().isBlank() || group.trailingHeader() != null) {
+                    JPanel header = new JPanel(new BorderLayout(6, 0));
+                    header.setOpaque(false);
                     JLabel heading = new JLabel(group.title());
                     heading.setName("card-collection-group-" + group.id());
                     heading.setFont(heading.getFont().deriveFont(Font.BOLD));
                     heading.setBorder(BorderFactory.createEmptyBorder(6, 5, 0, 5));
-                    section.add(heading, BorderLayout.NORTH);
+                    header.add(heading, BorderLayout.CENTER);
+                    if (group.trailingHeader() != null) header.add(group.trailingHeader(), BorderLayout.EAST);
+                    section.add(header, BorderLayout.NORTH);
                 }
 
                 for (Row row : group.rows()) {
@@ -109,6 +117,11 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                 section.add(body, BorderLayout.CENTER);
                 add(section);
             }
+        }
+
+        if (footer != null) {
+            footer.setAlignmentX(Component.LEFT_ALIGNMENT);
+            add(footer);
         }
 
         selectedIdentity = rows.stream()
@@ -132,6 +145,11 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
             }
         }
         revalidate();
+    }
+
+
+    public void setFooter(JComponent footer) {
+        this.footer = footer;
     }
 
     public List<String> identities() {

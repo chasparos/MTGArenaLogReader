@@ -1,6 +1,7 @@
 package app.deckplanner.ui;
 
 import app.deckplanner.candidate.CandidateModel;
+import app.deckplanner.candidate.CandidateWorkspaceState;
 import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
 import app.ui.AppColors;
@@ -9,21 +10,13 @@ import app.ui.CardCollectionSurface;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 
-/**
- * Ordered DP-06 candidate workspace backed by the project-owned {@link CardCollectionSurface}.
- *
- * <p>Candidate cards are grouped into stable planning categories and rendered as ordinary
- * components. Ordering remains authoritative in {@link CandidateModel}; category
- * layout is presentation only and therefore leaves room for future semantic planner groupings.</p>
- */
+/** DP-06 candidate workspace with editable persisted planning categories. */
 public final class CandidatePanel extends JPanel {
     private final CardCollectionSurface surface = new CardCollectionSurface();
     private final JScrollPane scroll = surface.createScrollPane();
@@ -31,10 +24,20 @@ public final class CandidatePanel extends JPanel {
     private final JButton clear = new JButton("Clear");
     private final JButton magicSort = new JButton("Normal MTG sort");
     private final JButton importDeck = new JButton("Import deck");
+    private final JComboBox<String> candidateSets = new JComboBox<>();
+    private final JButton saveSet = new JButton("Save set");
+    private final JButton loadSet = new JButton("Load set");
+
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
-    private CandidateModel model;
     private Consumer<Optional<String>> selectionAction = ignored -> { };
+    private Supplier<List<String>> candidateSetNames = List::of;
+    private Consumer<String> saveSetAction = ignored -> { };
+    private Consumer<String> loadSetAction = ignored -> { };
+
+    private CandidateModel model;
+    private CandidateWorkspaceState workspaceState = CandidateWorkspaceState.transientState();
+    private List<CandidateModel.Entry> currentEntries = List.of();
 
     public CandidatePanel() {
         super(new BorderLayout(6, 6));
@@ -52,23 +55,45 @@ public final class CandidatePanel extends JPanel {
 
         JPanel actions = new JPanel(new BorderLayout(4, 4));
         actions.add(importDeck, BorderLayout.NORTH);
+
+        JPanel setActions = new JPanel(new BorderLayout(4, 4));
+        candidateSets.setEditable(true);
+        setActions.add(candidateSets, BorderLayout.CENTER);
+        JPanel setButtons = new JPanel(new GridLayout(1, 2, 4, 4));
+        setButtons.add(saveSet);
+        setButtons.add(loadSet);
+        setActions.add(setButtons, BorderLayout.EAST);
+        actions.add(setActions, BorderLayout.CENTER);
+
         JPanel candidateActions = new JPanel(new GridLayout(1, 3, 4, 4));
         candidateActions.add(magicSort);
         candidateActions.add(remove);
         candidateActions.add(clear);
-        actions.add(candidateActions, BorderLayout.CENTER);
+        actions.add(candidateActions, BorderLayout.SOUTH);
         add(actions, BorderLayout.SOUTH);
 
         remove.addActionListener(event -> selectedIdentity().ifPresent(model::remove));
         clear.addActionListener(event -> { if (model != null) model.clear(); });
         magicSort.addActionListener(event -> magicSortAction.run());
         importDeck.addActionListener(event -> importAction.run());
+        saveSet.addActionListener(event -> selectedSetName().ifPresent(saveSetAction));
+        loadSet.addActionListener(event -> selectedSetName().ifPresent(loadSetAction));
         updateActions();
         refreshTheme();
     }
 
     public void bind(CandidateModel model, ToIntFunction<CardInfo> ignoredQuantitySource) {
+        bind(model, CandidateWorkspaceState.transientState(), ignoredQuantitySource);
+    }
+
+    public void bind(CandidateModel model, CandidateWorkspaceState workspaceState,
+                     ToIntFunction<CardInfo> ignoredQuantitySource) {
         this.model = Objects.requireNonNull(model);
+        this.workspaceState = Objects.requireNonNull(workspaceState);
+        this.workspaceState.addListener(() -> {
+            if (SwingUtilities.isEventDispatchThread()) rebuild();
+            else SwingUtilities.invokeLater(this::rebuild);
+        });
     }
 
     private void moveDisplayedCandidate(String identity, int insertionIndex) {
@@ -96,77 +121,135 @@ public final class CandidatePanel extends JPanel {
         this.selectionAction = selectionAction == null ? ignored -> { } : selectionAction;
     }
 
+    public void setCandidateSetActions(Supplier<List<String>> names,
+                                       Consumer<String> save,
+                                       Consumer<String> load) {
+        candidateSetNames = names == null ? List::of : names;
+        saveSetAction = save == null ? ignored -> { } : save;
+        loadSetAction = load == null ? ignored -> { } : load;
+        refreshCandidateSetNames();
+    }
+
+    public void refreshCandidateSetNames() {
+        Object selected = candidateSets.getEditor().getItem();
+        candidateSets.removeAllItems();
+        for (String name : candidateSetNames.get()) candidateSets.addItem(name);
+        if (selected != null) candidateSets.getEditor().setItem(selected);
+        updateActions();
+    }
+
+    private Optional<String> selectedSetName() {
+        Object value = candidateSets.isEditable()
+                ? candidateSets.getEditor().getItem() : candidateSets.getSelectedItem();
+        if (value == null || value.toString().isBlank()) return Optional.empty();
+        return Optional.of(value.toString().strip());
+    }
+
     public void setEntries(List<CandidateModel.Entry> entries) {
         assertEdt();
-        List<CandidateRow> creatures = new ArrayList<>();
-        List<CandidateRow> noncreatures = new ArrayList<>();
-        List<CandidateRow> nonbasicLands = new ArrayList<>();
-        List<CandidateRow> unavailable = new ArrayList<>();
+        currentEntries = List.copyOf(entries == null ? List.of() : entries);
+        workspaceState.synchronize(currentEntries);
+        rebuild();
+    }
 
-        for (CandidateModel.Entry entry :
-                entries == null ? List.<CandidateModel.Entry>of() : entries) {
+    private void rebuild() {
+        assertEdt();
+        LinkedHashMap<String, List<CandidateRow>> rowsByCategory = new LinkedHashMap<>();
+        for (CandidateWorkspaceState.Category category : workspaceState.categories()) {
+            rowsByCategory.put(category.id(), new ArrayList<>());
+        }
+        rowsByCategory.put(CandidateWorkspaceState.UNCATEGORIZED, new ArrayList<>());
+        rowsByCategory.put(CandidateWorkspaceState.UNAVAILABLE, new ArrayList<>());
+
+        for (CandidateModel.Entry entry : currentEntries) {
             CandidateRow row = new CandidateRow(entry);
-            switch (category(row.card(), row.stale())) {
-                case CREATURES -> creatures.add(row);
-                case NONCREATURES -> noncreatures.add(row);
-                case NONBASIC_LANDS -> nonbasicLands.add(row);
-                case UNAVAILABLE -> unavailable.add(row);
-            }
+            String category = workspaceState.categoryFor(entry);
+            rowsByCategory.computeIfAbsent(category, ignored -> new ArrayList<>()).add(row);
         }
 
         List<CardCollectionSurface.Group> groups = new ArrayList<>();
-        groups.add(group("creatures", "Creatures", creatures));
-        groups.add(group("noncreatures", "Noncreatures", noncreatures));
-        groups.add(group("nonbasic-lands", "Nonbasic Lands", nonbasicLands));
-        if (!unavailable.isEmpty()) {
-            groups.add(group("unavailable", "Unavailable", unavailable));
+        List<CandidateWorkspaceState.Category> categories = workspaceState.categories();
+        for (int i = 0; i < categories.size(); i++) {
+            CandidateWorkspaceState.Category category = categories.get(i);
+            List<CandidateRow> rows = rowsByCategory.getOrDefault(category.id(), List.of());
+            if (rows.isEmpty()) continue;
+            groups.add(group(category, rows, i, categories.size()));
         }
+        List<CandidateRow> uncategorized =
+                rowsByCategory.getOrDefault(CandidateWorkspaceState.UNCATEGORIZED, List.of());
+        if (!uncategorized.isEmpty()) {
+            groups.add(new CardCollectionSurface.Group(
+                    CandidateWorkspaceState.UNCATEGORIZED,
+                    "Uncategorized (" + uncategorized.size() + ")", uncategorized));
+        }
+        List<CandidateRow> unavailable =
+                rowsByCategory.getOrDefault(CandidateWorkspaceState.UNAVAILABLE, List.of());
+        if (!unavailable.isEmpty()) {
+            groups.add(new CardCollectionSurface.Group(
+                    CandidateWorkspaceState.UNAVAILABLE,
+                    "Unavailable (" + unavailable.size() + ")", unavailable));
+        }
+
+        JButton addCategory = circularButton("+", "Add category");
+        addCategory.addActionListener(event -> {
+            String name = JOptionPane.showInputDialog(this, "Category name:", "Add candidate category",
+                    JOptionPane.PLAIN_MESSAGE);
+            if (name != null && !name.isBlank()) workspaceState.addCategory(name);
+        });
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+        footer.setOpaque(false);
+        footer.add(addCategory);
+        surface.setFooter(footer);
         surface.setGroups(groups);
         updateActions();
         syncScrollbarEnabled(scroll.getVerticalScrollBar());
     }
 
-    private static CardCollectionSurface.Group group(
-            String id, String title, List<? extends CardCollectionSurface.Row> rows) {
+    private CardCollectionSurface.Group group(CandidateWorkspaceState.Category category,
+                                               List<CandidateRow> rows,
+                                               int categoryIndex, int categoryCount) {
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 2));
+        buttons.setOpaque(false);
+        JButton up = circularButton("↑", "Move category up");
+        JButton down = circularButton("↓", "Move category down");
+        JButton removeCategory = circularButton("−", "Remove category");
+        up.setEnabled(categoryIndex > 0);
+        down.setEnabled(categoryIndex + 1 < categoryCount);
+        up.addActionListener(event -> workspaceState.moveCategory(category.id(), -1));
+        down.addActionListener(event -> workspaceState.moveCategory(category.id(), 1));
+        removeCategory.addActionListener(event ->
+                workspaceState.removeCategory(category.id(), currentEntries));
+        buttons.add(up);
+        buttons.add(down);
+        buttons.add(removeCategory);
         return new CardCollectionSurface.Group(
-                id, title + " (" + rows.size() + ")", new ArrayList<>(rows));
+                category.id(), category.name() + " (" + rows.size() + ")", rows, buttons);
     }
 
-    private static CandidateCategory category(CardInfo card, boolean stale) {
-        if (stale || card == null) return CandidateCategory.UNAVAILABLE;
-        String typeLine = Optional.ofNullable(card.effectiveTypeLine())
-                .orElse("").toLowerCase(Locale.ROOT);
-        if (typeLine.contains("creature")) return CandidateCategory.CREATURES;
-        if (typeLine.contains("land") && !typeLine.contains("basic land")) {
-            return CandidateCategory.NONBASIC_LANDS;
-        }
-        return CandidateCategory.NONCREATURES;
+    private static JButton circularButton(String text, String tooltip) {
+        JButton button = new JButton(text);
+        button.setToolTipText(tooltip);
+        button.setMargin(new Insets(0, 0, 0, 0));
+        button.setPreferredSize(new Dimension(24, 24));
+        button.setMinimumSize(new Dimension(24, 24));
+        button.setMaximumSize(new Dimension(24, 24));
+        button.setFocusable(true);
+        return button;
     }
 
-    public List<String> identities() {
-        return surface.identities();
-    }
-
-    Optional<String> selectedIdentity() {
-        return surface.selectedIdentity();
-    }
-
-    JComponent candidateSurface() {
-        return surface;
-    }
-
-    List<JComponent> candidateRows() {
-        return surface.rowComponents();
-    }
-
-    JScrollPane candidateScrollPane() {
-        return scroll;
-    }
+    public List<String> identities() { return surface.identities(); }
+    Optional<String> selectedIdentity() { return surface.selectedIdentity(); }
+    JComponent candidateSurface() { return surface; }
+    List<JComponent> candidateRows() { return surface.rowComponents(); }
+    JScrollPane candidateScrollPane() { return scroll; }
 
     private void updateActions() {
         remove.setEnabled(surface.selectedIdentity().isPresent());
         clear.setEnabled(!surface.identities().isEmpty());
         magicSort.setEnabled(surface.identities().size() > 1);
+        loadSet.setEnabled(candidateSets.getItemCount() > 0
+                || (candidateSets.getEditor().getItem() != null
+                    && !candidateSets.getEditor().getItem().toString().isBlank()));
     }
 
     private void refreshTheme() {
@@ -188,13 +271,6 @@ public final class CandidatePanel extends JPanel {
         }
     }
 
-    private enum CandidateCategory {
-        CREATURES,
-        NONCREATURES,
-        NONBASIC_LANDS,
-        UNAVAILABLE
-    }
-
     private final class CandidateRow extends JPanel implements CardCollectionSurface.Row {
         private final String identity;
         private final CardInfo card;
@@ -211,7 +287,6 @@ public final class CandidatePanel extends JPanel {
             setMaximumSize(new Dimension(460, 60));
             setBorder(new EmptyBorder(3, 3, 3, 3));
             setOpaque(false);
-
             if (stale) {
                 JLabel label = new JLabel("Unavailable card — stale; keep or remove");
                 label.setBorder(new EmptyBorder(6, 8, 6, 8));
@@ -223,21 +298,10 @@ public final class CandidatePanel extends JPanel {
             setSelected(false);
         }
 
-        @Override public String identity() {
-            return identity;
-        }
-
-        @Override public JComponent component() {
-            return this;
-        }
-
-        CardInfo card() {
-            return card;
-        }
-
-        boolean stale() {
-            return stale;
-        }
+        @Override public String identity() { return identity; }
+        @Override public JComponent component() { return this; }
+        CardInfo card() { return card; }
+        boolean stale() { return stale; }
 
         @Override public void setSelected(boolean selected) {
             Color base = AppColors.color("Panel.background", new Color(0x202328));

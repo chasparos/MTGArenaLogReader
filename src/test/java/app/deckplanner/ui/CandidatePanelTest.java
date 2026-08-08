@@ -166,6 +166,33 @@ class CandidatePanelTest {
         assertTrue(chip.getPreferredSize().height > 38);
     }
 
+
+    @Test
+    void editableCategoryRemovalMovesCardsToImplicitUncategorizedAndShowsInlineAddControl() throws Exception {
+        CardInfo creature = card("oracle:creature", "Creature Card");
+        creature.setTypeLine("Creature — Wizard");
+        CandidateModel model = new CandidateModel(List.of("oracle:creature"), ignored -> { });
+        app.deckplanner.candidate.CandidateWorkspaceState workspace =
+                app.deckplanner.candidate.CandidateWorkspaceState.transientState();
+        AtomicReference<CandidatePanel> ref = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.bind(model, workspace, ignored -> -1);
+            panel.setEntries(model.resolve(index(creature)));
+            ref.set(panel);
+        });
+
+        AbstractButton removeCategory = findButtonByTooltip(ref.get(), "Remove category");
+        assertNotNull(removeCategory);
+        SwingUtilities.invokeAndWait(removeCategory::doClick);
+
+        assertTrue(componentText(ref.get()).contains("Uncategorized (1)"));
+        assertNotNull(findButtonByTooltip(ref.get(), "Add category"));
+        assertEquals(app.deckplanner.candidate.CandidateWorkspaceState.UNCATEGORIZED,
+                workspace.assignments().get("oracle:creature"));
+    }
+
     private static String componentText(Component component) {
         if (component instanceof JLabel label) return Optional.ofNullable(label.getText()).orElse("");
         if (!(component instanceof Container container)) return "";
@@ -198,6 +225,18 @@ class CandidatePanelTest {
         card.setOracleText("Draw a card.");
         card.setKeywords(List.of());
         return card;
+    }
+
+
+    private static AbstractButton findButtonByTooltip(Container root, String tooltip) {
+        for (Component child : root.getComponents()) {
+            if (child instanceof AbstractButton button && tooltip.equals(button.getToolTipText())) return button;
+            if (child instanceof Container container) {
+                AbstractButton nested = findButtonByTooltip(container, tooltip);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
     }
 
     private static AbstractButton findButton(Container root, String text) {

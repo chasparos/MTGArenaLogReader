@@ -5,6 +5,8 @@ import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.collection.CollectionQuantity;
 import app.deckplanner.candidate.CandidateModel;
 import app.deckplanner.candidate.CandidateRepository;
+import app.deckplanner.candidate.CandidateSetRepository;
+import app.deckplanner.candidate.CandidateWorkspaceState;
 import app.deckplanner.candidate.CardNameRepository;
 import app.deckplanner.candidate.DeckCacheKnownArenaDeckSource;
 import app.deck.persistence.DeckCache;
@@ -167,6 +169,9 @@ public final class DeckPlannerWorkspacePreview {
         CatalogFilterIndex index = new CatalogFilterIndex(snapshot);
 
         CandidateRepository repository = new CandidateRepository(databasePath);
+        CandidateSetRepository candidateSets = new CandidateSetRepository(databasePath);
+        CandidateWorkspaceState workspaceState = new CandidateWorkspaceState(
+                candidateSets.loadWorkspace(), candidateSets::replaceWorkspace);
         CandidateModel candidates =
                 CandidateModel.persisted(repository, Runnable::run);
         if (candidates.identities().isEmpty()) candidates.add(initialCandidates(snapshot));
@@ -175,7 +180,7 @@ public final class DeckPlannerWorkspacePreview {
                 new DeckPlannerFilterModel("standard"), index, imageSource,
                 scheduler, worker, Duration.ofMillis(120), availability,
                 candidates, ignored -> CollectionQuantity.UNKNOWN,
-                cardNames, knownDecks);
+                cardNames, knownDecks, workspaceState, candidateSets);
 
 
         String sampleArenaDeck = sampleArenaDeck(snapshot);
@@ -227,7 +232,7 @@ public final class DeckPlannerWorkspacePreview {
         content.setBackground(AppColors.color("Panel.background", new Color(0x202328)));
         content.add(review, BorderLayout.NORTH);
         content.add(workspace, BorderLayout.CENTER);
-        return new PreviewSession(content, workspace, scheduler, worker, repository,
+        return new PreviewSession(content, workspace, scheduler, worker, repository, candidateSets,
                 nameLookup, observedCardCache, observedDeckCache);
     }
 
@@ -338,7 +343,7 @@ public final class DeckPlannerWorkspacePreview {
 
     record PreviewSession(JComponent content, DeckPlannerWorkspace workspace,
                           ScheduledExecutorService scheduler, ExecutorService worker,
-                          CandidateRepository repository,
+                          CandidateRepository repository, CandidateSetRepository candidateSets,
                           ScryfallClient nameLookup, CardCache observedCardCache,
                           DeckCache observedDeckCache) implements AutoCloseable {
         @Override public void close() {
@@ -346,6 +351,7 @@ public final class DeckPlannerWorkspacePreview {
             scheduler.shutdownNow();
             worker.shutdownNow();
             repository.close();
+            candidateSets.close();
             if (observedDeckCache != null) observedDeckCache.close();
             if (observedCardCache != null) observedCardCache.close();
             if (nameLookup != null) nameLookup.close();

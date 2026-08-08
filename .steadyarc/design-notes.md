@@ -51,3 +51,8 @@ The candidate workspace is a category board rather than a list. Selection should
 The catalog and candidate board should share Magic-aware ordering and drag semantics. Catalog cards are intentionally larger for human reading, selected catalog cards use a golden outline in dark mode, and cross-surface drag/drop should eventually use the replay-chip painter for its drag image.
 
 Logical candidate identity remains separate from printing/art choice. Alternate printings may be browsed and one art may be favored for presentation without duplicating the logical candidate. A known card that is outside the selected legal format is still resolvable and should be marked Illegal rather than treated as missing.
+
+
+## Candidate categories and Candidate Sets
+
+Candidate categories are planner organization, not card facts or ownership. Category order is user-controlled. Removing a category must preserve its cards by moving them into an implicit `Uncategorized` category; `Uncategorized` should disappear when empty. Named Candidate Sets preserve an ordered candidate membership plus the planner category organization so a human can save and revisit alternative deck-building directions without treating those sets as observed Arena decks.

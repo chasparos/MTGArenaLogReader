@@ -190,6 +190,8 @@ Human-feedback iteration 2 plan (2026-08-08), in implementation order:
 
 1. **Candidate vocabulary and visual/layout foundation.** Complete the active DP-06 vocabulary migration to **Candidates** across current code and documentation while preserving historical handoff evidence. Fix wrapped category layout so every card and header count remains visible after resize/update. Candidate selection uses a precise replay-chip outline rather than a rectangular row highlight. Increase catalog card side length by 25%, use the shared MTG ordering for catalog presentation, and restore the dark-mode golden selection outline.
 2. **Editable candidate categories and named Candidate Sets.** Persist category order and membership; add/remove/reorder categories, move cards from a removed category into an implicit `Uncategorized` category that disappears while empty, and expose an inline add-category control below populated groups. Add save/load for named Candidate Sets without conflating a saved set with Arena deck ownership.
+
+   Current implementation slice: category order and explicit card-to-category assignments are persisted independently from candidate membership; removing a category preserves its current cards by assigning them to implicit `Uncategorized`; empty `Uncategorized` is not rendered. Category headers expose compact move-up/move-down/remove controls and the candidate surface exposes an inline circular `+` category control. Named Candidate Sets persist and restore ordered candidate membership together with the category snapshot; they remain planner artifacts and do not imply Arena ownership.
 3. **Multi-selection and cross-surface drag/drop.** Extend the candidate surface to Windows-style multi-selection, drag multiple selected candidates together, accept catalog-card drops into candidate categories, and use a scaled replay-chip drag image with insertion/category feedback.
 4. **Alternate-art/name resolution and legality visibility.** Make logical-card resolution expose alternate Arena/Scryfall printings, collector-visible favorite art selection, and an explicit Illegal indicator when a resolved card exists but is outside the selected legal format. This must preserve logical candidate identity and must not infer ownership.
 
@@ -226,7 +228,7 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-06 — Candidate workspace` remains active after the first real-card click review. The acceptance harness itself is validated at the clean 233-test baseline `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; the 2026-08-08 human review opened the bounded cache/import/category/rendering iteration recorded above. Apply and validate that pass, then return to UX/design-focused human review. Do not start DP-07 until DP-06 is explicitly accepted.
+`DP-06 — Candidate workspace` remains active. Candidate vocabulary/layout/presentation is validated at the clean 244-test baseline `a509dcca9f3aa810cd91ff31e2155f90fc94870a`. The active implementation slice is editable persisted categories plus named Candidate Sets. After repository-side validation, continue to the planned multi-selection/cross-surface drag/drop slice; do not start DP-07 until DP-06 is explicitly accepted.
 
 ### Current planning decisions
 
