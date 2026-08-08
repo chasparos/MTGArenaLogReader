@@ -309,15 +309,30 @@ class DeckPlannerWorkspaceTest {
         });
 
         SwingUtilities.invokeAndWait(() -> {
+            ref.get().setSize(1400, 800);
+            ref.get().doLayout();
+            JLayeredPane layer = findComponent(ref.get(), JLayeredPane.class);
+            assertNotNull(layer);
+            layer.doLayout();
+
             AbstractButton expand = findButtonByTooltip(ref.get(), "Expand candidates");
             assertNotNull(expand);
+            assertFalse(expand.isOpaque());
+            assertFalse(expand.isContentAreaFilled());
+            int collapsedX = expand.getX();
             expand.doClick();
             assertEquals(760, ref.get().candidates().getPreferredSize().width);
+            assertTrue(expand.getX() < collapsedX,
+                    "candidate boundary control should move immediately with the resized panel");
 
             AbstractButton hide = findButtonByTooltip(ref.get(), "Hide filters");
             assertNotNull(hide);
+            assertFalse(hide.isOpaque());
+            int shownX = hide.getX();
             hide.doClick();
             assertEquals("Show filters", hide.getToolTipText());
+            assertTrue(hide.getX() <= shownX,
+                    "filter boundary control should reposition immediately when filters hide");
         });
         SwingUtilities.invokeAndWait(ref.get()::close);
     }
@@ -336,6 +351,17 @@ class DeckPlannerWorkspaceTest {
         card.setColors(List.of(color)); card.setColorIdentity(List.of(color));
         card.setTypeLine(type); card.setCmc(2.0); card.setOracleText(oracle); card.setKeywords(List.of());
         return card;
+    }
+
+    private static <T extends Component> T findComponent(Container root, Class<T> type) {
+        for (Component component : root.getComponents()) {
+            if (type.isInstance(component)) return type.cast(component);
+            if (component instanceof Container container) {
+                T nested = findComponent(container, type);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
     }
 
     private static AbstractButton findButton(Container root, String text) {

@@ -52,14 +52,14 @@ public final class CandidatePanel extends JPanel {
     private static final DataFlavor CATEGORY_FLAVOR = categoryFlavor();
 
     public CandidatePanel() {
-        super(new BorderLayout(6, 6));
-        setBorder(new EmptyBorder(8, 8, 8, 8));
+        super(new BorderLayout(3, 3));
+        setBorder(new EmptyBorder(4, 4, 4, 4));
         JLabel title = new JLabel("Candidates");
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
         surface.setTransferSource("candidates");
-        surface.setWrapGaps(4, 4);
+        surface.setWrapGaps(2, 2);
         surface.setDropHandler(this::handleDrop);
         surface.setDragImageProvider(this::dragImage);
         surface.setSelectionListener(selection -> {

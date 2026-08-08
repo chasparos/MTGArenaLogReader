@@ -18,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -159,9 +160,19 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         assertEdt();
         String selectedIdentity = identityAt(selectedIndex);
         String focusedIdentity = identityAt(focusedIndex);
+        Map<String, String> previousPresentations = this.cards.stream().collect(
+                java.util.stream.Collectors.toMap(BrowserCard::identity,
+                        CardBrowserPanel::presentationKey, (left, right) -> left));
         generation++;
         cancelAllPending();
         this.cards = List.copyOf(cards == null ? List.of() : cards);
+        for (BrowserCard card : this.cards) {
+            String previous = previousPresentations.get(card.identity());
+            if (previous != null && !Objects.equals(previous, presentationKey(card))) {
+                removeCachedFaces(card.identity());
+                visibleFaceByIdentity.remove(card.identity());
+            }
+        }
         Set<String> available = this.cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
         selectedIdentities.retainAll(available);
         visibleFaceByIdentity.keySet().retainAll(available);
@@ -337,6 +348,12 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     private static String imageKey(String identity, int faceIndex) {
         return identity + "#face=" + Math.max(0, faceIndex);
+    }
+
+    private void removeCachedFaces(String identity) {
+        if (identity == null) return;
+        String prefix = identity + "#face=";
+        images.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     private void handleMousePressed(MouseEvent event) {
@@ -567,6 +584,13 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             future.cancel(true);
         }
         pending.clear();
+    }
+
+    private static String presentationKey(BrowserCard card) {
+        if (card == null || card.card() == null) return "";
+        CardInfo info = card.card();
+        return Objects.toString(info.getId(), "") + "|" + Objects.toString(info.getSet(), "")
+                + "|" + Objects.toString(info.getCollectorNumber(), "");
     }
 
     private String identityAt(int index) {

@@ -252,26 +252,34 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         JLayeredPane workspaceLayer = new JLayeredPane() {
             @Override public void doLayout() {
                 columns.setBounds(0, 0, getWidth(), getHeight());
-                int diameter = 28;
-                int y = Math.max(4, (getHeight() - diameter) / 2);
-                int filterX = filterScroll.isVisible()
-                        ? filterRegion.getWidth() - diameter / 2 : 0;
-                int candidateX = getWidth() - candidateRegion.getWidth() - diameter / 2;
-                filterToggle.setBounds(Math.max(0, filterX), y, diameter, diameter);
-                candidateToggle.setBounds(
-                        Math.max(0, Math.min(getWidth() - diameter, candidateX)),
-                        y, diameter, diameter);
+                columns.doLayout();
+                filterRegion.doLayout();
+                candidateRegion.doLayout();
+                positionWorkspaceToggles(this, filterToggle, candidateToggle);
             }
         };
         workspaceLayer.add(columns, JLayeredPane.DEFAULT_LAYER);
         workspaceLayer.add(filterToggle, JLayeredPane.PALETTE_LAYER);
         workspaceLayer.add(candidateToggle, JLayeredPane.PALETTE_LAYER);
+        java.awt.event.ComponentAdapter overlayRelayout = new java.awt.event.ComponentAdapter() {
+            @Override public void componentResized(java.awt.event.ComponentEvent event) {
+                SwingUtilities.invokeLater(() -> {
+                    if (!workspaceLayer.isDisplayable() && workspaceLayer.getWidth() <= 0) return;
+                    workspaceLayer.doLayout();
+                    workspaceLayer.repaint();
+                });
+            }
+        };
+        filterRegion.addComponentListener(overlayRelayout);
+        candidateRegion.addComponentListener(overlayRelayout);
+        workspaceLayer.addComponentListener(overlayRelayout);
 
         filterToggle.addActionListener(event -> {
             boolean visible = filterScroll.isVisible();
             filterScroll.setVisible(!visible);
             filterToggle.setToolTipText(visible ? "Show filters" : "Hide filters");
             workspaceLayer.revalidate();
+            workspaceLayer.doLayout();
             workspaceLayer.repaint();
         });
         candidateToggle.addActionListener(event -> {
@@ -282,6 +290,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             candidateToggle.setToolTipText(candidatesExpanded
                     ? "Contract candidates" : "Expand candidates");
             workspaceLayer.revalidate();
+            workspaceLayer.doLayout();
             workspaceLayer.repaint();
         });
 
@@ -668,12 +677,49 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         return rail;
     }
 
+    private void positionWorkspaceToggles(JLayeredPane layer, JButton filterToggle,
+                                          JButton candidateToggle) {
+        int diameter = 28;
+        int y = Math.max(4, (layer.getHeight() - diameter) / 2);
+        int filterX = filterScroll.isVisible() ? filterRegion.getWidth() - diameter / 2 : 0;
+        int candidateX = layer.getWidth() - candidateRegion.getWidth() - diameter / 2;
+        filterToggle.setBounds(Math.max(0, Math.min(layer.getWidth() - diameter, filterX)),
+                y, diameter, diameter);
+        candidateToggle.setBounds(Math.max(0, Math.min(layer.getWidth() - diameter, candidateX)),
+                y, diameter, diameter);
+    }
+
     private static JButton overlayToggle(Icon icon, String tooltip) {
-        JButton button = new JButton(icon);
+        JButton button = new JButton(icon) {
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                try {
+                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                            RenderingHints.VALUE_ANTIALIAS_ON);
+                    super.paintComponent(g);
+                } finally {
+                    g.dispose();
+                }
+            }
+
+            @Override protected void paintBorder(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                try {
+                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                            RenderingHints.VALUE_ANTIALIAS_ON);
+                    g.setColor(AppColors.color("Separator.foreground", new Color(0x6B7078)));
+                    g.drawOval(1, 1, Math.max(0, getWidth() - 3), Math.max(0, getHeight() - 3));
+                } finally {
+                    g.dispose();
+                }
+            }
+        };
         button.setToolTipText(tooltip);
         button.setMargin(new Insets(0, 0, 0, 0));
         button.setFocusable(true);
-        button.setOpaque(true);
+        button.setOpaque(false);
+        button.setContentAreaFilled(false);
+        button.setBorderPainted(false);
         button.setPreferredSize(new Dimension(28, 28));
         return button;
     }

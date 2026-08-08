@@ -247,4 +247,42 @@ class CardBrowserPanelTest {
         });
     }
 
+    @Test
+    void changingPrintingForSameLogicalIdentityInvalidatesCachedImage() throws Exception {
+        java.util.List<String> requestedPrintings = new java.util.ArrayList<>();
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> {
+                        requestedPrintings.add(card.card() == null ? "" : card.card().getId());
+                        return CompletableFuture.completedFuture(Optional.of(
+                                new BufferedImage(63, 88, BufferedImage.TYPE_INT_RGB)));
+                    });
+            holder[0].setSize(120, 500);
+            app.model.card.CardInfo first = new app.model.card.CardInfo();
+            first.setId("printing-a");
+            first.setOracleId("logical");
+            first.setName("Alpha");
+            holder[0].setCards(List.of(new CardBrowserPanel.BrowserCard(
+                    "oracle:logical", "Alpha", 2, first, true)));
+            holder[0].updateViewport(new Rectangle(0, 0, 120, 100));
+        });
+        SwingUtilities.invokeAndWait(() -> { });
+
+        SwingUtilities.invokeAndWait(() -> {
+            app.model.card.CardInfo second = new app.model.card.CardInfo();
+            second.setId("printing-b");
+            second.setOracleId("logical");
+            second.setName("Alpha");
+            holder[0].setCards(List.of(new CardBrowserPanel.BrowserCard(
+                    "oracle:logical", "Alpha", 2, second, true)));
+            holder[0].updateViewport(new Rectangle(0, 0, 120, 100));
+        });
+        SwingUtilities.invokeAndWait(() -> { });
+
+        assertEquals(List.of("printing-a", "printing-b"), requestedPrintings);
+    }
+
 }
