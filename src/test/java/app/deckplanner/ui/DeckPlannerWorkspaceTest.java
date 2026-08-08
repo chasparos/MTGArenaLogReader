@@ -319,6 +319,9 @@ class DeckPlannerWorkspaceTest {
             assertNotNull(expand);
             assertFalse(expand.isOpaque());
             assertFalse(expand.isContentAreaFilled());
+            assertTrue(expand.contains(expand.getWidth() / 2, expand.getHeight() / 2));
+            assertFalse(expand.contains(0, 0),
+                    "floating boundary control should use a circular hit/rollover shape");
             int collapsedX = expand.getX();
             expand.doClick();
             assertEquals(760, ref.get().candidates().getPreferredSize().width);

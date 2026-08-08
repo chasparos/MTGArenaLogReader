@@ -287,10 +287,14 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             Dimension size = candidatesExpanded
                     ? new Dimension(760, 600) : new Dimension(470, 600);
             candidatePanel.setPreferredSize(size);
+            candidateRegion.setPreferredSize(size);
+            columns.invalidate();
+            columns.doLayout();
+            candidateRegion.doLayout();
+            positionWorkspaceToggles(workspaceLayer, filterToggle, candidateToggle);
             candidateToggle.setToolTipText(candidatesExpanded
                     ? "Contract candidates" : "Expand candidates");
             workspaceLayer.revalidate();
-            workspaceLayer.doLayout();
             workspaceLayer.repaint();
         });
 
@@ -691,27 +695,44 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
 
     private static JButton overlayToggle(Icon icon, String tooltip) {
         JButton button = new JButton(icon) {
+            @Override public boolean contains(int x, int y) {
+                double radius = Math.min(getWidth(), getHeight()) / 2.0;
+                double dx = x - getWidth() / 2.0;
+                double dy = y - getHeight() / 2.0;
+                return dx * dx + dy * dy <= radius * radius;
+            }
+
             @Override protected void paintComponent(Graphics graphics) {
                 Graphics2D g = (Graphics2D) graphics.create();
                 try {
                     g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                             RenderingHints.VALUE_ANTIALIAS_ON);
-                    super.paintComponent(g);
+                    ButtonModel model = getModel();
+                    if (model.isPressed() || model.isRollover()) {
+                        Color rollover = AppColors.color("Button.background", new Color(0x343941));
+                        int alpha = model.isPressed() ? 180 : 110;
+                        g.setColor(new Color(rollover.getRed(), rollover.getGreen(),
+                                rollover.getBlue(), alpha));
+                        g.fillOval(1, 1, Math.max(0, getWidth() - 3),
+                                Math.max(0, getHeight() - 3));
+                    }
+                    Icon current = getIcon();
+                    if (current != null) {
+                        int x = (getWidth() - current.getIconWidth()) / 2;
+                        int y = (getHeight() - current.getIconHeight()) / 2;
+                        current.paintIcon(this, g, x, y);
+                    }
+                    g.setColor(AppColors.color("Separator.foreground", new Color(0x6B7078)));
+                    g.drawOval(1, 1, Math.max(0, getWidth() - 3),
+                            Math.max(0, getHeight() - 3));
                 } finally {
                     g.dispose();
                 }
             }
 
             @Override protected void paintBorder(Graphics graphics) {
-                Graphics2D g = (Graphics2D) graphics.create();
-                try {
-                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                            RenderingHints.VALUE_ANTIALIAS_ON);
-                    g.setColor(AppColors.color("Separator.foreground", new Color(0x6B7078)));
-                    g.drawOval(1, 1, Math.max(0, getWidth() - 3), Math.max(0, getHeight() - 3));
-                } finally {
-                    g.dispose();
-                }
+                // The complete control chrome is painted in paintComponent so the
+                // look-and-feel cannot add a rectangular rollover/border.
             }
         };
         button.setToolTipText(tooltip);
@@ -720,6 +741,8 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         button.setOpaque(false);
         button.setContentAreaFilled(false);
         button.setBorderPainted(false);
+        button.setFocusPainted(false);
+        button.setRolloverEnabled(true);
         button.setPreferredSize(new Dimension(28, 28));
         return button;
     }
