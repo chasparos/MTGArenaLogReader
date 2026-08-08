@@ -40,6 +40,8 @@ public final class CardView extends JComponent {
     private boolean focused;
     private int alternateArtCount;
     private boolean alternateArtKnown = true;
+    private int visibleFaceIndex;
+    private boolean multiFaced;
 
     public CardView() {
         setOpaque(false);
@@ -51,7 +53,7 @@ public final class CardView extends JComponent {
                           boolean selected,
                           boolean candidate,
                           boolean focused) {
-        configure(name, null, image, hovered, selected, candidate, focused, 1, true);
+        configure(name, null, image, hovered, selected, candidate, focused, 1, true, 0);
     }
 
     public void configure(String name,
@@ -61,7 +63,7 @@ public final class CardView extends JComponent {
                           boolean candidate,
                           boolean focused,
                           int alternateArtCount) {
-        configure(name, null, image, hovered, selected, candidate, focused, alternateArtCount, true);
+        configure(name, null, image, hovered, selected, candidate, focused, alternateArtCount, true, 0);
     }
 
     public void configure(String name,
@@ -73,6 +75,20 @@ public final class CardView extends JComponent {
                           boolean focused,
                           int alternateArtCount,
                           boolean alternateArtKnown) {
+        configure(name, card, image, hovered, selected, candidate, focused,
+                alternateArtCount, alternateArtKnown, 0);
+    }
+
+    public void configure(String name,
+                          CardInfo card,
+                          BufferedImage image,
+                          boolean hovered,
+                          boolean selected,
+                          boolean candidate,
+                          boolean focused,
+                          int alternateArtCount,
+                          boolean alternateArtKnown,
+                          int visibleFaceIndex) {
         this.name = name == null || name.isBlank() ? "Unknown card" : name;
         this.card = card;
         this.image = image;
@@ -82,6 +98,8 @@ public final class CardView extends JComponent {
         this.focused = focused;
         this.alternateArtCount = Math.max(1, alternateArtCount);
         this.alternateArtKnown = alternateArtKnown;
+        this.visibleFaceIndex = Math.max(0, visibleFaceIndex);
+        this.multiFaced = card != null && card.getCardFaces() != null && card.getCardFaces().size() > 1;
     }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -129,13 +147,36 @@ public final class CardView extends JComponent {
             if (hovered) stroke(g, width, height, HOVERED, 2f);
             if (selected) stroke(g, width, height, SELECTED, 3f);
             if (candidate) paintCandidateBadge(g, width);
-            if (!alternateArtKnown || alternateArtCount > 1) paintAlternateArtBadge(g, width, alternateArtCount, alternateArtKnown);
+            if (!alternateArtKnown || alternateArtCount > 1) {
+                paintAlternateArtBadge(g, width, alternateArtCount, alternateArtKnown);
+            }
+            if (multiFaced) paintFaceToggleBadge(g, width, height, visibleFaceIndex);
             if (focused) stroke(g, width, height, FOCUSED, 2f);
         } finally {
             g.dispose();
         }
     }
 
+
+    static Rectangle faceToggleBadgeBounds(int width, int height) {
+        int size = 34;
+        return new Rectangle(Math.max(6, width - size - 8), Math.max(6, height - size - 8), size, size);
+    }
+
+    private static void paintFaceToggleBadge(Graphics2D g, int width, int height, int faceIndex) {
+        Rectangle badge = faceToggleBadgeBounds(width, height);
+        g.setColor(new Color(0xD8202328, true));
+        g.fillOval(badge.x, badge.y, badge.width, badge.height);
+        g.setColor(new Color(0xE8C66A));
+        g.setStroke(new BasicStroke(1.6f));
+        g.drawOval(badge.x, badge.y, badge.width, badge.height);
+        g.setFont(g.getFont().deriveFont(Font.BOLD, 14f));
+        String label = faceIndex <= 0 ? "↻" : "↺";
+        FontMetrics metrics = g.getFontMetrics();
+        g.drawString(label,
+                badge.x + (badge.width - metrics.stringWidth(label)) / 2,
+                badge.y + (badge.height + metrics.getAscent() - metrics.getDescent()) / 2);
+    }
 
     static Rectangle alternateArtBadgeBounds(int width) {
         return new Rectangle(6, 6, 38, 24);

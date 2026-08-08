@@ -68,7 +68,11 @@ public final class CandidateWorkspaceState {
         if (entries != null) {
             for (CandidateModel.Entry entry : entries) live.add(entry.identity());
         }
-        if (assignments.keySet().removeIf(identity -> !live.contains(identity))) commit();
+        boolean changed = assignments.keySet().removeIf(identity -> !live.contains(identity));
+        Set<String> usedCategories = new HashSet<>(assignments.values());
+        changed |= categories.removeIf(category -> !defaultCategoryId(category.id())
+                && !usedCategories.contains(category.id()));
+        if (changed) commit();
     }
 
     public Category addCategory(String name) {
@@ -108,6 +112,23 @@ public final class CandidateWorkspaceState {
         if (from == to) return;
         Category moved = categories.remove(from);
         categories.add(to, moved);
+        commit();
+    }
+
+
+    public void moveCategoryBefore(String sourceId, String targetId) {
+        if (sourceId == null || targetId == null || sourceId.equals(targetId)) return;
+        int from = -1;
+        int target = -1;
+        for (int i = 0; i < categories.size(); i++) {
+            String id = categories.get(i).id();
+            if (id.equals(sourceId)) from = i;
+            if (id.equals(targetId)) target = i;
+        }
+        if (from < 0 || target < 0) return;
+        Category moved = categories.remove(from);
+        if (from < target) target--;
+        categories.add(Math.max(0, Math.min(target, categories.size())), moved);
         commit();
     }
 
@@ -155,6 +176,10 @@ public final class CandidateWorkspaceState {
         Snapshot snapshot = snapshot();
         persistence.accept(snapshot);
         for (Runnable listener : List.copyOf(listeners)) listener.run();
+    }
+
+    private static boolean defaultCategoryId(String id) {
+        return CREATURES.equals(id) || NONCREATURES.equals(id) || NONBASIC_LANDS.equals(id);
     }
 
     private static boolean reserved(String id) {

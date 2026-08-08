@@ -69,3 +69,14 @@ Filters and Candidates are adjustable workspace regions. Filters may be hidden/r
 
 A known card without a downloaded image is still a real card. Render a shadow-card placeholder with a large faint question mark and the shared replay card chip as its header rather than presenting it like an unresolved card.
 
+
+
+## DP-06 candidate-workspace interaction polish (2026-08-08)
+
+Favorite art is one persistent presentation preference per logical card and must be honored anywhere that logical card is rendered, including the Catalog. Art selection is an explicit Catalog action: the chooser should behave like a transient image strip, close on selection or loss of focus, and should not become part of normal Candidate clicking.
+
+Candidate categories are compact planning lanes. They may be collapsed, reordered by drag and drop, and populated by dropping cards. Empty ad-hoc categories should not become durable clutter. Dropping cards on the new-category affordance creates the category around those cards and then asks the human to name it.
+
+Workspace visibility controls belong to a parent overlay layer centered over the panel boundary they control rather than consuming layout width. Candidate selection should help visual comparison by scrolling the Catalog to the same card when that card is already present under the current filters.
+
+Candidate category transfer is planner-local UI state. The category drag flavor must not be accepted by the Catalog or other card surfaces.

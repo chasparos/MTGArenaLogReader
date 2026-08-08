@@ -88,4 +88,21 @@ class CardViewTest {
         assertTrue(bounds.x < 50);
     }
 
+
+    @Test
+    void twoSidedCardsExposeFaceToggleMedallionBounds() {
+        CardInfo card = new CardInfo();
+        card.setName("Front // Back");
+        card.setCardFaces(java.util.List.of(new app.model.card.CardFaceInfo(), new app.model.card.CardFaceInfo()));
+
+        CardView view = new CardView();
+        view.setSize(275, 385);
+        view.configure(card.getName(), card, null, false, false, false, false, 1, true, 0);
+
+        java.awt.Rectangle badge = CardView.faceToggleBadgeBounds(275, 385);
+        assertTrue(badge.width > 0);
+        assertTrue(badge.height > 0);
+        assertTrue(badge.x + badge.width <= 275);
+        assertTrue(badge.y + badge.height <= 385);
+    }
 }

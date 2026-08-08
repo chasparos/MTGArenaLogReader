@@ -34,9 +34,12 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         void dropped(String source, List<String> identities, int insertionIndex, String groupId);
     }
 
-    public record Group(String id, String title, List<? extends Row> rows, JComponent trailingHeader) {
+    public record Group(String id, String title, List<? extends Row> rows, JComponent trailingHeader, boolean collapsed) {
         public Group(String id, String title, List<? extends Row> rows) {
-            this(id, title, rows, null);
+            this(id, title, rows, null, false);
+        }
+        public Group(String id, String title, List<? extends Row> rows, JComponent trailingHeader) {
+            this(id, title, rows, trailingHeader, false);
         }
         public Group {
             id = id == null ? "" : id;
@@ -60,6 +63,8 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
     private int selectionAnchor = -1;
     private int dropIndex = -1;
     private JComponent footer;
+    private int horizontalGap = 8;
+    private int verticalGap = 8;
 
     public CardCollectionSurface() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -86,6 +91,11 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         return scroll;
     }
 
+    public void setWrapGaps(int horizontal, int vertical) {
+        horizontalGap = Math.max(0, horizontal);
+        verticalGap = Math.max(0, vertical);
+    }
+
     public void setRows(List<? extends Row> nextRows) {
         setGroups(List.of(new Group("", "", nextRows)));
     }
@@ -101,7 +111,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         if (groups != null) {
             for (Group group : groups) {
                 if (group == null || group.rows().isEmpty()) continue;
-                JPanel body = new JPanel(new WrapLayout(FlowLayout.LEFT, 8, 8));
+                JPanel body = new JPanel(new WrapLayout(FlowLayout.LEFT, horizontalGap, verticalGap));
                 body.setName("card-collection-group-body-" + group.id());
                 body.setOpaque(false);
                 body.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -129,6 +139,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                     installInteraction(accepted);
                     body.add(accepted.component());
                 }
+                body.setVisible(!group.collapsed());
                 section.add(body, BorderLayout.CENTER);
                 add(section);
             }

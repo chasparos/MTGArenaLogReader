@@ -62,4 +62,21 @@ class CardImageCacheSourceTest {
         assertSame(favorite, loaded.get());
     }
 
+
+    @Test
+    void delegatesRequestedCardFaceToSharedCacheBoundary() {
+        CardInfo info = new CardInfo();
+        info.setId("double-faced");
+        AtomicInteger imageIndex = new AtomicInteger(-1);
+        CardImageCacheSource source = new CardImageCacheSource(
+                ignored -> Optional.of(info),
+                (card, index) -> {
+                    imageIndex.set(index);
+                    return CompletableFuture.completedFuture(Optional.empty());
+                });
+
+        source.requestFace(new CardBrowserPanel.BrowserCard("oracle:double", "Front // Back", 1, info), 1).join();
+
+        assertEquals(1, imageIndex.get());
+    }
 }

@@ -6,10 +6,16 @@ import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
 import app.ui.AppColors;
 import app.ui.CardCollectionSurface;
+import app.ui.CardDragTransfer;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.IOException;
 import java.util.List;
 import java.util.*;
 import java.util.function.Consumer;
@@ -42,6 +48,8 @@ public final class CandidatePanel extends JPanel {
     private CandidateModel model;
     private CandidateWorkspaceState workspaceState = CandidateWorkspaceState.transientState();
     private List<CandidateModel.Entry> currentEntries = List.of();
+    private final Set<String> collapsedCategories = new LinkedHashSet<>();
+    private static final DataFlavor CATEGORY_FLAVOR = categoryFlavor();
 
     public CandidatePanel() {
         super(new BorderLayout(6, 6));
@@ -51,6 +59,7 @@ public final class CandidatePanel extends JPanel {
         add(title, BorderLayout.NORTH);
 
         surface.setTransferSource("candidates");
+        surface.setWrapGaps(4, 4);
         surface.setDropHandler(this::handleDrop);
         surface.setDragImageProvider(this::dragImage);
         surface.setSelectionListener(selection -> {
@@ -236,25 +245,32 @@ public final class CandidatePanel extends JPanel {
         if (!uncategorized.isEmpty()) {
             groups.add(new CardCollectionSurface.Group(
                     CandidateWorkspaceState.UNCATEGORIZED,
-                    "Uncategorized (" + uncategorized.size() + ")", uncategorized));
+                    "Uncategorized (" + uncategorized.size() + ")", uncategorized, null,
+                    collapsedCategories.contains(CandidateWorkspaceState.UNCATEGORIZED)));
         }
         List<CandidateRow> unavailable =
                 rowsByCategory.getOrDefault(CandidateWorkspaceState.UNAVAILABLE, List.of());
         if (!unavailable.isEmpty()) {
             groups.add(new CardCollectionSurface.Group(
                     CandidateWorkspaceState.UNAVAILABLE,
-                    "Unavailable (" + unavailable.size() + ")", unavailable));
+                    "Unavailable (" + unavailable.size() + ")", unavailable, null,
+                    collapsedCategories.contains(CandidateWorkspaceState.UNAVAILABLE)));
         }
 
         JButton addCategory = circularButton("+", "Add category");
         addCategory.addActionListener(event -> {
-            String name = JOptionPane.showInputDialog(this, "Category name:", "Add candidate category",
-                    JOptionPane.PLAIN_MESSAGE);
-            if (name != null && !name.isBlank()) workspaceState.addCategory(name);
+            List<String> selected = selectedIdentities();
+            if (selected.isEmpty()) {
+                operationStatus.setText("Select cards or drop cards here to create a category.");
+                return;
+            }
+            createCategoryFor(selected);
         });
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        footer.setName("candidate-new-category-drop-zone");
         footer.setOpaque(false);
         footer.add(addCategory);
+        footer.setTransferHandler(new NewCategoryTransferHandler());
         surface.setFooter(footer);
         surface.setGroups(groups);
         updateActions();
@@ -266,20 +282,117 @@ public final class CandidatePanel extends JPanel {
                                                int categoryIndex, int categoryCount) {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 2));
         buttons.setOpaque(false);
-        JButton up = circularButton("↑", "Move category up");
-        JButton down = circularButton("↓", "Move category down");
+
+        JButton collapse = circularButton(
+                collapsedCategories.contains(category.id()) ? "▸" : "▾",
+                collapsedCategories.contains(category.id()) ? "Expand category" : "Collapse category");
+        collapse.addActionListener(event -> {
+            if (!collapsedCategories.add(category.id())) collapsedCategories.remove(category.id());
+            rebuild();
+        });
+
+        JLabel dragHandle = new JLabel("⋮⋮");
+        dragHandle.setToolTipText("Drag to reorder category");
+        dragHandle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        CategoryTransferHandler categoryTransfer = new CategoryTransferHandler(category.id());
+        dragHandle.setTransferHandler(categoryTransfer);
+        buttons.setTransferHandler(categoryTransfer);
+        dragHandle.addMouseMotionListener(new MouseAdapter() {
+            @Override public void mouseDragged(MouseEvent event) {
+                dragHandle.getTransferHandler().exportAsDrag(
+                        dragHandle, event, TransferHandler.MOVE);
+            }
+        });
+
         JButton removeCategory = circularButton("−", "Remove category");
-        up.setEnabled(categoryIndex > 0);
-        down.setEnabled(categoryIndex + 1 < categoryCount);
-        up.addActionListener(event -> workspaceState.moveCategory(category.id(), -1));
-        down.addActionListener(event -> workspaceState.moveCategory(category.id(), 1));
         removeCategory.addActionListener(event ->
                 workspaceState.removeCategory(category.id(), currentEntries));
-        buttons.add(up);
-        buttons.add(down);
+
+        buttons.add(collapse);
+        buttons.add(dragHandle);
         buttons.add(removeCategory);
         return new CardCollectionSurface.Group(
-                category.id(), category.name() + " (" + rows.size() + ")", rows, buttons);
+                category.id(), category.name() + " (" + rows.size() + ")", rows, buttons,
+                collapsedCategories.contains(category.id()));
+    }
+
+    private void createCategoryFor(List<String> identities) {
+        if (identities == null || identities.isEmpty()) return;
+        String name = JOptionPane.showInputDialog(this, "Category name:", "New candidate category",
+                JOptionPane.PLAIN_MESSAGE);
+        if (name == null || name.isBlank()) return;
+        CandidateWorkspaceState.Category created = workspaceState.addCategory(name);
+        workspaceState.assign(identities, created.id());
+    }
+
+    private static DataFlavor categoryFlavor() {
+        try {
+            return new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType
+                    + ";class=" + String.class.getName());
+        } catch (ClassNotFoundException error) {
+            throw new ExceptionInInitializerError(error);
+        }
+    }
+
+    private final class CategoryTransferHandler extends TransferHandler {
+        private final String categoryId;
+        CategoryTransferHandler(String categoryId) { this.categoryId = categoryId; }
+
+        @Override protected Transferable createTransferable(JComponent component) {
+            return new java.awt.datatransfer.StringSelection(categoryId) {
+                @Override public DataFlavor[] getTransferDataFlavors() {
+                    return new DataFlavor[] { CATEGORY_FLAVOR };
+                }
+                @Override public boolean isDataFlavorSupported(DataFlavor flavor) {
+                    return CATEGORY_FLAVOR.equals(flavor);
+                }
+                @Override public Object getTransferData(DataFlavor flavor)
+                        throws java.awt.datatransfer.UnsupportedFlavorException {
+                    if (!CATEGORY_FLAVOR.equals(flavor)) {
+                        throw new java.awt.datatransfer.UnsupportedFlavorException(flavor);
+                    }
+                    return categoryId;
+                }
+            };
+        }
+
+        @Override public int getSourceActions(JComponent component) { return MOVE; }
+
+        @Override public boolean canImport(TransferSupport support) {
+            return support.isDataFlavorSupported(CATEGORY_FLAVOR);
+        }
+
+        @Override public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            try {
+                String sourceId = (String) support.getTransferable().getTransferData(CATEGORY_FLAVOR);
+                workspaceState.moveCategoryBefore(sourceId, categoryId);
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
+        }
+    }
+
+    private final class NewCategoryTransferHandler extends TransferHandler {
+        @Override public boolean canImport(TransferSupport support) {
+            return support.isDataFlavorSupported(CardDragTransfer.FLAVOR);
+        }
+
+        @Override public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            try {
+                CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
+                if (payload.identities().isEmpty()) return false;
+                if (!"candidates".equals(payload.source()) && model != null) {
+                    model.add(payload.identities());
+                }
+                createCategoryFor(payload.identities());
+                return true;
+            } catch (Exception error) {
+                return false;
+            }
+        }
     }
 
     private static JButton circularButton(String text, String tooltip) {
@@ -340,10 +453,10 @@ public final class CandidatePanel extends JPanel {
             stale = entry.stale();
             CardInfo favorite = preferredPrinting.apply(identity);
             card = stale ? null : (favorite != null ? favorite : entry.resolvedCard().orElse(null));
-            setPreferredSize(new Dimension(330, 60));
-            setMinimumSize(new Dimension(270, 60));
-            setMaximumSize(new Dimension(460, 60));
-            setBorder(new EmptyBorder(3, 3, 3, 3));
+            setPreferredSize(new Dimension(320, 52));
+            setMinimumSize(new Dimension(250, 52));
+            setMaximumSize(new Dimension(430, 52));
+            setBorder(new EmptyBorder(1, 1, 1, 1));
             setOpaque(false);
             if (stale) {
                 JLabel label = new JLabel("Unavailable card — stale; keep or remove");
@@ -384,7 +497,7 @@ public final class CandidatePanel extends JPanel {
                 content.setOpaque(true);
                 setBorder(selected
                         ? BorderFactory.createLineBorder(outline, 2, true)
-                        : new EmptyBorder(3, 3, 3, 3));
+                        : new EmptyBorder(1, 1, 1, 1));
             }
             repaint();
         }

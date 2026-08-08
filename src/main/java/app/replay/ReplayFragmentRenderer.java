@@ -84,10 +84,25 @@ final class ReplayFragmentRenderer {
         Stroke oldStroke = g.getStroke();
         Color oldColor = g.getColor();
         try {
-            g.setColor(color);
-            g.setStroke(new BasicStroke(Math.max(1f, strokeWidth),
-                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.draw(cardShape);
+            float widthPx = Math.max(1f, strokeWidth);
+            BasicStroke stroke = new BasicStroke(widthPx,
+                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+            Shape stroked = stroke.createStrokedShape(cardShape);
+            java.awt.geom.Area overlay = new java.awt.geom.Area(stroked);
+            if (fragment.card().getRarity() != null) {
+                int badgeX = x - 3;
+                int badgeY = chipY - 5;
+                java.awt.geom.Ellipse2D.Float badge =
+                        new java.awt.geom.Ellipse2D.Float(badgeX - 2, badgeY - 2, 17, 17);
+                overlay.subtract(new java.awt.geom.Area(badge));
+                g.setColor(color);
+                g.fill(overlay);
+                g.setStroke(stroke);
+                g.draw(new java.awt.geom.Ellipse2D.Float(badgeX, badgeY, 13, 13));
+            } else {
+                g.setColor(color);
+                g.fill(overlay);
+            }
         } finally {
             g.setStroke(oldStroke);
             g.setColor(oldColor);

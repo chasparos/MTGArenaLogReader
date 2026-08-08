@@ -105,6 +105,24 @@ class CardCollectionSurfaceTest {
         assertEquals(Optional.of("d"), surfaceRef.get().selectedIdentity());
     }
 
+
+
+    @Test void collapsedGroupKeepsRowsInModelButHidesItsWrappedBody() throws Exception {
+        AtomicReference<CardCollectionSurface> surfaceRef = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardCollectionSurface surface = new CardCollectionSurface();
+            surface.setWrapGaps(4, 3);
+            surface.setGroups(List.of(new CardCollectionSurface.Group(
+                    "creatures", "Creatures", List.of(row("a"), row("b")), null, true)));
+            surfaceRef.set(surface);
+        });
+
+        CardCollectionSurface surface = surfaceRef.get();
+        assertEquals(List.of("a", "b"), surface.identities());
+        JComponent body = findNamed(surface, "card-collection-group-body-creatures");
+        assertNotNull(body);
+        assertFalse(body.isVisible());
+    }
     private static CardCollectionSurface.Row row(String identity) {
         return sizedRow(identity, 80, 32);
     }

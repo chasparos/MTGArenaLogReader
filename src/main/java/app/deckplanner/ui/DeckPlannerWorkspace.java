@@ -15,6 +15,7 @@ import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.filter.IndexedCatalogCard;
 import app.ui.AppColors;
 import app.ui.AppScrollBarUI;
+import app.ui.SvgIcon;
 import app.replay.ReplayCardChip;
 import app.model.card.CardInfo;
 import app.model.card.MagicCardOrdering;
@@ -194,7 +195,10 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         candidatePanel.setMagicSortAction(() -> candidateModel.sortByMagic(catalogIndex));
         candidatePanel.setSelectionAction(selection -> selection
                 .filter(this::isResolvedCandidate)
-                .ifPresent(ignored -> filterModel.setCandidateOnly(true)));
+                .ifPresent(identity -> {
+                    browser.scrollToIdentity(identity);
+                    filterModel.setCandidateOnly(true);
+                }));
         if (alternateArtResolver != null) {
             candidatePanel.setAlternateArtAction(null,
                     identity -> alternateArtResolver.resolveCached(identity).preferred());
@@ -233,36 +237,55 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         resultCards.add(content, CONTENT);
         resultCards.add(statePanel, STATE);
 
-        JButton filterToggle = splitButton("‹", "Hide filters");
+        JButton filterToggle = overlayToggle(
+                new SvgIcon("/svg/tap.svg", 15), "Hide filters");
+        JButton candidateToggle = overlayToggle(
+                new SvgIcon("/svg/untap.svg", 15), "Expand candidates");
+
+        JPanel columns = new JPanel(new BorderLayout());
+        filterRegion.add(filterScroll, BorderLayout.CENTER);
+        candidateRegion.add(candidatePanel, BorderLayout.CENTER);
+        columns.add(filterRegion, BorderLayout.WEST);
+        columns.add(resultCards, BorderLayout.CENTER);
+        columns.add(candidateRegion, BorderLayout.EAST);
+
+        JLayeredPane workspaceLayer = new JLayeredPane() {
+            @Override public void doLayout() {
+                columns.setBounds(0, 0, getWidth(), getHeight());
+                int diameter = 28;
+                int y = Math.max(4, (getHeight() - diameter) / 2);
+                int filterX = filterScroll.isVisible()
+                        ? filterRegion.getWidth() - diameter / 2 : 0;
+                int candidateX = getWidth() - candidateRegion.getWidth() - diameter / 2;
+                filterToggle.setBounds(Math.max(0, filterX), y, diameter, diameter);
+                candidateToggle.setBounds(
+                        Math.max(0, Math.min(getWidth() - diameter, candidateX)),
+                        y, diameter, diameter);
+            }
+        };
+        workspaceLayer.add(columns, JLayeredPane.DEFAULT_LAYER);
+        workspaceLayer.add(filterToggle, JLayeredPane.PALETTE_LAYER);
+        workspaceLayer.add(candidateToggle, JLayeredPane.PALETTE_LAYER);
+
         filterToggle.addActionListener(event -> {
             boolean visible = filterScroll.isVisible();
             filterScroll.setVisible(!visible);
-            filterToggle.setText(visible ? "›" : "‹");
             filterToggle.setToolTipText(visible ? "Show filters" : "Hide filters");
-            revalidate();
+            workspaceLayer.revalidate();
+            workspaceLayer.repaint();
         });
-        filterRegion.add(filterScroll, BorderLayout.CENTER);
-        filterRegion.add(centeredRail(filterToggle), BorderLayout.EAST);
-
-        JButton candidateToggle = splitButton("›", "Expand candidates");
         candidateToggle.addActionListener(event -> {
             candidatesExpanded = !candidatesExpanded;
             Dimension size = candidatesExpanded
                     ? new Dimension(760, 600) : new Dimension(470, 600);
             candidatePanel.setPreferredSize(size);
-            candidateToggle.setText(candidatesExpanded ? "‹" : "›");
             candidateToggle.setToolTipText(candidatesExpanded
                     ? "Contract candidates" : "Expand candidates");
-            revalidate();
+            workspaceLayer.revalidate();
+            workspaceLayer.repaint();
         });
-        candidateRegion.add(centeredRail(candidateToggle), BorderLayout.WEST);
-        candidateRegion.add(candidatePanel, BorderLayout.CENTER);
 
-        add(filterRegion, BorderLayout.WEST);
-        add(resultCards, BorderLayout.CENTER);
-        add(candidateRegion, BorderLayout.EAST);
-        refreshThemeColors();
-        showCandidates();
+        add(workspaceLayer, BorderLayout.CENTER);
 
         coordinator = new DeckPlannerFilterCoordinator(model,
                 state -> filterResult(index, state),
@@ -270,6 +293,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         coordinator.setListener(this::showResult);
         coordinator.setAvailability(availability);
         candidateModel.addListener(candidateListener);
+        showCandidates();
     }
 
     public void start() {
@@ -532,86 +556,109 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private void showAlternateArtPicker(String identity) {
         if (alternateArtResolver == null || identity == null) return;
 
-        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this),
-                "Choose favorite printing", Dialog.ModalityType.MODELESS);
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        JDialog dialog = new JDialog(owner, Dialog.ModalityType.MODELESS);
+        dialog.setUndecorated(true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setFocusableWindowState(true);
+        dialog.getRootPane().setBorder(BorderFactory.createLineBorder(
+                AppColors.color("App.accent", new Color(0xD6A84B)), 1, true));
+        dialog.addWindowFocusListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowLostFocus(java.awt.event.WindowEvent event) {
+                if (dialog.isDisplayable()) dialog.dispose();
+            }
+        });
+
         JPanel loading = new JPanel(new BorderLayout(8, 8));
-        loading.setBorder(new EmptyBorder(18, 18, 18, 18));
+        loading.setBorder(new EmptyBorder(10, 12, 10, 12));
         JProgressBar progress = new JProgressBar();
         progress.setIndeterminate(true);
-        loading.add(new JLabel("Loading known printings… you can keep using Deck Planner."),
-                BorderLayout.NORTH);
+        loading.add(new JLabel("Loading printings…"), BorderLayout.NORTH);
         loading.add(progress, BorderLayout.CENTER);
         dialog.setContentPane(loading);
-        dialog.setSize(520, 140);
+        dialog.setSize(360, 84);
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
 
-        CompletableFuture.supplyAsync(() -> alternateArtResolver.resolve(identity), worker)
-                .whenComplete((artSet, failure) -> SwingUtilities.invokeLater(() -> {
+        CompletableFuture
+                .supplyAsync(() -> alternateArtResolver.resolve(identity), worker)
+                .whenComplete((artSet, error) -> SwingUtilities.invokeLater(() -> {
                     if (!dialog.isDisplayable()) return;
-                    if (failure != null || artSet == null || artSet.printings().isEmpty()) {
-                        JLabel message = new JLabel("No alternate printings are available right now.");
-                        message.setBorder(new EmptyBorder(18, 18, 18, 18));
-                        dialog.setContentPane(message);
-                        dialog.setSize(460, 110);
-                        dialog.revalidate();
+                    if (error != null || artSet == null || artSet.printings().isEmpty()) {
+                        dialog.dispose();
                         return;
                     }
 
-                    JPanel cards = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
-                    ButtonGroup group = new ButtonGroup();
+                    int cardWidth = 220;
+                    int cardHeight = 307;
+                    JPanel cards = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
+                    cards.setBorder(new EmptyBorder(4, 4, 4, 4));
                     for (CardInfo card : artSet.printings()) {
-                        JToggleButton choice = new JToggleButton();
-                        choice.setVerticalTextPosition(SwingConstants.BOTTOM);
+                        JButton choice = new JButton();
+                        choice.setToolTipText(printingTooltip(card));
+                        choice.setPreferredSize(new Dimension(cardWidth, cardHeight));
+                        choice.setMinimumSize(choice.getPreferredSize());
+                        choice.setMaximumSize(choice.getPreferredSize());
+                        choice.setMargin(new Insets(0, 0, 0, 0));
+                        choice.setText(card.getSet() == null ? "?" : card.getSet().toUpperCase()
+                                + " #" + Objects.toString(card.getCollectorNumber(), "?"));
                         choice.setHorizontalTextPosition(SwingConstants.CENTER);
-                        String set = card.getSet() == null ? "?" : card.getSet().toUpperCase();
-                        String collector = card.getCollectorNumber() == null ? "?" : card.getCollectorNumber();
-                        choice.setText("<html><center>" + set + " #" + collector + "<br>"
-                                + (card.getArtist() == null ? "Unknown artist" : card.getArtist())
-                                + "</center></html>");
-                        choice.setPreferredSize(new Dimension(170, 270));
-                        group.add(choice);
-                        cards.add(choice);
-                        if (artSet.favoriteScryfallId().filter(id -> id.equals(card.getId())).isPresent()) {
-                            choice.setSelected(true);
+                        choice.setVerticalTextPosition(SwingConstants.BOTTOM);
+                        if (artSet.favoriteScryfallId()
+                                .filter(id -> id.equals(card.getId())).isPresent()) {
+                            choice.setBorder(BorderFactory.createLineBorder(
+                                    AppColors.color("App.accent", new Color(0xD6A84B)), 2, true));
                         }
                         choice.addActionListener(event -> {
                             alternateArtResolver.favorite(identity, card);
                             showCandidates();
                             coordinator.restart();
+                            dialog.dispose();
                         });
+                        cards.add(choice);
+
                         CompletableFuture<Optional<BufferedImage>> imageFuture;
                         try {
                             imageFuture = printingImageLoader.apply(card);
-                        } catch (RuntimeException error) {
+                        } catch (RuntimeException loadError) {
                             imageFuture = CompletableFuture.completedFuture(Optional.empty());
                         }
                         if (imageFuture != null) {
-                            imageFuture.whenComplete((image, error) -> SwingUtilities.invokeLater(() -> {
-                                if (!dialog.isDisplayable() || error != null
-                                        || image == null || image.isEmpty()) return;
-                                Image scaled = image.get().getScaledInstance(145, 203, Image.SCALE_SMOOTH);
-                                choice.setIcon(new ImageIcon(scaled));
-                            }));
+                            imageFuture.whenComplete((image, loadError) ->
+                                    SwingUtilities.invokeLater(() -> {
+                                        if (!dialog.isDisplayable() || loadError != null
+                                                || image == null || image.isEmpty()) return;
+                                        Image scaled = image.get().getScaledInstance(
+                                                cardWidth - 8, cardHeight - 28, Image.SCALE_SMOOTH);
+                                        choice.setIcon(new ImageIcon(scaled));
+                                        choice.setText("");
+                                    }));
                         }
                     }
+
                     JScrollPane scroll = new JScrollPane(cards,
-                            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                            ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
                             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-                    scroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
+                    scroll.setBorder(BorderFactory.createEmptyBorder());
                     scroll.getHorizontalScrollBar().setUI(new AppScrollBarUI());
-                    JPanel content = new JPanel(new BorderLayout(6, 6));
-                    String legality = artSet.legal() ? "Legal in selected format"
-                            : "ILLEGAL in selected format";
-                    content.add(new JLabel(legality + " — click an image to set an explicit favorite."),
-                            BorderLayout.NORTH);
-                    content.add(scroll, BorderLayout.CENTER);
-                    dialog.setContentPane(content);
-                    dialog.setSize(760, 620);
+                    scroll.getHorizontalScrollBar().setUnitIncrement(48);
+                    dialog.setContentPane(scroll);
+                    int width = Math.min(900, Math.max(cardWidth + 12,
+                            artSet.printings().size() * (cardWidth + 6) + 12));
+                    dialog.setSize(width, cardHeight + 34);
+                    dialog.setLocationRelativeTo(this);
                     dialog.revalidate();
                     dialog.repaint();
                 }));
     }
+
+    private static String printingTooltip(CardInfo card) {
+        String set = card.getSet() == null ? "?" : card.getSet().toUpperCase();
+        String collector = Objects.toString(card.getCollectorNumber(), "?");
+        String artist = card.getArtist() == null ? "Unknown artist" : card.getArtist();
+        return set + " #" + collector + " — " + artist;
+    }
+
 
     private static JPanel centeredRail(JButton button) {
         JPanel rail = new JPanel(new GridBagLayout());
@@ -619,6 +666,16 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         rail.setPreferredSize(new Dimension(26, 10));
         rail.add(button);
         return rail;
+    }
+
+    private static JButton overlayToggle(Icon icon, String tooltip) {
+        JButton button = new JButton(icon);
+        button.setToolTipText(tooltip);
+        button.setMargin(new Insets(0, 0, 0, 0));
+        button.setFocusable(true);
+        button.setOpaque(true);
+        button.setPreferredSize(new Dimension(28, 28));
+        return button;
     }
 
     private static JButton splitButton(String text, String tooltip) {

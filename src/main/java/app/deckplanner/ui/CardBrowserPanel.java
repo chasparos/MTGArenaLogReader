@@ -2,6 +2,7 @@ package app.deckplanner.ui;
 
 import app.ui.AppColors;
 import app.ui.CardDragTransfer;
+import app.model.card.CardInfo;
 
 import javax.swing.*;
 import java.awt.*;
@@ -26,6 +27,11 @@ import java.util.concurrent.CompletableFuture;
 public final class CardBrowserPanel extends JComponent implements Scrollable {
     public interface ImageSource {
         CompletableFuture<Optional<BufferedImage>> request(BrowserCard card);
+
+        default CompletableFuture<Optional<BufferedImage>> requestFace(BrowserCard card, int faceIndex) {
+            return faceIndex <= 0 ? request(card)
+                    : CompletableFuture.completedFuture(Optional.empty());
+        }
     }
 
     public interface CandidateListener {
@@ -70,6 +76,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private final CardView cardView = new CardView();
     private final Map<String, BufferedImage> images = new LinkedHashMap<>();
     private final Map<String, CompletableFuture<Optional<BufferedImage>>> pending = new LinkedHashMap<>();
+    private final Map<String, Integer> visibleFaceByIdentity = new LinkedHashMap<>();
     private java.util.Set<String> requestedIdentities = java.util.Set.of();
 
     private List<BrowserCard> cards = List.of();
@@ -157,6 +164,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         this.cards = List.copyOf(cards == null ? List.of() : cards);
         Set<String> available = this.cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
         selectedIdentities.retainAll(available);
+        visibleFaceByIdentity.keySet().retainAll(available);
         selectedIndex = indexOfIdentity(selectedIdentity);
         if (selectedIndex < 0) selectedIndex = lastSelectedIndex();
         selectionAnchorIndex = selectedIndex;
@@ -176,6 +184,19 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     public Optional<BrowserCard> selectedCard() {
         return selectedIndex >= 0 ? Optional.of(cards.get(selectedIndex)) : Optional.empty();
+    }
+
+    public boolean scrollToIdentity(String identity) {
+        int index = indexOfIdentity(identity);
+        if (index < 0) return false;
+        ensureLayout();
+        if (index >= layoutResult.bounds().size()) return false;
+        int old = focusedIndex;
+        focusedIndex = index;
+        repaintIndex(old);
+        repaintIndex(focusedIndex);
+        scrollRectToVisible(layoutResult.bounds().get(index));
+        return true;
     }
 
     public Set<String> selectedIdentities() {
@@ -295,21 +316,27 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     private void requestImage(int index, long requestGeneration) {
         BrowserCard card = cards.get(index);
-        if (images.containsKey(card.identity()) || pending.containsKey(card.identity())) return;
-        CompletableFuture<Optional<BufferedImage>> future = imageSource.request(card);
-        pending.put(card.identity(), future);
+        int faceIndex = visibleFaceByIdentity.getOrDefault(card.identity(), 0);
+        String key = imageKey(card.identity(), faceIndex);
+        if (images.containsKey(key) || pending.containsKey(key)) return;
+        CompletableFuture<Optional<BufferedImage>> future = imageSource.requestFace(card, faceIndex);
+        pending.put(key, future);
         future.whenComplete((image, error) -> SwingUtilities.invokeLater(() -> {
             if (requestGeneration != generation) return;
-            pending.remove(card.identity());
+            pending.remove(key);
             if (!requestedIdentities.contains(card.identity())) return;
             if (error == null && image != null && image.isPresent()) {
-                images.put(card.identity(), image.get());
+                images.put(key, image.get());
                 int currentIndex = indexOfIdentity(card.identity());
                 if (currentIndex >= 0 && currentIndex < layoutResult.bounds().size()) {
                     repaint(layoutResult.bounds().get(currentIndex));
                 }
             }
         }));
+    }
+
+    private static String imageKey(String identity, int faceIndex) {
+        return identity + "#face=" + Math.max(0, faceIndex);
     }
 
     private void handleMousePressed(MouseEvent event) {
@@ -324,6 +351,18 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         if (event.getClickCount() == 1) {
             selectionBeforeClick = new LinkedHashSet<>(selectedIdentities);
             selectedIndexBeforeClick = selectedIndex;
+        }
+
+        CardInfo clickedCard = cards.get(index).card();
+        if (clickedCard != null && clickedCard.getCardFaces() != null
+                && clickedCard.getCardFaces().size() > 1
+                && CardView.faceToggleBadgeBounds(bounds.width, bounds.height).contains(localX, localY)) {
+            int currentFace = visibleFaceByIdentity.getOrDefault(identity, 0);
+            int nextFace = (currentFace + 1) % clickedCard.getCardFaces().size();
+            visibleFaceByIdentity.put(identity, nextFace);
+            requestImage(index, generation);
+            repaint(bounds);
+            return;
         }
 
         if ((!cards.get(index).alternateArtKnown() || cards.get(index).alternateArtCount() > 1)
@@ -478,15 +517,16 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
 
     private void paintCard(Graphics2D g, int index, Rectangle bounds) {
         BrowserCard card = cards.get(index);
+        int faceIndex = visibleFaceByIdentity.getOrDefault(card.identity(), 0);
         cardView.configure(
                 card.name(),
                 card.card(),
-                images.get(card.identity()),
+                images.get(imageKey(card.identity(), faceIndex)),
                 index == hoveredIndex,
                 selectedIdentities.contains(card.identity()),
                 candidateIdentities.contains(card.identity()),
                 hasFocus() && index == focusedIndex,
-                card.alternateArtCount(), card.alternateArtKnown());
+                card.alternateArtCount(), card.alternateArtKnown(), faceIndex);
         rendererPane.paintComponent(g, cardView, this,
                 bounds.x, bounds.y, bounds.width, bounds.height, true);
     }

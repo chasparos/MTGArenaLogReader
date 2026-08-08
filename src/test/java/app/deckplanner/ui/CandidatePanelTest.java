@@ -250,6 +250,28 @@ class CandidatePanelTest {
         return null;
     }
 
+
+    @Test
+    void categoryHeadersUseCollapseAndDragHandleInsteadOfOrderingArrows() throws Exception {
+        CardInfo creature = card("oracle:creature", "Creature Card");
+        creature.setTypeLine("Creature — Wizard");
+        CandidateModel model = new CandidateModel(List.of("oracle:creature"), ignored -> { });
+        AtomicReference<CandidatePanel> ref = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.bind(model, ignored -> -1);
+            panel.setEntries(model.resolve(index(creature)));
+            ref.set(panel);
+        });
+
+        CandidatePanel panel = ref.get();
+        assertNull(findButton(panel, "↑"));
+        assertNull(findButton(panel, "↓"));
+        assertNotNull(findButton(panel, "▾"));
+        assertTrue(componentText(panel).contains("⋮⋮"));
+    }
+
     private static <T extends Component> T find(Container root, Class<T> type) {
         for (Component child : root.getComponents()) {
             if (type.isInstance(child)) return type.cast(child);

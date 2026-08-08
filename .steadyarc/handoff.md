@@ -16,3 +16,11 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - **DP-06 direction:** Human click review on 2026-08-08 opened candidate-workspace iteration 2. The accepted sequence is vocabulary/layout/presentation first; editable categories and named Candidate Sets second; multi-select/cross-surface drag/drop third; alternate-art/favorite/legal-state resolution fourth. Filtering taxonomy remains deferred.
 - **Safe next action:** Apply and validate the bounded non-blocking enrichment/workspace-visibility patch. If green, return to human click review; do not advance to deferred filtering taxonomy yet.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
+
+
+### DP-06 interaction-polish amendment — 2026-08-08
+
+- Human click review after the 264-test baseline requested one further Candidate UX pass before filtering work.
+- Scope is favorite-art presentation consistency, transient art chooser behavior, compact/collapsible Candidate categories, category-local drag/drop ordering/new-category drops, overlay workspace boundary controls, rarity-aware Candidate selection outline, and Catalog scroll-to-selected-Candidate behavior.
+- Filtering/tag taxonomy remains outside this amendment.
+- Ownership remains with the patch-exchange assistant for this bounded patch; return to the human for repository-side validation and click review.

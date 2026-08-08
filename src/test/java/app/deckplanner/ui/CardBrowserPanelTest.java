@@ -229,4 +229,22 @@ class CardBrowserPanelTest {
                 x, y, clickCount, false));
     }
 
+
+    @Test
+    void scrollToIdentityFocusesOnlyCardsStillVisibleInCurrentCatalog() throws Exception {
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> CompletableFuture.completedFuture(Optional.empty()));
+            holder[0].setSize(220, 500);
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("a", "Alpha"),
+                    new CardBrowserPanel.BrowserCard("b", "Beta")));
+            assertTrue(holder[0].scrollToIdentity("b"));
+            assertFalse(holder[0].scrollToIdentity("missing"));
+        });
+    }
+
 }

@@ -39,6 +39,33 @@ class CandidateWorkspaceStateTest {
         assertEquals(custom.id(), state.categories().getFirst().id());
     }
 
+
+
+    @Test void categoriesCanBeReorderedByDropTargetWithoutArrowSemantics() {
+        CandidateWorkspaceState state = CandidateWorkspaceState.transientState();
+        CandidateWorkspaceState.Category custom = state.addCategory("Recursion");
+        state.moveCategoryBefore(custom.id(), CandidateWorkspaceState.NONCREATURES);
+
+        assertEquals(List.of(
+                        CandidateWorkspaceState.CREATURES,
+                        custom.id(),
+                        CandidateWorkspaceState.NONCREATURES,
+                        CandidateWorkspaceState.NONBASIC_LANDS),
+                state.categories().stream().map(CandidateWorkspaceState.Category::id).toList());
+    }
+
+
+    @Test void emptyCustomCategoriesArePrunedWhenMembershipSynchronizes() {
+        CandidateWorkspaceState state = CandidateWorkspaceState.transientState();
+        CandidateWorkspaceState.Category custom = state.addCategory("Temporary");
+        assertTrue(state.categories().stream().anyMatch(category -> category.id().equals(custom.id())));
+
+        state.synchronize(List.of());
+
+        assertFalse(state.categories().stream().anyMatch(category -> category.id().equals(custom.id())));
+        assertTrue(state.categories().stream()
+                .anyMatch(category -> category.id().equals(CandidateWorkspaceState.CREATURES)));
+    }
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();

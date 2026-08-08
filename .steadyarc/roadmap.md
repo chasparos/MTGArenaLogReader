@@ -142,6 +142,8 @@ Acceptance evidence:
 
 **State:** active
 
+Interaction-polish feedback (2026-08-08): favorite printing must remain persistent and drive Catalog presentation; the chooser should be transient/undecorated and image-first. Candidate lanes should be compact and collapsible; category ordering moves from arrow buttons to planner-local drag/drop, and dropping cards on the new-category affordance creates a populated category before asking for its name. Candidate selection should scroll the Catalog to the matching visible card. Workspace boundary controls move to a parent overlay layer and use existing SVG assets rather than consuming panel width. This remains DP-06 acceptance rework; filtering taxonomy is still deferred.
+
 Persist an ordered set of candidate cards and expose an acceptance-testable deck-planning workspace without losing the active browser filters. The first automated implementation reached a green 220-test baseline, but human review on 2026-08-07 found that the acceptance surface still relied on synthetic cards and did not yet exercise the intended candidate interaction model. DP-06 therefore remains active for the following bounded rework pass.
 
 Acceptance evidence:
