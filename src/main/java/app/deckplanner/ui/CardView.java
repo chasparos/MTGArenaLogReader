@@ -26,13 +26,14 @@ public final class CardView extends JComponent {
     private static final Color PLACEHOLDER_EDGE = new Color(86, 92, 101);
     private static final SvgAssetRenderer SVG = new SvgAssetRenderer();
     private static final Color FOCUSED = new Color(112, 184, 255);
+    private static final Color SELECTED = new Color(214, 168, 75);
     private static final Color HOVERED = new Color(255, 255, 255, 120);
 
     private String name = "Unknown card";
     private BufferedImage image;
     private boolean hovered;
     private boolean selected;
-    private boolean underConsideration;
+    private boolean candidate;
     private boolean focused;
 
     public CardView() {
@@ -43,13 +44,13 @@ public final class CardView extends JComponent {
                           BufferedImage image,
                           boolean hovered,
                           boolean selected,
-                          boolean underConsideration,
+                          boolean candidate,
                           boolean focused) {
         this.name = name == null || name.isBlank() ? "Unknown card" : name;
         this.image = image;
         this.hovered = hovered;
         this.selected = selected;
-        this.underConsideration = underConsideration;
+        this.candidate = candidate;
         this.focused = focused;
     }
 
@@ -72,8 +73,8 @@ public final class CardView extends JComponent {
                 g.drawImage(image, 0, 0, width, height, null);
             }
             if (hovered) stroke(g, width, height, HOVERED, 2f);
-            if (selected) paintSelectedBadge(g, width, height);
-            if (underConsideration) paintConsiderationBadge(g, width);
+            if (selected) stroke(g, width, height, SELECTED, 3f);
+            if (candidate) paintCandidateBadge(g, width);
             if (focused) stroke(g, width, height, FOCUSED, 2f);
         } finally {
             g.dispose();
@@ -81,41 +82,13 @@ public final class CardView extends JComponent {
     }
 
 
-    static Rectangle selectedBadgeBounds(int width, int height) {
-        int badgeHeight = 36;
-        int badgeWidth = Math.min(Math.max(132, width - 34), 190);
-        return new Rectangle(Math.max(0, (width - badgeWidth) / 2), Math.max(0, height - badgeHeight), badgeWidth, badgeHeight);
-    }
-
-    static Rectangle considerationBadgeBounds(int width) {
+    static Rectangle candidateBadgeBounds(int width) {
         int size = 38;
         return new Rectangle(Math.max(0, width - size), 0, size, size);
     }
 
-    private static void paintSelectedBadge(Graphics2D g, int width, int height) {
-        Rectangle badge = selectedBadgeBounds(width, height);
-        Color background = new Color(82, 86, 92, 204);
-        Color foreground = new Color(250, 250, 250);
-        String text = "selected";
-        Font oldFont = g.getFont();
-        g.setFont(oldFont.deriveFont(Font.BOLD, Math.max(13f, oldFont.getSize2D() + 2f)));
-        FontMetrics metrics = g.getFontMetrics();
-        int icon = 20;
-        int contentWidth = icon + 7 + metrics.stringWidth(text);
-        int contentX = badge.x + (badge.width - contentWidth) / 2;
-        g.setColor(background);
-        g.fillRoundRect(badge.x, badge.y, badge.width, badge.height + 8, badge.height, badge.height);
-        g.setColor(new Color(25, 25, 25, 180));
-        g.drawRoundRect(badge.x, badge.y, badge.width - 1, badge.height + 7, badge.height, badge.height);
-        SVG.paintTinted(g, "/svg/tap.svg", contentX, badge.y + (badge.height - icon) / 2, icon, icon, foreground);
-        g.setColor(foreground);
-        g.drawString(text, contentX + icon + 7,
-                badge.y + (badge.height - metrics.getHeight()) / 2 + metrics.getAscent());
-        g.setFont(oldFont);
-    }
-
-    private static void paintConsiderationBadge(Graphics2D g, int width) {
-        Rectangle badge = considerationBadgeBounds(width);
+    private static void paintCandidateBadge(Graphics2D g, int width) {
+        Rectangle badge = candidateBadgeBounds(width);
         Color background = AppColors.color("Component.focusColor", new Color(0x6B55B5));
         Color foreground = AppColors.color("Label.foreground", Color.WHITE);
         g.setColor(background);

@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 
 /** Widget-independent mutable interaction model around immutable planner filter state. */
 public final class DeckPlannerFilterModel {
-    public record State(String format, CardFilterState filters, boolean considerationOnly) {
+    public record State(String format, CardFilterState filters, boolean candidateOnly) {
         public State(String format, CardFilterState filters) {
             this(format, filters, false);
         }
@@ -45,7 +45,7 @@ public final class DeckPlannerFilterModel {
     }
 
     public void setFormat(String format) {
-        replace(new State(format, state.filters(), state.considerationOnly()));
+        replace(new State(format, state.filters(), state.candidateOnly()));
     }
 
     public void toggleColor(CardColor color) {
@@ -102,13 +102,13 @@ public final class DeckPlannerFilterModel {
     }
 
     public void resetFilters() {
-        replace(new State(state.format(), CardFilterState.empty(), state.considerationOnly()));
+        replace(new State(state.format(), CardFilterState.empty(), state.candidateOnly()));
     }
 
     /**
      * Enables the temporary workspace-membership layer without mutating normal structured/tag filters.
      */
-    public void setConsiderationOnly(boolean enabled) {
+    public void setCandidateOnly(boolean enabled) {
         replace(new State(state.format(), state.filters(), enabled));
     }
 
@@ -120,7 +120,7 @@ public final class DeckPlannerFilterModel {
     }
 
     private void setFilters(CardFilterState filters) {
-        replace(new State(state.format(), filters, state.considerationOnly()));
+        replace(new State(state.format(), filters, state.candidateOnly()));
     }
 
     private EnumSet<CardColor> copyColors() {

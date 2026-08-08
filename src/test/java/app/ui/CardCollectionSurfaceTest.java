@@ -56,8 +56,38 @@ class CardCollectionSurfaceTest {
         assertNotNull(findNamed(surface, "card-collection-group-lands"));
     }
 
+
+    @Test void groupedBodiesReflowToViewportWidthAndExposeEveryCard() throws Exception {
+        AtomicReference<JPanel> bodyRef = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardCollectionSurface surface = new CardCollectionSurface();
+            CardCollectionSurface.Row a = sizedRow("a", 250, 60);
+            CardCollectionSurface.Row b = sizedRow("b", 250, 60);
+            CardCollectionSurface.Row c = sizedRow("c", 250, 60);
+            surface.setGroups(List.of(new CardCollectionSurface.Group(
+                    "creatures", "Creatures (3)", List.of(a, b, c))));
+            JScrollPane scroll = surface.createScrollPane();
+            scroll.setSize(570, 260);
+            scroll.doLayout();
+            surface.setSize(scroll.getViewport().getExtentSize().width, 260);
+            surface.doLayout();
+            JPanel body = (JPanel) findNamed(surface, "card-collection-group-body-creatures");
+            bodyRef.set(body);
+        });
+        assertNotNull(bodyRef.get());
+        assertTrue(bodyRef.get().getPreferredSize().height > 70,
+                "three wide cards must wrap to multiple visible rows rather than clipping after the first");
+        assertEquals(3, bodyRef.get().getComponentCount());
+    }
+
     private static CardCollectionSurface.Row row(String identity) {
+        return sizedRow(identity, 80, 32);
+    }
+
+    private static CardCollectionSurface.Row sizedRow(String identity, int width, int height) {
         JPanel component = new JPanel();
+        component.setPreferredSize(new java.awt.Dimension(width, height));
+        component.setMinimumSize(new java.awt.Dimension(width, height));
         return new CardCollectionSurface.Row() {
             @Override public String identity() { return identity; }
             @Override public JComponent component() { return component; }

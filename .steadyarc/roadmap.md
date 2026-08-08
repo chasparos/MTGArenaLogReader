@@ -9,7 +9,7 @@
 
 ### Mission
 
-Build a responsive Swing workspace for discovering cards legal in a chosen MTG Arena format, narrowing them through structured and semantic filters, collecting candidates under consideration, incorporating collection ownership when Arena logs provide authoritative evidence, and exporting those candidates to an LLM with authoritative card rules.
+Build a responsive Swing workspace for discovering cards legal in a chosen MTG Arena format, narrowing them through structured and semantic filters, collecting candidates candidates, incorporating collection ownership when Arena logs provide authoritative evidence, and exporting those candidates to an LLM with authoritative card rules.
 
 ### Accepted constraints
 
@@ -21,7 +21,7 @@ Build a responsive Swing workspace for discovering cards legal in a chosen MTG A
 - Collection quantity is a tri-state integer contract: `-1` unknown, `0` authoritatively known absent, and positive values the authoritatively observed number of copies.
 - Normal filters include color/color identity, base card type, and mana-value range. Semantic tags are categorized and apply as an additional filter layer.
 - The filtered result produces a tag cloud with counts derived from that result before the tag layer is applied, so users can see useful refinements instead of only already-selected tags.
-- Cards can be added to a persistent "Under consideration" workspace.
+- Cards can be added to a persistent "Candidates" workspace.
 - AI export uses a versioned, token-conscious text protocol, includes authoritative rules for every considered card, and ends with exactly: `What deck would you build with these cards?`
 
 ### Ordered items
@@ -138,7 +138,7 @@ Acceptance evidence:
 - Empty, loading, partially cached, offline, and failed-catalog states have explicit UI treatments.
 - Keyboard traversal and visible focus are supported; color is not the sole indication of state.
 
-#### DP-06 — Under consideration workspace
+#### DP-06 — Candidate workspace
 
 **State:** active
 
@@ -148,9 +148,9 @@ Acceptance evidence:
 
 - Membership survives restart and catalog refresh through stable identity mapping.
 - Duplicate-printing behavior is defined and tested.
-- Browser and consideration views remain synchronized, including overlays. Collection ownership/count presentation is omitted while `SA-MTGA-DEF-003` remains open; unknown ownership must not be replaced by invented values.
+- Browser and candidate views remain synchronized, including overlays. Collection ownership/count presentation is omitted while `SA-MTGA-DEF-003` remains open; unknown ownership must not be replaced by invented values.
 - Empty and stale/unresolvable candidate states remain recoverable.
-- Existing Arena-exported deck lists can be imported into consideration without resetting active browser filters; quantities and duplicate printings collapse to one logical candidate, unresolved names are reported, and imported deck contents never imply collection ownership.
+- Existing Arena-exported deck lists can be imported into candidates without resetting active browser filters; quantities and duplicate printings collapse to one logical candidate, unresolved names are reported, and imported deck contents never imply collection ownership.
 - A repository-owned human click-test harness exposes the complete DP-06 workspace before acceptance.
 - Human acceptance is a required completion gate: after automated validation is green, the human runs the preview checklist and explicitly accepts DP-06 (or records observed defects). Automated tests alone do not close DP-06.
 
@@ -159,10 +159,10 @@ Human-feedback rework plan (2026-08-07), in implementation order:
 1. **Real Standard preview data through the production catalog path.** Repurpose `DeckPlannerWorkspacePreview` to prime a bounded subset of current `game:arena legal:standard` cards through the existing Scryfall `CardCatalogSource` → `FormatCatalogService` → `FormatCatalogRepository` → `CatalogFilterIndex` path rather than manufacturing `Planner Card N` fixtures. Reuse the shared image-cache path for those real cards. Keep a clear offline/error presentation; do not silently substitute synthetic cards when the real preview fetch fails.
 
    Validation status (2026-08-07): complete for this rework step. The preview uses a bounded `CardCatalogSource` wrapper around `ScryfallClient`, persists/publishes through `FormatCatalogService` and `FormatCatalogRepository`, reuses a fresh completed Standard snapshot for 12 hours, falls back to an older completed snapshot only with explicit offline status when refresh fails, and shows an explicit no-synthetic-data error when neither network nor cache can supply real cards. Browser images resolve the same catalog identities through `CardImageCacheSource` and the shared `CardImageCache`. Human-side validation passed at commit `bcf61885455c5858a94876bf0f3b9e25b225b0bd`: 221 tests, zero failures/errors/skips.
-2. **Shared replay-style candidate chips.** Extract or expose the card-chip presentation used by the replay view as a reusable component/painter and use that same renderer for resolved consideration entries. Candidate rows show card identity/presentation and stale state, but no owned-count text while collection ownership is deferred.
+2. **Shared replay-style candidate chips.** Extract or expose the card-chip presentation used by the replay view as a reusable component/painter and use that same renderer for resolved candidate entries. Candidate rows show card identity/presentation and stale state, but no owned-count text while collection ownership is deferred.
 
    Validation status (2026-08-07): complete for this rework step at commit `bc47a7bb6e8cf4cec85647b932ae798984e7c368`. `ReplayCardChip` is shared by replay and Deck Planner, stale rows remain explicit, ownership text is omitted, and the human-side suite passed 223 tests with zero failures/errors/skips.
-3. **Manual ordering by drag and drop plus explicit MTG sort.** Replace Up/Down as the primary ordering gesture with drag-and-drop reorder that persists through `UnderConsiderationModel`. Keep manual order authoritative after a drag. Add a `Use normal MTG sorting` action that applies a shared Magic ordering primitive (type group → mana value → color → name), reusing/refactoring the existing Draft Assistant / Deck Tracker ordering logic rather than introducing another comparator.
+3. **Manual ordering by drag and drop plus explicit MTG sort.** Replace Up/Down as the primary ordering gesture with drag-and-drop reorder that persists through `CandidateModel`. Keep manual order authoritative after a drag. Add a `Use normal MTG sorting` action that applies a shared Magic ordering primitive (type group → mana value → color → name), reusing/refactoring the existing Draft Assistant / Deck Tracker ordering logic rather than introducing another comparator.
 
    Validation status (2026-08-07): complete for this rework step at commit `f20a751b0f9820f1fc030fa3e669b4777baa9eee`. Candidate insertion-point moves persist through the ordered model, Draft and Deck Planner share `MagicCardOrdering`, and the human-side suite passed 226 tests with zero failures/errors/skips.
 4. **Common name-to-card resolution and richer deck import.** Introduce one name-to-card repository used by deck import and future planner entry points. It first resolves against the current catalog/cache, handles exact Arena export printing hints where present, and may fall back to an exact-name Scryfall lookup. The Import Deck UI offers known Arena decks already observed by the deck subsystem as selectable sources in addition to pasted Arena-export text. Fallback metadata never implies collection ownership.
@@ -170,10 +170,10 @@ Human-feedback rework plan (2026-08-07), in implementation order:
    Current implementation slice also includes the human-requested candidate-surface refactor: replace the `JList`/list-model presentation with a custom component panel inside the project-local `AppScrollBarUI` scroll surface while preserving the same authoritative ordered model. This deliberately creates room for later visual groupings (for example card-advantage / recursion / win-condition categories, mana-cost adornments, and other planner-specific grouping metadata) without another storage migration.
 
    Validation status (2026-08-07): complete for this rework step at commit `9a4878fe27335709ee9e963912a7d4c7b011612f`. The custom component candidate surface, project-local scrollbar, local-first `CardNameRepository`, exact-name Scryfall fallback, and read-only observed-Arena-deck adapter are committed on a clean tree; the human-side suite passed 228 tests with zero failures/errors/skips.
-5. **Consideration filter layer.** Add a filter-panel control that restricts the catalog result to identities currently in the consideration set without destroying the normal structured/tag filter state. Selecting a resolved candidate automatically enables this temporary layer; disabling it restores the same normal filter state that was active before. Candidate membership changes update the layer immediately.
+5. **Candidate filter layer.** Add a filter-panel control that restricts the catalog result to identities currently in the candidate set without destroying the normal structured/tag filter state. Selecting a resolved candidate automatically enables this temporary layer; disabling it restores the same normal filter state that was active before. Candidate membership changes update the layer immediately.
 
    Current implementation slice promotes the candidate container into a small shared `CardCollectionSurface` primitive that owns project-local scrolling, component-row selection, and insertion-point drag/drop while leaving card-specific rendering/grouping metadata to its caller. DP-06 uses that primitive first; no other workspace is migrated in this patch.
-6. **Human click acceptance.** Update `DeckPlannerWorkspacePreview` and its visible checklist to exercise real Standard cards, replay-style chips, drag/drop persistence, normal MTG sorting, known-deck and pasted-text import, Scryfall-name fallback behavior, the consideration-only filter layer, stale-card recovery, resizing/scrolling, and restart persistence. DP-06 closes only after the full Maven suite is green and the human explicitly accepts this real-card preview.
+6. **Human click acceptance.** Update `DeckPlannerWorkspacePreview` and its visible checklist to exercise real Standard cards, replay-style chips, drag/drop persistence, normal MTG sorting, known-deck and pasted-text import, Scryfall-name fallback behavior, the candidate-only filter layer, stale-card recovery, resizing/scrolling, and restart persistence. DP-06 closes only after the full Maven suite is green and the human explicitly accepts this real-card preview.
    Current implementation slice turns the checklist into an interactive ten-check human acceptance surface covering every completed DP-06 rework behavior. Reaching 10/10 records only that the click checks were performed; the harness deliberately cannot close DP-06 or manufacture acceptance. The human must still report explicit acceptance or defects after repository-side validation is green.
 
 
@@ -186,6 +186,17 @@ Human-feedback iteration (2026-08-08):
 - **High-quality scalable chip rendering.** Replay card chips remain shared between replay and planner, but their rendering must scale without raster-text artifacts; text is drawn through glyph vectors with high-quality antialiasing/fractional metrics.
 - **This pass does not expand filter taxonomy.** Tribe/subtype tag resolution is explicitly deferred as `SA-MTGA-DEF-004`; it will require a dedicated long-list interaction/taxonomy design.
 
+Human-feedback iteration 2 plan (2026-08-08), in implementation order:
+
+1. **Candidate vocabulary and visual/layout foundation.** Complete the active DP-06 vocabulary migration to **Candidates** across current code and documentation while preserving historical handoff evidence. Fix wrapped category layout so every card and header count remains visible after resize/update. Candidate selection uses a precise replay-chip outline rather than a rectangular row highlight. Increase catalog card side length by 25%, use the shared MTG ordering for catalog presentation, and restore the dark-mode golden selection outline.
+2. **Editable candidate categories and named Candidate Sets.** Persist category order and membership; add/remove/reorder categories, move cards from a removed category into an implicit `Uncategorized` category that disappears while empty, and expose an inline add-category control below populated groups. Add save/load for named Candidate Sets without conflating a saved set with Arena deck ownership.
+3. **Multi-selection and cross-surface drag/drop.** Extend the candidate surface to Windows-style multi-selection, drag multiple selected candidates together, accept catalog-card drops into candidate categories, and use a scaled replay-chip drag image with insertion/category feedback.
+4. **Alternate-art/name resolution and legality visibility.** Make logical-card resolution expose alternate Arena/Scryfall printings, collector-visible favorite art selection, and an explicit Illegal indicator when a resolved card exists but is outside the selected legal format. This must preserve logical candidate identity and must not infer ownership.
+
+Filtering/tag-taxonomy rework remains outside these slices; subtype/tribal handling stays deferred as `SA-MTGA-DEF-004`.
+
+
+
 #### DP-07 — Authoritative AI deck-building protocol
 
 **State:** planned
@@ -194,7 +205,7 @@ Create `MTGA_DECK_BUILD_REQUEST_V1`, following the established authoritative/pro
 
 Acceptance evidence:
 
-- Payload includes target format, consideration quantity/membership, collection quantity with unknown distinguished from zero, stable identities, name, mana cost/value, type line, complete oracle text, colors/color identity, power/toughness/loyalty/defense when applicable, keywords, produced mana, and every relevant face of multi-face cards.
+- Payload includes target format, candidate membership, collection quantity with unknown distinguished from zero, stable identities, name, mana cost/value, type line, complete oracle text, colors/color identity, power/toughness/loyalty/defense when applicable, keywords, produced mana, and every relevant face of multi-face cards.
 - Repeated values use a compact alias/table mechanism where it saves tokens without making rules ambiguous.
 - Export is deterministic, escapes delimiters/newlines, states that supplied card data is authoritative, forbids substitution/invented rules, and separates observed facts from strategic inference.
 - Golden tests cover ordinary, token-producing, split/adventure, transform/modal, and metadata-incomplete cards plus the `-1/0/positive` collection states.
@@ -209,17 +220,17 @@ Wire navigation/startup lifecycle, background service shutdown, persistence migr
 Acceptance evidence:
 
 - Full Maven tests pass on the supported JDK.
-- Integration fixture demonstrates format selection → resumable catalog population → filtering/tag refinement → consideration → deterministic AI export.
+- Integration fixture demonstrates format selection → resumable catalog population → filtering/tag refinement → candidates → deterministic AI export.
 - Performance evidence records EDT responsiveness, time to first usable catalog view, scroll behavior with a full target-format catalog, image-cache hit behavior, and bounded memory/cache growth.
 - Human visual validation covers normal interaction and the required loading/offline/error states.
 
 ### Active item
 
-`DP-06 — Under consideration workspace` remains active after the first real-card click review. The acceptance harness itself is validated at the clean 233-test baseline `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; the 2026-08-08 human review opened the bounded cache/import/category/rendering iteration recorded above. Apply and validate that pass, then return to UX/design-focused human review. Do not start DP-07 until DP-06 is explicitly accepted.
+`DP-06 — Candidate workspace` remains active after the first real-card click review. The acceptance harness itself is validated at the clean 233-test baseline `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; the 2026-08-08 human review opened the bounded cache/import/category/rendering iteration recorded above. Apply and validate that pass, then return to UX/design-focused human review. Do not start DP-07 until DP-06 is explicitly accepted.
 
 ### Current planning decisions
 
-- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 remains active after a clean 233-test acceptance-harness baseline at `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; real-card human review on 2026-08-08 opened another bounded UX/cache/import iteration rather than accepting the item. Ownership-dependent consideration displays are omitted while `SA-MTGA-DEF-003` remains open.
+- DP-01, DP-03, DP-04, and DP-05 are complete. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-06 remains active after a clean 233-test acceptance-harness baseline at `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f`; real-card human review on 2026-08-08 opened another bounded UX/cache/import iteration rather than accepting the item. Ownership-dependent candidate displays are omitted while `SA-MTGA-DEF-003` remains open.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.

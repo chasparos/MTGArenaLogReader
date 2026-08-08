@@ -50,9 +50,9 @@
 - Tag extraction is deterministic and versioned. Tags belong to categories (for example keyword, zone, action/mechanic, and compound predicate); they are not an unstructured bag of raw substrings.
 - Compound tags such as `all creatures` are semantic predicates over normalized rules/type information and require focused tests.
 
-### Consideration and AI export
+### Candidates and AI export
 
-- "Under consideration" is durable user intent and uses stable identity mapping across catalog refreshes.
+- "Candidates" is durable user intent and uses stable identity mapping across catalog refreshes.
 - The deck-planning AI export is a versioned protocol distinct from match reconstruction, but it follows the same authoritative-data and deterministic-escaping principles.
 - The protocol must carry complete functional card rules, including all relevant faces, while using aliases/tables only when they reduce tokens without ambiguity.
 - Unknown collection quantity must remain distinguishable from known zero in the payload.
@@ -130,20 +130,20 @@
 - `CardBrowserScrollPane` installs the shared `AppScrollBarUI` on both axes and applies semantic scroll-pane/viewport colors even in standalone review harnesses.
 - The standard readable card layout is 220–320 px wide with the existing 63:88 aspect ratio; narrow windows use one centered card rather than shrinking below readable width.
 
-## 2026-08-06 — DP-04 multi-select and consideration badges
+## 2026-08-06 — DP-04 multi-select and candidate badges
 
 - Browser selection is an ordered identity set. Mouse click and keyboard Space toggle one card without clearing prior selections; selection survives reorder/filter replacement for identities that remain present.
-- The browser accepts a separate identity set for under-consideration membership. It is presentation state only in DP-04; persistence and workspace mutation remain DP-06.
+- The browser accepts a separate identity set for candidate membership. It is presentation state only in DP-04; persistence and workspace mutation remain DP-06.
 - Selection is rendered as a bottom-center theme-aware chip with `/svg/tap.svg` and the text `selected`, replacing the full-card selection outline.
-- Under-consideration membership is rendered as a circular theme-aware top-right badge using the general MTG `/svg/chaos.svg` symbol.
+- Candidate membership is rendered as a circular theme-aware top-right badge using the general MTG `/svg/chaos.svg` symbol.
 
-## 2026-08-06 — DP-04 standard desktop selection and consideration gestures
+## 2026-08-06 — DP-04 standard desktop selection and candidate gestures
 
 - Plain click/Space replaces selection, Ctrl toggles one card, Shift replaces selection with the contiguous anchor range, and Ctrl+Shift adds that range.
 - Selection and range anchors remain identity-aware across result replacement; browser selection is still transient DP-04 state.
-- Double-clicking a card adds it to the under-consideration set without changing selection. Double-clicking a selected chip adds every selected card. Clicking a visible consideration badge removes that card.
+- Double-clicking a card adds it to the candidate set without changing selection. Double-clicking a selected chip adds every selected card. Clicking a visible candidate badge removes that card.
 - Badge hit targets are derived from the same geometry used for painting so interaction and rendering cannot drift apart.
-- The selected chip is a larger bottom-edge badge using neutral gray at 80% opacity; the circular consideration badge remains anchored to the top-right edge.
+- Selected catalog cards use the same rounded card-edge geometry as hover/focus, with a golden-yellow dark-mode outline; the circular candidate badge remains anchored to the top-right edge.
 
 ## DP-05 asynchronous filter coordination
 
@@ -187,22 +187,22 @@ The DP-05 interaction pass uses `PreviewDeckPlannerWorkspace.ps1`. The harness o
 Human review preferred the lighter unframed color-semantics row beneath the color selectors. The final treatment restores radio-button visuals with a theme-aware hollow/filled bullet so the active source and match mode remain explicit without competing visually with the color chips.
 
 
-## 2026-08-07 — DP-06 consideration workspace state
+## 2026-08-07 — DP-06 candidate workspace state
 
-- The authoritative under-consideration set is ordered and keyed by the Deck Planner logical catalog identity, not by printing-specific Arena or Scryfall IDs. Alternate printings grouped under the same logical identity therefore occupy one candidate position.
-- Consideration persistence retains unresolved identities across catalog refreshes. A temporarily missing identity is rendered as a recoverable stale candidate instead of being deleted; when the identity returns in a later catalog snapshot it resolves to that snapshot's preferred printing.
-- Browser consideration badges are a projection of the persistent workspace onto the currently filtered browser result. Filtering a card out of the browser must not remove it from the consideration workspace.
-- Collection quantity shown for a considered card preserves the existing `-1` unknown / `0` known absent / positive-owned contract. Persistence writes are injectable through an executor so disk I/O can remain off the Swing EDT.
+- The authoritative candidate set is ordered and keyed by the Deck Planner logical catalog identity, not by printing-specific Arena or Scryfall IDs. Alternate printings grouped under the same logical identity therefore occupy one candidate position.
+- Candidate persistence retains unresolved identities across catalog refreshes. A temporarily missing identity is rendered as a recoverable stale candidate instead of being deleted; when the identity returns in a later catalog snapshot it resolves to that snapshot's preferred printing.
+- Browser candidate badges are a projection of the persistent workspace onto the currently filtered browser result. Filtering a card out of the browser must not remove it from the candidate workspace.
+- Candidate presentation does not show collection quantity while `SA-MTGA-DEF-003` remains open. The underlying collection contract remains `-1` unknown / `0` known absent / positive-owned, and candidate persistence writes remain injectable through an executor so disk I/O can stay off the Swing EDT.
 ### DP-06 existing-deck import
 
-- Arena-exported deck text is an input convenience for the under-consideration set, not an ownership source or authoritative playable-deck model.
+- Arena-exported deck text is an input convenience for the candidate set, not an ownership source or authoritative playable-deck model.
 - Import resolves card names against every printing in the current format catalog, then stores the catalog group's stable logical identity. Quantities, repeated lines, and alternate printings therefore collapse to one candidate while preserving first appearance order.
 - Main deck, sideboard, commander, and companion card lines are accepted. Unresolved names remain explicit import feedback rather than becoming fabricated/stale identities.
-- Import is additive and does not reset active browser filters. Browser badges remain a visible-result projection of the durable consideration set.
+- Import is additive and does not reset active browser filters. Browser badges remain a visible-result projection of the durable candidate set.
 
-### 2026-08-07 — Shared card collection surface and consideration filter layer
+### 2026-08-07 — Shared card collection surface and candidate filter layer
 
 - `app.ui.CardCollectionSurface` is the reusable component-row primitive for small ordered card collections that need project-local scrolling, selection, and insertion-point drag/drop. It deliberately does not own card-specific rendering, planner persistence, or semantic grouping policy; callers supply ordinary Swing row components and may later add group headers/metadata without a `JList` cell-renderer constraint.
-- Deck Planner's consideration-only catalog layer is orthogonal to normal structured/tag filters. Enabling or disabling it never rewrites those filters; it intersects the normal result with the current authoritative consideration identities.
-- Selecting a resolved consideration candidate may activate the consideration-only layer as a temporary browsing aid. Stale candidates do not activate it.
-- Consideration membership changes are propagated into the active layer immediately; the browser remains a filtered projection and never becomes the authority for candidate membership.
+- Deck Planner's candidate-only catalog layer is orthogonal to normal structured/tag filters. Enabling or disabling it never rewrites those filters; it intersects the normal result with the current authoritative candidate identities.
+- Selecting a resolved candidate may activate the candidate-only layer as a temporary browsing aid. Stale candidates do not activate it.
+- Candidate membership changes are propagated into the active layer immediately; the browser remains a filtered projection and never becomes the authority for candidate membership.

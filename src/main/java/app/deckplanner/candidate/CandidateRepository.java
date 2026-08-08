@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,11 +11,11 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Persists the user's ordered logical-card consideration workspace. */
-public final class UnderConsiderationRepository implements AutoCloseable {
+/** Persists the user's ordered logical-card candidates workspace. */
+public final class CandidateRepository implements AutoCloseable {
     private final Connection connection;
 
-    public UnderConsiderationRepository(Path databasePath) {
+    public CandidateRepository(Path databasePath) {
         try {
             Path absolute = databasePath.toAbsolutePath();
             if (absolute.getParent() != null) Files.createDirectories(absolute.getParent());
@@ -24,14 +24,14 @@ public final class UnderConsiderationRepository implements AutoCloseable {
                             + ";DB_CLOSE_ON_EXIT=FALSE", "sa", "");
             initializeSchema();
         } catch (Exception error) {
-            throw new IllegalStateException("Could not initialize consideration repository", error);
+            throw new IllegalStateException("Could not initialize candidates repository", error);
         }
     }
 
     public synchronized List<String> load() {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT card_identity
-                FROM deck_planner_consideration
+                FROM deck_planner_candidates
                 ORDER BY position_no
                 """);
              ResultSet rows = statement.executeQuery()) {
@@ -39,7 +39,7 @@ public final class UnderConsiderationRepository implements AutoCloseable {
             while (rows.next()) identities.add(rows.getString(1));
             return List.copyOf(identities);
         } catch (SQLException error) {
-            throw new IllegalStateException("Could not read consideration workspace", error);
+            throw new IllegalStateException("Could not read candidates workspace", error);
         }
     }
 
@@ -48,10 +48,10 @@ public final class UnderConsiderationRepository implements AutoCloseable {
         try {
             connection.setAutoCommit(false);
             try (Statement clear = connection.createStatement()) {
-                clear.executeUpdate("DELETE FROM deck_planner_consideration");
+                clear.executeUpdate("DELETE FROM deck_planner_candidates");
             }
             try (PreparedStatement insert = connection.prepareStatement("""
-                    INSERT INTO deck_planner_consideration (position_no, card_identity)
+                    INSERT INTO deck_planner_candidates (position_no, card_identity)
                     VALUES (?, ?)
                     """)) {
                 for (int index = 0; index < snapshot.size(); index++) {
@@ -64,7 +64,7 @@ public final class UnderConsiderationRepository implements AutoCloseable {
             connection.commit();
         } catch (SQLException error) {
             try { connection.rollback(); } catch (SQLException ignored) { }
-            throw new IllegalStateException("Could not persist consideration workspace", error);
+            throw new IllegalStateException("Could not persist candidates workspace", error);
         } finally {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
@@ -83,17 +83,30 @@ public final class UnderConsiderationRepository implements AutoCloseable {
     private void initializeSchema() throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS deck_planner_consideration (
+                    CREATE TABLE IF NOT EXISTS deck_planner_candidates (
                         position_no INTEGER PRIMARY KEY,
                         card_identity VARCHAR(256) NOT NULL UNIQUE)
                     """);
+            // One-way compatibility migration from the pre-rename DP-06 schema.
+            try {
+                statement.executeUpdate("""
+                        INSERT INTO deck_planner_candidates (position_no, card_identity)
+                        SELECT position_no, card_identity
+                        FROM deck_planner_consideration legacy
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM deck_planner_candidates current_rows
+                            WHERE current_rows.card_identity = legacy.card_identity)
+                        """);
+            } catch (SQLException legacyTableAbsent) {
+                // Fresh repositories never had the legacy table.
+            }
         }
     }
 
     @Override public synchronized void close() {
         try { connection.close(); }
         catch (SQLException error) {
-            throw new IllegalStateException("Could not close consideration repository", error);
+            throw new IllegalStateException("Could not close candidates repository", error);
         }
     }
 }

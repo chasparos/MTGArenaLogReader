@@ -45,17 +45,17 @@ class DeckPlannerFilterModelTest {
     }
 
 
-    @Test void considerationLayerIsIndependentFromNormalFilters() {
+    @Test void candidateLayerIsIndependentFromNormalFilters() {
         DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
         model.toggleColor(CardColor.BLUE);
         CardFilterState normal = model.state().filters();
 
-        model.setConsiderationOnly(true);
-        assertTrue(model.state().considerationOnly());
+        model.setCandidateOnly(true);
+        assertTrue(model.state().candidateOnly());
         assertEquals(normal, model.state().filters());
 
-        model.setConsiderationOnly(false);
-        assertFalse(model.state().considerationOnly());
+        model.setCandidateOnly(false);
+        assertFalse(model.state().candidateOnly());
         assertEquals(normal, model.state().filters());
     }
 

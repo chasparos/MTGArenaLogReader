@@ -119,7 +119,7 @@ class CardBrowserPanelTest {
 
 
     @Test
-    void supportsIdentityBasedMultiSelectionAndConsiderationMembership() throws Exception {
+    void supportsIdentityBasedMultiSelectionAndCandidateMembership() throws Exception {
         CardBrowserPanel[] holder = new CardBrowserPanel[1];
         SwingUtilities.invokeAndWait(() -> {
             holder[0] = new CardBrowserPanel(
@@ -136,19 +136,19 @@ class CardBrowserPanelTest {
             holder[0].dispatchEvent(new java.awt.event.MouseEvent(holder[0],
                     java.awt.event.MouseEvent.MOUSE_PRESSED, 2L, java.awt.event.InputEvent.CTRL_DOWN_MASK,
                     125, 20, 1, false));
-            holder[0].setUnderConsiderationIdentities(java.util.Set.of("b", "c", "missing"));
+            holder[0].setCandidateIdentities(java.util.Set.of("b", "c", "missing"));
 
             assertEquals(java.util.Set.of("a", "b"), holder[0].selectedIdentities());
             assertEquals(List.of("a", "b"), holder[0].selectedCards().stream()
                     .map(CardBrowserPanel.BrowserCard::identity).toList());
-            assertEquals(java.util.Set.of("b", "c"), holder[0].underConsiderationIdentities());
+            assertEquals(java.util.Set.of("b", "c"), holder[0].candidateIdentities());
 
             holder[0].setCards(List.of(
                     new CardBrowserPanel.BrowserCard("c", "Gamma"),
                     new CardBrowserPanel.BrowserCard("b", "Beta"),
                     new CardBrowserPanel.BrowserCard("a", "Alpha")));
             assertEquals(java.util.Set.of("a", "b"), holder[0].selectedIdentities());
-            assertEquals(java.util.Set.of("b", "c"), holder[0].underConsiderationIdentities());
+            assertEquals(java.util.Set.of("b", "c"), holder[0].candidateIdentities());
         });
     }
 
@@ -178,7 +178,7 @@ class CardBrowserPanelTest {
     }
 
     @Test
-    void followsWindowsSelectionAndConsiderationGestures() throws Exception {
+    void followsWindowsSelectionAndCandidateGestures() throws Exception {
         CardBrowserPanel[] holder = new CardBrowserPanel[1];
         SwingUtilities.invokeAndWait(() -> {
             holder[0] = new CardBrowserPanel(
@@ -206,20 +206,20 @@ class CardBrowserPanelTest {
             press(holder[0], 125, 20, 1, 0);
             assertEquals(java.util.Set.of("b"), holder[0].selectedIdentities());
 
-            // Double-clicking a card adds it to consideration without changing selection.
+            // Double-clicking a card adds it to candidates without changing selection.
             press(holder[0], 235, 20, 1, 0);
             press(holder[0], 235, 20, 2, 0);
             assertEquals(java.util.Set.of("b"), holder[0].selectedIdentities());
-            assertEquals(java.util.Set.of("c"), holder[0].underConsiderationIdentities());
+            assertEquals(java.util.Set.of("c"), holder[0].candidateIdentities());
 
             // Double-clicking the selected chip adds all selected cards.
             press(holder[0], 150, 145, 1, 0);
             press(holder[0], 150, 145, 2, 0);
-            assertEquals(java.util.Set.of("b", "c"), holder[0].underConsiderationIdentities());
+            assertEquals(java.util.Set.of("b", "c"), holder[0].candidateIdentities());
 
-            // Clicking the consideration badge removes that card.
+            // Clicking the candidates badge removes that card.
             press(holder[0], 325, 15, 1, 0);
-            assertEquals(java.util.Set.of("b"), holder[0].underConsiderationIdentities());
+            assertEquals(java.util.Set.of("b"), holder[0].candidateIdentities());
         });
     }
 

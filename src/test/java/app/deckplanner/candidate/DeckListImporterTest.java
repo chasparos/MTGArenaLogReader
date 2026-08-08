@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.filter.CatalogFilterIndex;

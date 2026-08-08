@@ -3,6 +3,7 @@ package app.deckplanner.ui;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.SwingUtilities;
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 
@@ -36,4 +37,22 @@ class CardViewTest {
 
         assertEquals(original, cached.getRGB(5, 5), "overlays must not mutate cached images");
     }
+
+    @Test
+    void selectedCardUsesGoldenOutlineInsteadOfLargeBadge() throws Exception {
+        BufferedImage rendered = new BufferedImage(120, 168, BufferedImage.TYPE_INT_ARGB);
+        SwingUtilities.invokeAndWait(() -> {
+            CardView view = new CardView();
+            view.setSize(120, 168);
+            view.configure("Card", null, false, true, false, false);
+            Graphics2D graphics = rendered.createGraphics();
+            view.paint(graphics);
+            graphics.dispose();
+        });
+
+        Color edge = new Color(rendered.getRGB(2, 84), true);
+        assertEquals(new Color(214, 168, 75).getRed(), edge.getRed());
+        assertEquals(new Color(214, 168, 75).getGreen(), edge.getGreen());
+    }
+
 }

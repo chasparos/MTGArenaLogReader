@@ -1,6 +1,6 @@
 package app.deckplanner.ui;
 
-import app.deckplanner.consideration.UnderConsiderationModel;
+import app.deckplanner.candidate.CandidateModel;
 import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
 import app.ui.AppColors;
@@ -21,10 +21,10 @@ import java.util.function.ToIntFunction;
  * Ordered DP-06 candidate workspace backed by the project-owned {@link CardCollectionSurface}.
  *
  * <p>Candidate cards are grouped into stable planning categories and rendered as ordinary
- * components. Ordering remains authoritative in {@link UnderConsiderationModel}; category
+ * components. Ordering remains authoritative in {@link CandidateModel}; category
  * layout is presentation only and therefore leaves room for future semantic planner groupings.</p>
  */
-public final class UnderConsiderationPanel extends JPanel {
+public final class CandidatePanel extends JPanel {
     private final CardCollectionSurface surface = new CardCollectionSurface();
     private final JScrollPane scroll = surface.createScrollPane();
     private final JButton remove = new JButton("Remove");
@@ -33,13 +33,13 @@ public final class UnderConsiderationPanel extends JPanel {
     private final JButton importDeck = new JButton("Import deck");
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
-    private UnderConsiderationModel model;
+    private CandidateModel model;
     private Consumer<Optional<String>> selectionAction = ignored -> { };
 
-    public UnderConsiderationPanel() {
+    public CandidatePanel() {
         super(new BorderLayout(6, 6));
         setBorder(new EmptyBorder(8, 8, 8, 8));
-        JLabel title = new JLabel("Under consideration");
+        JLabel title = new JLabel("Candidates");
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
@@ -67,7 +67,7 @@ public final class UnderConsiderationPanel extends JPanel {
         refreshTheme();
     }
 
-    public void bind(UnderConsiderationModel model, ToIntFunction<CardInfo> ignoredQuantitySource) {
+    public void bind(CandidateModel model, ToIntFunction<CardInfo> ignoredQuantitySource) {
         this.model = Objects.requireNonNull(model);
     }
 
@@ -96,15 +96,15 @@ public final class UnderConsiderationPanel extends JPanel {
         this.selectionAction = selectionAction == null ? ignored -> { } : selectionAction;
     }
 
-    public void setEntries(List<UnderConsiderationModel.Entry> entries) {
+    public void setEntries(List<CandidateModel.Entry> entries) {
         assertEdt();
         List<CandidateRow> creatures = new ArrayList<>();
         List<CandidateRow> noncreatures = new ArrayList<>();
         List<CandidateRow> nonbasicLands = new ArrayList<>();
         List<CandidateRow> unavailable = new ArrayList<>();
 
-        for (UnderConsiderationModel.Entry entry :
-                entries == null ? List.<UnderConsiderationModel.Entry>of() : entries) {
+        for (CandidateModel.Entry entry :
+                entries == null ? List.<CandidateModel.Entry>of() : entries) {
             CandidateRow row = new CandidateRow(entry);
             switch (category(row.card(), row.stale())) {
                 case CREATURES -> creatures.add(row);
@@ -184,7 +184,7 @@ public final class UnderConsiderationPanel extends JPanel {
 
     private static void assertEdt() {
         if (!SwingUtilities.isEventDispatchThread()) {
-            throw new IllegalStateException("Consideration workspace must be used on EDT");
+            throw new IllegalStateException("Candidate workspace must be used on EDT");
         }
     }
 
@@ -201,7 +201,7 @@ public final class UnderConsiderationPanel extends JPanel {
         private final boolean stale;
         private final JComponent content;
 
-        CandidateRow(UnderConsiderationModel.Entry entry) {
+        CandidateRow(CandidateModel.Entry entry) {
             super(new BorderLayout());
             identity = entry.identity();
             stale = entry.card().isEmpty();
@@ -210,7 +210,7 @@ public final class UnderConsiderationPanel extends JPanel {
             setMinimumSize(new Dimension(270, 60));
             setMaximumSize(new Dimension(460, 60));
             setBorder(new EmptyBorder(3, 3, 3, 3));
-            setOpaque(true);
+            setOpaque(false);
 
             if (stale) {
                 JLabel label = new JLabel("Unavailable card — stale; keep or remove");
@@ -241,15 +241,18 @@ public final class UnderConsiderationPanel extends JPanel {
 
         @Override public void setSelected(boolean selected) {
             Color base = AppColors.color("Panel.background", new Color(0x202328));
-            Color selectedBackground =
-                    AppColors.color("List.selectionBackground", new Color(0x3B4554));
-            setBackground(selected ? selectedBackground : base);
+            Color outline = AppColors.color("App.accent", new Color(0xD6A84B));
+            setBackground(base);
             if (content instanceof ReplayCardChip chip) {
-                chip.setSelected(selected);
+                chip.setSelected(false);
+                chip.paintColoredOutline(selected ? outline : null);
             } else {
-                content.setBackground(selected ? selectedBackground : base);
+                content.setBackground(base);
                 content.setForeground(AppColors.color("Label.foreground", Color.WHITE));
                 content.setOpaque(true);
+                setBorder(selected
+                        ? BorderFactory.createLineBorder(outline, 2, true)
+                        : new EmptyBorder(3, 3, 3, 3));
             }
             repaint();
         }

@@ -9,10 +9,10 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 ## Current ownership
 
 - **Owner:** Human repository owner
-- **Repository baseline inspected for DP-06 real-card review follow-up:** `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f` on `main`
-- **Transferred validation:** `.\mvnw.cmd test` passed 233 tests with zero failures/errors/skips at `db57fa3610ced5ba09e9fbb28e5c7cc8054fdf2f` on a clean tree.
+- **Repository baseline inspected for DP-06 candidate-workspace iteration 2:** `3297aa24f36af50797977bd83359ce951c29d558` on `main`.
+- **Transferred validation:** `.\mvnw.cmd test` passed 239 tests with zero failures/errors/skips at `3297aa24f36af50797977bd83359ce951c29d558` on a clean tree.
 - **Current arc:** Deck Planner.
-- **Active roadmap item:** `DP-06 — Under consideration workspace`.
-- **DP-06 direction:** Human click review on 2026-08-08 keeps DP-06 active. This bounded pass makes the full Standard preview use persistent application caches, makes deck import persistent-cache-first with rate-limited/backing-off Scryfall fallback, turns the candidate surface into wrapped planning categories with larger scalable replay chips and drag insertion feedback, and narrows the acceptance checklist to UX/design review categories. Ownership counts remain deferred with `SA-MTGA-DEF-003`; subtype/tribal taxonomy is deferred separately.
-- **Safe next action:** Apply and validate the bounded DP-06 real-card review follow-up patch. If green, relaunch `DeckPlannerWorkspacePreview` and review the revised category workspace/import/rendering behavior using the UX/design acceptance categories. Record defects or explicit acceptance; do not start DP-07 yet.
+- **Active roadmap item:** `DP-06 — Candidate workspace`.
+- **DP-06 direction:** Human click review on 2026-08-08 opened candidate-workspace iteration 2. The accepted sequence is vocabulary/layout/presentation first; editable categories and named Candidate Sets second; multi-select/cross-surface drag/drop third; alternate-art/favorite/legal-state resolution fourth. Filtering taxonomy remains deferred.
+- **Safe next action:** Apply and validate the bounded candidate vocabulary/layout/presentation patch. If green, relaunch `DeckPlannerWorkspacePreview` and review category wrapping, chip-shaped selection, larger catalog cards, golden catalog selection, and MTG ordering before category persistence work begins.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.

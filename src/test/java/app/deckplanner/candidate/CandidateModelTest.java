@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.filter.CatalogFilterIndex;
@@ -11,10 +11,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class UnderConsiderationModelTest {
+class CandidateModelTest {
     @Test void preservesOrderDeduplicatesAndReordersLogicalIdentities() {
         List<List<String>> saved = new ArrayList<>();
-        UnderConsiderationModel model = new UnderConsiderationModel(
+        CandidateModel model = new CandidateModel(
                 List.of("oracle:a"), identities -> saved.add(List.copyOf(identities)));
 
         model.add(List.of("oracle:b", "oracle:a", "oracle:c"));
@@ -29,23 +29,23 @@ class UnderConsiderationModelTest {
     }
 
     @Test void catalogRefreshKeepsMissingCandidatesRecoverableAndResolvesReturningIdentity() {
-        UnderConsiderationModel model = new UnderConsiderationModel(
+        CandidateModel model = new CandidateModel(
                 List.of("oracle:keep", "oracle:missing"), ignored -> { });
 
-        List<UnderConsiderationModel.Entry> first = model.resolve(index(card("keep", "Keep")));
+        List<CandidateModel.Entry> first = model.resolve(index(card("keep", "Keep")));
         assertFalse(first.get(0).stale());
         assertTrue(first.get(1).stale());
 
-        List<UnderConsiderationModel.Entry> refreshed = model.resolve(index(
+        List<CandidateModel.Entry> refreshed = model.resolve(index(
                 card("missing", "Returned"), card("keep", "New printing")));
         assertEquals(List.of("oracle:keep", "oracle:missing"),
-                refreshed.stream().map(UnderConsiderationModel.Entry::identity).toList());
-        assertTrue(refreshed.stream().noneMatch(UnderConsiderationModel.Entry::stale));
+                refreshed.stream().map(CandidateModel.Entry::identity).toList());
+        assertTrue(refreshed.stream().noneMatch(CandidateModel.Entry::stale));
         assertEquals("New printing",
                 refreshed.get(0).card().orElseThrow().group().preferredPrinting().getName());
     }
 
-    @Test void alternatePrintingsShareOneConsiderationIdentity() {
+    @Test void alternatePrintingsShareOneCandidateIdentity() {
         CardInfo first = card("same", "First printing");
         first.setId("printing-1");
         CardInfo second = card("same", "Second printing");
@@ -55,14 +55,14 @@ class UnderConsiderationModelTest {
         assertEquals(1, index.cards().size(), "oracle identity should group alternate printings");
 
         String logicalIdentity = index.cards().getFirst().group().identity();
-        UnderConsiderationModel model = new UnderConsiderationModel(List.of(), ignored -> { });
+        CandidateModel model = new CandidateModel(List.of(), ignored -> { });
         model.add(List.of(logicalIdentity, logicalIdentity));
         assertEquals(List.of(logicalIdentity), model.identities());
     }
 
     @Test void arbitraryInsertionMovePersistsDragDropOrder() {
         List<List<String>> saved = new ArrayList<>();
-        UnderConsiderationModel model = new UnderConsiderationModel(
+        CandidateModel model = new CandidateModel(
                 List.of("oracle:a", "oracle:b", "oracle:c", "oracle:d"),
                 identities -> saved.add(List.copyOf(identities)));
 
@@ -77,7 +77,7 @@ class UnderConsiderationModelTest {
 
     @Test void groupedPresentationCanPersistACompleteDisplayOrderWithoutChangingMembership() {
         List<List<String>> saved = new ArrayList<>();
-        UnderConsiderationModel model = new UnderConsiderationModel(
+        CandidateModel model = new CandidateModel(
                 List.of("oracle:land", "oracle:creature-a", "oracle:spell", "oracle:creature-b"),
                 identities -> saved.add(List.copyOf(identities)));
 
@@ -105,7 +105,7 @@ class UnderConsiderationModelTest {
         blueInstant.setTypeLine("Instant");
         blueInstant.setCmc(1.0);
 
-        UnderConsiderationModel model = new UnderConsiderationModel(
+        CandidateModel model = new CandidateModel(
                 List.of("oracle:missing", "oracle:blue", "oracle:white", "oracle:red"), ignored -> { });
         model.sortByMagic(index(blueInstant, whiteCreature, redCreature));
 

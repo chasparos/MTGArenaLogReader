@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.IndexedCatalogCard;
@@ -19,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * oracle identity are one candidate. Resolution is deliberately separate from persistence: a
  * missing catalog identity remains in the workspace as a recoverable stale entry.</p>
  */
-public final class UnderConsiderationModel {
+public final class CandidateModel {
     @FunctionalInterface
     public interface Persistence {
         void save(List<String> identities);
@@ -45,11 +45,11 @@ public final class UnderConsiderationModel {
             java.util.concurrent.CompletableFuture.completedFuture(null);
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
 
-    public UnderConsiderationModel(Collection<String> initial, Persistence persistence) {
+    public CandidateModel(Collection<String> initial, Persistence persistence) {
         this(initial, persistence, Runnable::run);
     }
 
-    public UnderConsiderationModel(Collection<String> initial, Persistence persistence,
+    public CandidateModel(Collection<String> initial, Persistence persistence,
                                    java.util.concurrent.Executor persistenceExecutor) {
         this.persistence = Objects.requireNonNull(persistence);
         this.persistenceExecutor = Objects.requireNonNull(persistenceExecutor);
@@ -58,14 +58,14 @@ public final class UnderConsiderationModel {
         }
     }
 
-    public static UnderConsiderationModel transientModel() {
-        return new UnderConsiderationModel(List.of(), ignored -> { });
+    public static CandidateModel transientModel() {
+        return new CandidateModel(List.of(), ignored -> { });
     }
 
-    public static UnderConsiderationModel persisted(UnderConsiderationRepository repository,
+    public static CandidateModel persisted(CandidateRepository repository,
                                                       java.util.concurrent.Executor persistenceExecutor) {
         Objects.requireNonNull(repository);
-        return new UnderConsiderationModel(repository.load(), repository::replace, persistenceExecutor);
+        return new CandidateModel(repository.load(), repository::replace, persistenceExecutor);
     }
 
     public List<String> identities() {

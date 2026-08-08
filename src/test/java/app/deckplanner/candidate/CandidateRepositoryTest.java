@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,22 +8,22 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class UnderConsiderationRepositoryTest {
+class CandidateRepositoryTest {
     @TempDir Path temp;
 
     @Test void orderedMembershipSurvivesRepositoryRestart() {
         Path database = temp.resolve("planner");
-        try (UnderConsiderationRepository repository = new UnderConsiderationRepository(database)) {
+        try (CandidateRepository repository = new CandidateRepository(database)) {
             repository.replace(List.of("oracle:b", "oracle:a", "oracle:b", "oracle:c"));
             assertEquals(List.of("oracle:b", "oracle:a", "oracle:c"), repository.load());
         }
 
-        try (UnderConsiderationRepository reopened = new UnderConsiderationRepository(database)) {
+        try (CandidateRepository reopened = new CandidateRepository(database)) {
             assertEquals(List.of("oracle:b", "oracle:a", "oracle:c"), reopened.load());
             reopened.replace(List.of("oracle:c", "oracle:b"));
         }
 
-        try (UnderConsiderationRepository reopened = new UnderConsiderationRepository(database)) {
+        try (CandidateRepository reopened = new CandidateRepository(database)) {
             assertEquals(List.of("oracle:c", "oracle:b"), reopened.load());
         }
     }

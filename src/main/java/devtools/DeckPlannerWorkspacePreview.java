@@ -3,10 +3,10 @@ package devtools;
 import app.deckplanner.application.DeckPlannerFilterCoordinator;
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.collection.CollectionQuantity;
-import app.deckplanner.consideration.UnderConsiderationModel;
-import app.deckplanner.consideration.UnderConsiderationRepository;
-import app.deckplanner.consideration.CardNameRepository;
-import app.deckplanner.consideration.DeckCacheKnownArenaDeckSource;
+import app.deckplanner.candidate.CandidateModel;
+import app.deckplanner.candidate.CandidateRepository;
+import app.deckplanner.candidate.CardNameRepository;
+import app.deckplanner.candidate.DeckCacheKnownArenaDeckSource;
 import app.deck.persistence.DeckCache;
 import app.enrichment.CardCache;
 import app.enrichment.ScryfallClient;
@@ -90,7 +90,7 @@ public final class DeckPlannerWorkspacePreview {
                         return;
                     }
                     PreviewSession created = createRealSession(
-                            DEFAULT_ROOT.resolve("consideration"),
+                            DEFAULT_ROOT.resolve("candidates"),
                             result.snapshot().get(),
                             result.availability(),
                             realImageSource(result.snapshot().get()));
@@ -128,7 +128,7 @@ public final class DeckPlannerWorkspacePreview {
                                         CardBrowserPanel.ImageSource imageSource) {
         return createSession(databasePath, snapshot, availability, imageSource,
                 CardNameRepository.local(new CatalogFilterIndex(snapshot)),
-                app.deckplanner.consideration.KnownArenaDeckSource.empty(),
+                app.deckplanner.candidate.KnownArenaDeckSource.empty(),
                 null, null, null);
     }
 
@@ -155,7 +155,7 @@ public final class DeckPlannerWorkspacePreview {
                                                 DeckPlannerFilterCoordinator.Availability availability,
                                                 CardBrowserPanel.ImageSource imageSource,
                                                 CardNameRepository cardNames,
-                                                app.deckplanner.consideration.KnownArenaDeckSource knownDecks,
+                                                app.deckplanner.candidate.KnownArenaDeckSource knownDecks,
                                                 ScryfallClient nameLookup,
                                                 CardCache observedCardCache,
                                                 DeckCache observedDeckCache) {
@@ -166,15 +166,15 @@ public final class DeckPlannerWorkspacePreview {
                 r -> daemon(r, "planner-preview-worker"));
         CatalogFilterIndex index = new CatalogFilterIndex(snapshot);
 
-        UnderConsiderationRepository repository = new UnderConsiderationRepository(databasePath);
-        UnderConsiderationModel consideration =
-                UnderConsiderationModel.persisted(repository, Runnable::run);
-        if (consideration.identities().isEmpty()) consideration.add(initialConsideration(snapshot));
+        CandidateRepository repository = new CandidateRepository(databasePath);
+        CandidateModel candidates =
+                CandidateModel.persisted(repository, Runnable::run);
+        if (candidates.identities().isEmpty()) candidates.add(initialCandidates(snapshot));
 
         DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(
                 new DeckPlannerFilterModel("standard"), index, imageSource,
                 scheduler, worker, Duration.ofMillis(120), availability,
-                consideration, ignored -> CollectionQuantity.UNKNOWN,
+                candidates, ignored -> CollectionQuantity.UNKNOWN,
                 cardNames, knownDecks);
 
 
@@ -198,8 +198,8 @@ public final class DeckPlannerWorkspacePreview {
         partial.addActionListener(e -> workspace.setAvailability(DeckPlannerFilterCoordinator.Availability.PARTIAL_CACHE));
         offline.addActionListener(e -> workspace.setAvailability(DeckPlannerFilterCoordinator.Availability.OFFLINE));
         reset.addActionListener(e -> {
-            consideration.clear();
-            consideration.add(initialConsideration(snapshot));
+            candidates.clear();
+            candidates.add(initialCandidates(snapshot));
         });
         stateButtons.add(reset);
         stateButtons.add(ready);
@@ -236,7 +236,7 @@ public final class DeckPlannerWorkspacePreview {
                 "Candidate workspace UX: do the category layout, larger chips, spacing, scrolling, and overall panel width feel readable with a large real card pool?",
                 "Planning flow: does adding, removing, dragging, normal-MTG sorting, and moving between catalog and candidates feel natural for how you actually build a deck?",
                 "Import experience: do Known Arena deck selection, pasted deck text, progress/failure feedback, and unresolved-card reporting make sense without exposing implementation details?",
-                "Interaction feedback: are selection, consideration-only focus, drag insertion markers, stale-card recovery, and empty/offline states visually clear and discoverable?",
+                "Interaction feedback: are selection, candidate-only focus, drag insertion markers, stale-card recovery, and empty/offline states visually clear and discoverable?",
                 "Design acceptance: after resizing, filtering, importing, rearranging, closing, and relaunching, is this the workspace you intended to design—or what should change next?"
         };
 
@@ -304,7 +304,7 @@ public final class DeckPlannerWorkspacePreview {
         return deck.toString();
     }
 
-    static List<String> initialConsideration(FormatCatalogRepository.Snapshot snapshot) {
+    static List<String> initialCandidates(FormatCatalogRepository.Snapshot snapshot) {
         List<String> identities = new ArrayList<>();
         snapshot.cardGroups().stream().limit(2)
                 .map(FormatCatalogRepository.CardGroup::identity)
@@ -338,7 +338,7 @@ public final class DeckPlannerWorkspacePreview {
 
     record PreviewSession(JComponent content, DeckPlannerWorkspace workspace,
                           ScheduledExecutorService scheduler, ExecutorService worker,
-                          UnderConsiderationRepository repository,
+                          CandidateRepository repository,
                           ScryfallClient nameLookup, CardCache observedCardCache,
                           DeckCache observedDeckCache) implements AutoCloseable {
         @Override public void close() {

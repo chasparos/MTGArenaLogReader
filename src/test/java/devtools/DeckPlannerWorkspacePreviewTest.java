@@ -4,10 +4,10 @@ import app.deckplanner.application.DeckPlannerFilterCoordinator;
 import app.deckplanner.catalog.CardCatalogPage;
 import app.deckplanner.catalog.CardCatalogSource;
 import app.deckplanner.catalog.FormatCatalogRepository;
-import app.deckplanner.consideration.DeckListImporter;
+import app.deckplanner.candidate.DeckListImporter;
 import app.deckplanner.ui.DeckPlannerFilterPanel;
 import app.deckplanner.ui.DeckPlannerWorkspace;
-import app.deckplanner.ui.UnderConsiderationPanel;
+import app.deckplanner.ui.CandidatePanel;
 import app.model.card.CardInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -69,11 +69,11 @@ class DeckPlannerWorkspacePreviewTest {
         try {
             assertNotNull(find(session.get().content(), DeckPlannerWorkspace.class));
             assertNotNull(find(session.get().content(), DeckPlannerFilterPanel.class));
-            UnderConsiderationPanel consideration =
-                    find(session.get().content(), UnderConsiderationPanel.class);
-            assertNotNull(consideration);
-            assertTrue(consideration.identities().contains("preview-stale-card"));
-            assertTrue(consideration.identities().contains(snapshot.cardGroups().get(0).identity()));
+            CandidatePanel candidates =
+                    find(session.get().content(), CandidatePanel.class);
+            assertNotNull(candidates);
+            assertTrue(candidates.identities().contains("preview-stale-card"));
+            assertTrue(candidates.identities().contains(snapshot.cardGroups().get(0).identity()));
 
             AtomicReference<DeckListImporter.Result> imported = new AtomicReference<>();
             SwingUtilities.invokeAndWait(() -> imported.set(
@@ -110,10 +110,10 @@ class DeckPlannerWorkspacePreviewTest {
                         database, snapshot, DeckPlannerFilterCoordinator.Availability.READY,
                         ignored -> CompletableFuture.completedFuture(Optional.empty()))));
         try {
-            UnderConsiderationPanel consideration =
-                    find(second.get().content(), UnderConsiderationPanel.class);
-            assertNotNull(consideration);
-            assertTrue(consideration.identities().contains(importedIdentity));
+            CandidatePanel candidates =
+                    find(second.get().content(), CandidatePanel.class);
+            assertNotNull(candidates);
+            assertTrue(candidates.identities().contains(importedIdentity));
         } finally {
             SwingUtilities.invokeAndWait(second.get()::close);
         }

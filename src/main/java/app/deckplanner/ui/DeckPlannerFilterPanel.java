@@ -19,8 +19,8 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
     private final Map<CardColor, FilterChip> colorChips = new EnumMap<>(CardColor.class);
     private final FilterChip colorlessChip = new FilterChip("Colorless", new SvgIcon("/svg/c.svg", 14));
     private final FilterChip phyrexianChip = new FilterChip("Phyrexian", new SvgIcon("/svg/p.svg", 14));
-    private final FilterChip considerationOnlyChip =
-            new FilterChip("Consideration only", new SvgIcon("/svg/chaos.svg", 14));
+    private final FilterChip candidateOnlyChip =
+            new FilterChip("Candidates only", new SvgIcon("/svg/chaos.svg", 14));
     private final JTextField tagFilter = new JTextField();
     private final Map<BaseCardType, FilterChip> typeChips = new EnumMap<>(BaseCardType.class);
     private final Map<SemanticTag, FilterChip> tagChips = new LinkedHashMap<>();
@@ -62,9 +62,9 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         add(section("Format", formatBox));
 
         JPanel workspaceLayer = flow();
-        considerationOnlyChip.setToolTipText(
-                "Restrict the catalog to cards currently under consideration without changing other filters");
-        workspaceLayer.add(considerationOnlyChip);
+        candidateOnlyChip.setToolTipText(
+                "Restrict the catalog to cards currently candidates without changing other filters");
+        workspaceLayer.add(candidateOnlyChip);
         add(section("Workspace", workspaceLayer));
         JPanel colors = flow();
         for (CardColor color : CardColor.values()) {
@@ -133,8 +133,8 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         putClientProperty("reset", reset);
     }
 
-    AbstractButton considerationOnlyControl() {
-        return considerationOnlyChip;
+    AbstractButton candidateOnlyControl() {
+        return candidateOnlyChip;
     }
 
     /** Updates visible faceted counts without changing selected tag state or chip geometry. */
@@ -156,8 +156,8 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         colorChips.forEach((color, chip) -> chip.addActionListener(event -> { if (!syncing) model.toggleColor(color); }));
         colorlessChip.addActionListener(event -> { if (!syncing) model.setIncludeColorless(colorlessChip.isSelected()); });
         phyrexianChip.addActionListener(event -> { if (!syncing) model.toggleTag(CardTagRules.PHYREXIAN_MANA); });
-        considerationOnlyChip.addActionListener(event -> {
-            if (!syncing) model.setConsiderationOnly(considerationOnlyChip.isSelected());
+        candidateOnlyChip.addActionListener(event -> {
+            if (!syncing) model.setCandidateOnly(candidateOnlyChip.isSelected());
         });
         tagFilter.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent event) { filterVisibleTags(); }
@@ -183,7 +183,7 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         syncing = true;
         try {
             formatBox.setSelectedItem(state.format());
-            considerationOnlyChip.setSelected(state.considerationOnly());
+            candidateOnlyChip.setSelected(state.candidateOnly());
             CardFilterState filters = state.filters();
             colorChips.forEach((color, chip) -> chip.setSelected(filters.colors().contains(color)));
             colorlessChip.setSelected(filters.includeColorless());

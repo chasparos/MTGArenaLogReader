@@ -73,6 +73,27 @@ final class ReplayFragmentRenderer {
                 + CHIP_X_PADDING * 2 + mana + (mana > 0 ? CARD_MANA_GAP : 0);
     }
 
+    void paintCardOutline(Graphics2D g, CardFragment fragment, int x, int topY,
+                          int lineHeight, Color color, float strokeWidth) {
+        if (fragment == null || fragment.card() == null || color == null) return;
+        FontMetrics fm = g.getFontMetrics(host.font());
+        int width = width(g, fragment);
+        int chipHeight = fm.getHeight() + CHIP_Y_PADDING * 2;
+        int chipY = topY + (lineHeight - chipHeight) / 2;
+        Shape cardShape = cardChipShape(fragment.card(), x, chipY, width, chipHeight);
+        Stroke oldStroke = g.getStroke();
+        Color oldColor = g.getColor();
+        try {
+            g.setColor(color);
+            g.setStroke(new BasicStroke(Math.max(1f, strokeWidth),
+                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.draw(cardShape);
+        } finally {
+            g.setStroke(oldStroke);
+            g.setColor(oldColor);
+        }
+    }
+
     void paint(Graphics2D g, ReplayFragment fragment, int x, int topY,
                                int lineHeight, GameEvent event) {
         paint(g, fragment, x, topY, lineHeight, event, true);

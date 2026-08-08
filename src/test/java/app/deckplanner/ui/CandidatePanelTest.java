@@ -1,7 +1,7 @@
 package app.deckplanner.ui;
 
 import app.deckplanner.catalog.FormatCatalogRepository;
-import app.deckplanner.consideration.UnderConsiderationModel;
+import app.deckplanner.candidate.CandidateModel;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.model.card.CardInfo;
 import app.replay.ReplayCardChip;
@@ -17,17 +17,17 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class UnderConsiderationPanelTest {
+class CandidatePanelTest {
     @Test
     void resolvedCandidatesUseSharedReplayCardChipWithoutOwnershipText() throws Exception {
         CardInfo card = card("oracle:consider-me", "Consider Me");
         CatalogFilterIndex index = index(card);
-        UnderConsiderationModel model =
-                new UnderConsiderationModel(List.of("oracle:consider-me"), ignored -> { });
+        CandidateModel model =
+                new CandidateModel(List.of("oracle:consider-me"), ignored -> { });
         AtomicReference<JComponent> row = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
-            UnderConsiderationPanel panel = new UnderConsiderationPanel();
+            CandidatePanel panel = new CandidatePanel();
             panel.bind(model, ignored -> 4);
             panel.setEntries(model.resolve(index));
             row.set(panel.candidateRows().getFirst());
@@ -42,12 +42,12 @@ class UnderConsiderationPanelTest {
 
     @Test
     void staleCandidatesRemainExplicitRecoverableRows() throws Exception {
-        UnderConsiderationModel model =
-                new UnderConsiderationModel(List.of("oracle:missing"), ignored -> { });
+        CandidateModel model =
+                new CandidateModel(List.of("oracle:missing"), ignored -> { });
         AtomicReference<JComponent> row = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
-            UnderConsiderationPanel panel = new UnderConsiderationPanel();
+            CandidatePanel panel = new CandidatePanel();
             panel.bind(model, ignored -> -1);
             panel.setEntries(model.resolve(index()));
             row.set(panel.candidateRows().getFirst());
@@ -58,20 +58,73 @@ class UnderConsiderationPanelTest {
         assertTrue(label.getText().contains("stale"));
     }
 
+
     @Test
-    void candidateSurfaceIsCustomPanelWithProjectScrollbarAndMoveTransferHandler() throws Exception {
-        AtomicReference<UnderConsiderationPanel> ref = new AtomicReference<>();
+    void selectionUsesChipOutlineInsteadOfRowRectangle() throws Exception {
+        CardInfo card = card("oracle:selected", "Selected Candidate");
+        CandidateModel model = new CandidateModel(List.of("oracle:selected"), ignored -> { });
+        AtomicReference<ReplayCardChip> chipRef = new AtomicReference<>();
+        AtomicReference<JComponent> rowRef = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
-            UnderConsiderationPanel panel = new UnderConsiderationPanel();
-            UnderConsiderationModel model = new UnderConsiderationModel(
+            CandidatePanel panel = new CandidatePanel();
+            panel.bind(model, ignored -> -1);
+            panel.setEntries(model.resolve(index(card)));
+            JComponent row = panel.candidateRows().getFirst();
+            ReplayCardChip chip = find(row, ReplayCardChip.class);
+            rowRef.set(row);
+            chipRef.set(chip);
+            chip.dispatchEvent(new java.awt.event.MouseEvent(chip,
+                    java.awt.event.MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), 0, 4, 4, 1, false));
+        });
+
+        assertNotNull(chipRef.get().outlineColor());
+        assertFalse(rowRef.get().isOpaque(),
+                "candidate selection should not paint a large rectangular row background");
+    }
+
+
+    @Test
+    void categoryCountsRefreshWhenCandidateMembershipChanges() throws Exception {
+        CardInfo first = card("oracle:first", "First");
+        first.setTypeLine("Creature — Elf");
+        CardInfo second = card("oracle:second", "Second");
+        second.setTypeLine("Creature — Wizard");
+        CatalogFilterIndex index = index(first, second);
+        CandidateModel model = new CandidateModel(
+                List.of("oracle:first", "oracle:second"), ignored -> { });
+        AtomicReference<CandidatePanel> panelRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.bind(model, ignored -> -1);
+            panel.setEntries(model.resolve(index));
+            panelRef.set(panel);
+        });
+        assertTrue(componentText(panelRef.get()).contains("Creatures (2)"));
+
+        model.remove("oracle:second");
+        SwingUtilities.invokeAndWait(() ->
+                panelRef.get().setEntries(model.resolve(index)));
+        assertTrue(componentText(panelRef.get()).contains("Creatures (1)"));
+        assertFalse(componentText(panelRef.get()).contains("Creatures (2)"));
+    }
+
+    @Test
+    void candidateSurfaceIsCustomPanelWithProjectScrollbarAndMoveTransferHandler() throws Exception {
+        AtomicReference<CandidatePanel> ref = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            CandidateModel model = new CandidateModel(
                     List.of("oracle:a", "oracle:b"), ignored -> { });
             panel.bind(model, ignored -> -1);
             panel.setEntries(model.resolve(index(card("oracle:a", "A"), card("oracle:b", "B"))));
             ref.set(panel);
         });
 
-        UnderConsiderationPanel panel = ref.get();
+        CandidatePanel panel = ref.get();
         assertNull(find(panel, JList.class), "candidate surface must not regress to JList");
         assertInstanceOf(AppScrollBarUI.class, panel.candidateScrollPane().getVerticalScrollBar().getUI());
         assertNotNull(panel.candidateSurface().getTransferHandler());
@@ -91,18 +144,18 @@ class UnderConsiderationPanelTest {
         spell.setTypeLine("Sorcery");
         CardInfo land = card("oracle:land", "Utility Land");
         land.setTypeLine("Land");
-        UnderConsiderationModel model = new UnderConsiderationModel(
+        CandidateModel model = new CandidateModel(
                 List.of("oracle:creature", "oracle:spell", "oracle:land"), ignored -> { });
-        AtomicReference<UnderConsiderationPanel> ref = new AtomicReference<>();
+        AtomicReference<CandidatePanel> ref = new AtomicReference<>();
 
         SwingUtilities.invokeAndWait(() -> {
-            UnderConsiderationPanel panel = new UnderConsiderationPanel();
+            CandidatePanel panel = new CandidatePanel();
             panel.bind(model, ignored -> -1);
             panel.setEntries(model.resolve(index(creature, spell, land)));
             ref.set(panel);
         });
 
-        UnderConsiderationPanel panel = ref.get();
+        CandidatePanel panel = ref.get();
         String text = componentText(panel);
         assertTrue(text.contains("Creatures (1)"));
         assertTrue(text.contains("Noncreatures (1)"));

@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import app.deckplanner.filter.CatalogFilterIndex;
 
@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Resolves Arena-exported deck text into stable consideration identities.
+ * Resolves Arena-exported deck text into stable candidates identities.
  *
  * <p>Deck quantities and section membership are intentionally discarded because DP-06 stores
  * candidate membership, not a playable deck definition. Deck contents never imply ownership.</p>

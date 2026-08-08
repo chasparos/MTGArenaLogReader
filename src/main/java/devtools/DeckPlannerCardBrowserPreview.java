@@ -48,11 +48,11 @@ public final class DeckPlannerCardBrowserPreview {
                 DeckPlannerCardBrowserPreview::requestPreviewImage);
         CardBrowserScrollPane scrollPane = new CardBrowserScrollPane(browser);
         scrollPane.setCards(sampleCards(80));
-        browser.setUnderConsiderationIdentities(java.util.Set.of(
+        browser.setCandidateIdentities(java.util.Set.of(
                 "preview-1", "preview-4", "preview-9", "preview-16"));
 
         JLabel instructions = new JLabel(
-                "Resize narrow/wide; click/Space toggles multiple selections; purple chaos badges mark under consideration; verify stable IDs and no jumps.");
+                "Resize narrow/wide; click/Space toggles multiple selections; purple chaos badges mark candidates; verify stable IDs and no jumps.");
         instructions.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
 
         JPanel content = new JPanel(new BorderLayout());

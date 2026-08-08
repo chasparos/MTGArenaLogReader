@@ -1,4 +1,4 @@
-package app.deckplanner.consideration;
+package app.deckplanner.candidate;
 
 import app.deck.model.CachedDeck;
 import app.deck.model.DeckEntry;

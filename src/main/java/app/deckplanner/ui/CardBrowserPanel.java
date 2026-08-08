@@ -26,7 +26,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         CompletableFuture<Optional<BufferedImage>> request(BrowserCard card);
     }
 
-    public interface ConsiderationListener {
+    public interface CandidateListener {
         void added(java.util.Collection<String> identities);
         void removed(String identity);
     }
@@ -57,8 +57,8 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
     private List<BrowserCard> cards = List.of();
     private CardGridLayout.Result layoutResult;
     private final LinkedHashSet<String> selectedIdentities = new LinkedHashSet<>();
-    private final LinkedHashSet<String> underConsiderationIdentities = new LinkedHashSet<>();
-    private ConsiderationListener considerationListener = new ConsiderationListener() {
+    private final LinkedHashSet<String> candidateIdentities = new LinkedHashSet<>();
+    private CandidateListener candidateListener = new CandidateListener() {
         @Override public void added(java.util.Collection<String> identities) { }
         @Override public void removed(String identity) { }
     };
@@ -150,49 +150,49 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         repaintIdentities(previous);
     }
 
-    public void setUnderConsiderationIdentities(Set<String> identities) {
+    public void setCandidateIdentities(Set<String> identities) {
         assertEdt();
-        Set<String> previous = Set.copyOf(underConsiderationIdentities);
-        underConsiderationIdentities.clear();
-        if (identities != null) underConsiderationIdentities.addAll(identities);
+        Set<String> previous = Set.copyOf(candidateIdentities);
+        candidateIdentities.clear();
+        if (identities != null) candidateIdentities.addAll(identities);
         LinkedHashSet<String> changed = new LinkedHashSet<>(previous);
-        changed.addAll(underConsiderationIdentities);
+        changed.addAll(candidateIdentities);
         repaintIdentities(changed);
     }
 
-    /** Returns the consideration identities currently visible in this filtered browser result. */
-    public Set<String> underConsiderationIdentities() {
+    /** Returns the candidates identities currently visible in this filtered browser result. */
+    public Set<String> candidateIdentities() {
         Set<String> visible = cards.stream().map(BrowserCard::identity)
-                .filter(underConsiderationIdentities::contains)
+                .filter(candidateIdentities::contains)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         return Collections.unmodifiableSet(visible);
     }
 
-    public void setConsiderationListener(ConsiderationListener listener) {
+    public void setCandidateListener(CandidateListener listener) {
         assertEdt();
-        considerationListener = listener == null ? new ConsiderationListener() {
+        candidateListener = listener == null ? new CandidateListener() {
             @Override public void added(java.util.Collection<String> identities) { }
             @Override public void removed(String identity) { }
         } : listener;
     }
 
-    public void addUnderConsiderationIdentities(java.util.Collection<String> identities) {
+    public void addCandidateIdentities(java.util.Collection<String> identities) {
         assertEdt();
         if (identities == null) return;
         Set<String> available = cards.stream().map(BrowserCard::identity).collect(java.util.stream.Collectors.toSet());
         LinkedHashSet<String> changed = new LinkedHashSet<>();
         for (String identity : identities) {
-            if (available.contains(identity) && underConsiderationIdentities.add(identity)) changed.add(identity);
+            if (available.contains(identity) && candidateIdentities.add(identity)) changed.add(identity);
         }
         repaintIdentities(changed);
-        if (!changed.isEmpty()) considerationListener.added(List.copyOf(changed));
+        if (!changed.isEmpty()) candidateListener.added(List.copyOf(changed));
     }
 
-    public void removeUnderConsiderationIdentity(String identity) {
+    public void removeCandidateIdentity(String identity) {
         assertEdt();
-        if (identity != null && underConsiderationIdentities.remove(identity)) {
+        if (identity != null && candidateIdentities.remove(identity)) {
             repaintIndex(indexOfIdentity(identity));
-            considerationListener.removed(identity);
+            candidateListener.removed(identity);
         }
     }
 
@@ -271,19 +271,18 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             selectedIndexBeforeClick = selectedIndex;
         }
 
-        if (underConsiderationIdentities.contains(identity)
-                && CardView.considerationBadgeBounds(bounds.width).contains(localX, localY)) {
-            if (event.getClickCount() == 1) removeUnderConsiderationIdentity(identity);
-            return;
-        }
-        if (selectedIdentities.contains(identity)
-                && CardView.selectedBadgeBounds(bounds.width, bounds.height).contains(localX, localY)) {
-            if (event.getClickCount() >= 2) addUnderConsiderationIdentities(selectedIdentities);
+        if (candidateIdentities.contains(identity)
+                && CardView.candidateBadgeBounds(bounds.width).contains(localX, localY)) {
+            if (event.getClickCount() == 1) removeCandidateIdentity(identity);
             return;
         }
         if (event.getClickCount() >= 2) {
             restoreSelectionBeforeClick();
-            addUnderConsiderationIdentities(List.of(identity));
+            if (selectedIdentities.contains(identity) && selectedIdentities.size() > 1) {
+                addCandidateIdentities(selectedIdentities);
+            } else {
+                addCandidateIdentities(List.of(identity));
+            }
             focusedIndex = index;
             repaintIndex(index);
             return;
@@ -424,7 +423,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
                 images.get(card.identity()),
                 index == hoveredIndex,
                 selectedIdentities.contains(card.identity()),
-                underConsiderationIdentities.contains(card.identity()),
+                candidateIdentities.contains(card.identity()),
                 hasFocus() && index == focusedIndex);
         rendererPane.paintComponent(g, cardView, this,
                 bounds.x, bounds.y, bounds.width, bounds.height, true);

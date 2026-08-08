@@ -48,6 +48,11 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(true);
         setTransferHandler(new SurfaceTransferHandler());
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override public void componentResized(java.awt.event.ComponentEvent event) {
+                revalidateGroupBodies();
+            }
+        });
     }
 
     public JScrollPane createScrollPane() {
@@ -79,6 +84,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
             for (Group group : groups) {
                 if (group == null || group.rows().isEmpty()) continue;
                 JPanel body = new JPanel(new WrapLayout(FlowLayout.LEFT, 8, 8));
+                body.setName("card-collection-group-body-" + group.id());
                 body.setOpaque(false);
                 body.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -112,6 +118,20 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         refreshSelection();
         revalidate();
         repaint();
+    }
+
+    private void revalidateGroupBodies() {
+        for (Component child : getComponents()) {
+            if (!(child instanceof Container section)) continue;
+            for (Component nested : section.getComponents()) {
+                if (nested instanceof JComponent component
+                        && component.getName() != null
+                        && component.getName().startsWith("card-collection-group-body-")) {
+                    component.revalidate();
+                }
+            }
+        }
+        revalidate();
     }
 
     public List<String> identities() {
@@ -354,9 +374,19 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         private Dimension layoutSize(Container target, boolean preferred) {
             synchronized (target.getTreeLock()) {
                 int width = target.getWidth();
+                JViewport viewport = (JViewport) SwingUtilities.getAncestorOfClass(
+                        JViewport.class, target);
+                if (viewport != null && viewport.getExtentSize().width > 0) {
+                    width = viewport.getExtentSize().width;
+                }
                 Container parent = target.getParent();
                 if (width <= 0 && parent != null) width = parent.getWidth();
-                if (width <= 0) width = Integer.MAX_VALUE;
+                if (width <= 0) {
+                    Container surface = (Container) SwingUtilities.getAncestorOfClass(
+                            CardCollectionSurface.class, target);
+                    if (surface != null) width = surface.getWidth();
+                }
+                if (width <= 0) width = 640;
 
                 Insets insets = target.getInsets();
                 int maxWidth = Math.max(1,

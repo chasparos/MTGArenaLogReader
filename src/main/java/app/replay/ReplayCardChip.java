@@ -23,6 +23,7 @@ public class ReplayCardChip extends JComponent {
     private final BoardPermanentSnapshot permanent;
     private final float presentationScale;
     private boolean selected;
+    private Color outlineColor;
     private final ReplayFragmentRenderer renderer;
 
     public ReplayCardChip(CardInfo card) {
@@ -93,6 +94,17 @@ public class ReplayCardChip extends JComponent {
         return selected;
     }
 
+    /** Paints a precise outline following the replay card-chip geometry. */
+    public void paintColoredOutline(Color color) {
+        if (java.util.Objects.equals(outlineColor, color)) return;
+        outlineColor = color;
+        repaint();
+    }
+
+    public Color outlineColor() {
+        return outlineColor;
+    }
+
     public float presentationScale() {
         return presentationScale;
     }
@@ -120,6 +132,10 @@ public class ReplayCardChip extends JComponent {
                     ? "Unknown card" : card.getName();
             CardFragment fragment = new CardFragment(card, label, stateLabel, permanent);
             renderer.paint(g, fragment, 4, 2, logicalHeight - 4, null, false);
+            if (outlineColor != null) {
+                renderer.paintCardOutline(g, fragment, 4, 2, logicalHeight - 4,
+                        outlineColor, 2.2f);
+            }
         } finally {
             g.dispose();
         }

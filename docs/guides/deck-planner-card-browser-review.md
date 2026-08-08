@@ -15,11 +15,11 @@ Review at narrow, normal, and wide window widths. Confirm:
 - resizing and result movement preserve logical selection, range anchor behavior, and scroll position;
 - no persistent flicker, long EDT stall, or corrupted shared image is visible.
 
-- double-clicking a card adds it to consideration without selecting it, double-clicking a selected chip adds all selected cards, and clicking a consideration badge removes that card;
+- double-clicking a card adds it to candidates without selecting it, double-clicking a selected chip adds all selected cards, and clicking a candidate badge removes that card;
 
 Record any failed observation before DP-04 is marked complete. Production navigation and filter controls remain later roadmap work.
 
 ## Presentation checks added after first human pass
 - Resize repeatedly and verify exposed background areas are immediately cleared with the current application theme.
 - Confirm both visible scrollbars use the application's narrow custom scrollbar treatment.
-- At normal and wide sizes, confirm cards remain at least 220 px wide; at narrow size, confirm one centered card remains readable rather than shrinking below that floor.
+- At normal and wide sizes, confirm cards remain at least 275 px wide; at narrow size, confirm one centered card remains readable rather than shrinking below that floor.
