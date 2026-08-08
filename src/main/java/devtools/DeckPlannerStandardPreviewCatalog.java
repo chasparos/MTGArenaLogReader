@@ -6,7 +6,6 @@ import app.deckplanner.catalog.CardCatalogSource;
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.catalog.FormatCatalogService;
 import app.enrichment.CardCache;
-import app.enrichment.CardEnrichmentService;
 import app.enrichment.ScryfallClient;
 import app.model.card.CardInfo;
 import com.google.gson.Gson;
@@ -38,33 +37,52 @@ final class DeckPlannerStandardPreviewCatalog {
              CardCache cardCache = new CardCache(gson, previewRoot.resolve("card-cache"));
              FormatCatalogRepository repository = new FormatCatalogRepository(gson, catalogPath)) {
             Optional<FormatCatalogRepository.Snapshot> current = repository.current(FORMAT);
-            if (current.filter(DeckPlannerStandardPreviewCatalog::freshEnough).isPresent()) {
-                return new LoadResult(current, DeckPlannerFilterCoordinator.Availability.READY,
-                        "Using cached Standard catalog from " + current.get().completedAt());
+            if (current.isPresent()) {
+                boolean fresh = freshEnough(current.get());
+                return new LoadResult(current,
+                        fresh ? DeckPlannerFilterCoordinator.Availability.READY
+                                : DeckPlannerFilterCoordinator.Availability.PARTIAL_CACHE,
+                        "Using persistent Standard catalog from " + current.get().completedAt()
+                                + (fresh ? "" : " while a background refresh runs."),
+                        !fresh);
             }
-            CardEnrichmentService enrichment = new CardEnrichmentService(
-                    scryfall, cardCache, Duration.ofMillis(110));
             FormatCatalogService service = new FormatCatalogService(
-                    scryfall, repository, enrichment::acceptCatalogCard);
+                    scryfall, repository, card -> persistCatalogCard(cardCache, card));
             service.refresh(FORMAT, () -> false);
             Optional<FormatCatalogRepository.Snapshot> snapshot = repository.current(FORMAT);
             return new LoadResult(snapshot, DeckPlannerFilterCoordinator.Availability.READY,
                     snapshot.map(value -> "Loaded and cached the full Standard Arena catalog ("
                                     + value.cardGroups().size() + " logical cards).")
-                            .orElse("Catalog refresh completed without a published snapshot."));
+                            .orElse("Catalog refresh completed without a published snapshot."), false);
         } catch (RuntimeException error) {
             try (FormatCatalogRepository repository =
                          new FormatCatalogRepository(gson, catalogPath)) {
                 Optional<FormatCatalogRepository.Snapshot> cached = repository.current(FORMAT);
                 if (cached.isPresent()) {
                     return new LoadResult(cached, DeckPlannerFilterCoordinator.Availability.OFFLINE,
-                            "Scryfall refresh failed; using cached Standard catalog: " + error.getMessage());
+                            "Scryfall refresh failed; using cached Standard catalog: " + error.getMessage(), true);
                 }
             } catch (RuntimeException ignored) {
                 // Preserve the original acquisition error below.
             }
             return new LoadResult(Optional.empty(), DeckPlannerFilterCoordinator.Availability.OFFLINE,
-                    "Could not load real Standard cards: " + error.getMessage());
+                    "Could not load real Standard cards: " + error.getMessage(), true);
+        }
+    }
+
+    static void refresh(Path previewRoot) {
+        Objects.requireNonNull(previewRoot);
+        Gson gson = new GsonBuilder().create();
+        Path catalogPath = previewRoot.resolve("format-catalog");
+        try (ScryfallClient scryfall = new ScryfallClient(gson);
+             CardCache cardCache = new CardCache(gson, previewRoot.resolve("card-cache"));
+             FormatCatalogRepository repository = new FormatCatalogRepository(gson, catalogPath)) {
+            FormatCatalogService service = new FormatCatalogService(
+                    scryfall, repository, card -> persistCatalogCard(cardCache, card));
+            service.refresh(FORMAT, () -> Thread.currentThread().isInterrupted());
+        } catch (RuntimeException error) {
+            System.err.println("[DeckPlannerPreview] Background Standard refresh failed: "
+                    + error.getMessage());
         }
     }
 
@@ -90,7 +108,13 @@ final class DeckPlannerStandardPreviewCatalog {
         return new LoadResult(snapshot, DeckPlannerFilterCoordinator.Availability.READY,
                 snapshot.map(value -> "Loaded " + value.cardGroups().size()
                                 + " real Standard cards through the catalog pipeline.")
-                        .orElse("Catalog refresh completed without a published snapshot."));
+                        .orElse("Catalog refresh completed without a published snapshot."), false);
+    }
+
+    private static void persistCatalogCard(CardCache cache, CardInfo card) {
+        if (card != null && card.getArenaId() != null && card.getArenaId() > 0) {
+            cache.put(card.getArenaId(), Optional.of(card));
+        }
     }
 
     private static boolean freshEnough(FormatCatalogRepository.Snapshot snapshot) {
@@ -100,7 +124,8 @@ final class DeckPlannerStandardPreviewCatalog {
 
     record LoadResult(Optional<FormatCatalogRepository.Snapshot> snapshot,
                       DeckPlannerFilterCoordinator.Availability availability,
-                      String status) {
+                      String status,
+                      boolean refreshRecommended) {
         LoadResult {
             snapshot = snapshot == null ? Optional.empty() : snapshot;
             availability = Objects.requireNonNull(availability);

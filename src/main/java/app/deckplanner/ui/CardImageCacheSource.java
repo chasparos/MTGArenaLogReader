@@ -31,7 +31,9 @@ public final class CardImageCacheSource implements CardBrowserPanel.ImageSource 
         if (card == null) return CompletableFuture.completedFuture(Optional.empty());
         Optional<CardInfo> resolved;
         try {
-            resolved = cardResolver.apply(card.identity());
+            resolved = card.card() != null
+                    ? Optional.of(card.card())
+                    : cardResolver.apply(card.identity());
         } catch (RuntimeException error) {
             return CompletableFuture.failedFuture(error);
         }

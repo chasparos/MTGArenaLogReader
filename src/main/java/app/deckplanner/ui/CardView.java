@@ -1,6 +1,8 @@
 package app.deckplanner.ui;
 
 import app.replay.SvgAssetRenderer;
+import app.replay.ReplayCardChip;
+import app.model.card.CardInfo;
 import app.ui.AppColors;
 
 import javax.swing.JComponent;
@@ -30,12 +32,14 @@ public final class CardView extends JComponent {
     private static final Color HOVERED = new Color(255, 255, 255, 120);
 
     private String name = "Unknown card";
+    private CardInfo card;
     private BufferedImage image;
     private boolean hovered;
     private boolean selected;
     private boolean candidate;
     private boolean focused;
     private int alternateArtCount;
+    private boolean alternateArtKnown = true;
 
     public CardView() {
         setOpaque(false);
@@ -47,7 +51,7 @@ public final class CardView extends JComponent {
                           boolean selected,
                           boolean candidate,
                           boolean focused) {
-        configure(name, image, hovered, selected, candidate, focused, 1);
+        configure(name, null, image, hovered, selected, candidate, focused, 1, true);
     }
 
     public void configure(String name,
@@ -57,13 +61,27 @@ public final class CardView extends JComponent {
                           boolean candidate,
                           boolean focused,
                           int alternateArtCount) {
+        configure(name, null, image, hovered, selected, candidate, focused, alternateArtCount, true);
+    }
+
+    public void configure(String name,
+                          CardInfo card,
+                          BufferedImage image,
+                          boolean hovered,
+                          boolean selected,
+                          boolean candidate,
+                          boolean focused,
+                          int alternateArtCount,
+                          boolean alternateArtKnown) {
         this.name = name == null || name.isBlank() ? "Unknown card" : name;
+        this.card = card;
         this.image = image;
         this.hovered = hovered;
         this.selected = selected;
         this.candidate = candidate;
         this.focused = focused;
         this.alternateArtCount = Math.max(1, alternateArtCount);
+        this.alternateArtKnown = alternateArtKnown;
     }
 
     @Override protected void paintComponent(Graphics graphics) {
@@ -77,17 +95,41 @@ public final class CardView extends JComponent {
                 g.fillRoundRect(0, 0, width, height, 14, 14);
                 g.setColor(PLACEHOLDER_EDGE);
                 g.drawRoundRect(0, 0, width - 1, height - 1, 14, 14);
-                g.setColor(Color.WHITE);
-                FontMetrics metrics = g.getFontMetrics();
-                String label = ellipsize(name, metrics, Math.max(20, width - 20));
-                g.drawString(label, (width - metrics.stringWidth(label)) / 2, height / 2);
+
+                Font base = getFont() == null ? new Font(Font.SANS_SERIF, Font.BOLD, 12) : getFont();
+                g.setFont(base.deriveFont(Font.BOLD, Math.max(54f, width * .24f)));
+                g.setColor(new Color(255, 255, 255, 42));
+                FontMetrics question = g.getFontMetrics();
+                String q = "?";
+                g.drawString(q, (width - question.stringWidth(q)) / 2,
+                        Math.max(question.getAscent() + 10, height / 2 + question.getAscent() / 3));
+
+                if (card != null) {
+                    ReplayCardChip chip = new ReplayCardChip(card, false, .95f);
+                    int chipWidth = Math.max(120, width - 20);
+                    int chipHeight = Math.max(28, Math.min(42, height / 7));
+                    chip.setSize(chipWidth, chipHeight);
+                    Graphics2D cg = (Graphics2D) g.create(10, 10, chipWidth, chipHeight);
+                    try {
+                        chip.paint(cg);
+                    } finally {
+                        cg.dispose();
+                    }
+                } else {
+                    g.setColor(Color.WHITE);
+                    g.setFont(base.deriveFont(Font.BOLD, Math.max(11f, width / 22f)));
+                    FontMetrics metrics = g.getFontMetrics();
+                    String label = ellipsize(name, metrics, Math.max(20, width - 20));
+                    g.drawString(label, (width - metrics.stringWidth(label)) / 2,
+                            Math.min(height - 12, 28 + metrics.getAscent()));
+                }
             } else {
                 g.drawImage(image, 0, 0, width, height, null);
             }
             if (hovered) stroke(g, width, height, HOVERED, 2f);
             if (selected) stroke(g, width, height, SELECTED, 3f);
             if (candidate) paintCandidateBadge(g, width);
-            if (alternateArtCount > 1) paintAlternateArtBadge(g, width, alternateArtCount);
+            if (!alternateArtKnown || alternateArtCount > 1) paintAlternateArtBadge(g, width, alternateArtCount, alternateArtKnown);
             if (focused) stroke(g, width, height, FOCUSED, 2f);
         } finally {
             g.dispose();
@@ -99,14 +141,14 @@ public final class CardView extends JComponent {
         return new Rectangle(6, 6, 38, 24);
     }
 
-    private static void paintAlternateArtBadge(Graphics2D g, int width, int count) {
+    private static void paintAlternateArtBadge(Graphics2D g, int width, int count, boolean known) {
         Rectangle badge = alternateArtBadgeBounds(width);
         Color background = new Color(0xCC202328, true);
         g.setColor(background);
         g.fillRoundRect(badge.x, badge.y, badge.width, badge.height, 12, 12);
         g.setColor(new Color(0xE8C66A));
         g.setFont(g.getFont().deriveFont(Font.BOLD, 11f));
-        String label = "×" + count;
+        String label = known ? "×" + count : "?";
         FontMetrics metrics = g.getFontMetrics();
         g.drawString(label, badge.x + (badge.width - metrics.stringWidth(label)) / 2,
                 badge.y + (badge.height + metrics.getAscent() - metrics.getDescent()) / 2);

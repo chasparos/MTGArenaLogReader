@@ -1,6 +1,8 @@
 package app.deckplanner.ui;
 
 import org.junit.jupiter.api.Test;
+import app.model.card.CardInfo;
+import java.util.List;
 
 import javax.swing.SwingUtilities;
 import java.awt.Color;
@@ -38,6 +40,27 @@ class CardViewTest {
         });
 
         assertEquals(original, cached.getRGB(5, 5), "overlays must not mutate cached images");
+    }
+
+    @Test
+    void knownCardWithoutImageRendersShadowCardAndChipHeader() throws Exception {
+        CardInfo card = new CardInfo();
+        card.setId("print"); card.setOracleId("oracle"); card.setName("Known Without Image");
+        card.setTypeLine("Creature — Wizard"); card.setCmc(2.0);
+        card.setColors(List.of("U")); card.setColorIdentity(List.of("U"));
+
+        BufferedImage rendered = new BufferedImage(180, 252, BufferedImage.TYPE_INT_ARGB);
+        SwingUtilities.invokeAndWait(() -> {
+            CardView view = new CardView();
+            view.setSize(180, 252);
+            view.configure(card.getName(), card, null, false, false, false, false, 1, false);
+            Graphics2D graphics = rendered.createGraphics();
+            view.paint(graphics);
+            graphics.dispose();
+        });
+
+        assertNotEquals(rendered.getRGB(90, 126), rendered.getRGB(90, 18),
+                "the shadow body and replay-chip header should be visually distinct");
     }
 
     @Test

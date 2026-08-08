@@ -37,7 +37,7 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
     private final Gson gson;
     private final UnirestInstance unirest;
     private final CardAliasRegistry aliases = new CardAliasRegistry();
-    private final Object requestLock = new Object();
+    private final Object throttleLock = new Object();
     private long nextRequestNanos;
 
     public ScryfallClient(Gson gson) {
@@ -115,6 +115,21 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
         }
 
         return parseCard(response, "exactName=\"" + exactName + "\"", null);
+    }
+
+    /**
+     * One-shot exact-name fallback for latency-sensitive UI work. A 429 is treated as
+     * unavailable enrichment instead of sleeping through Retry-After.
+     */
+    public Optional<CardInfo> findByExactNameBestEffort(String exactName) {
+        if (exactName == null || exactName.isBlank()) return Optional.empty();
+        HttpResponse<String> response = requestOnce(() ->
+                unirest.get("https://api.scryfall.com/cards/named")
+                        .queryString("exact", exactName.strip())
+                        .asString());
+        if (response.getStatus() == 404 || response.getStatus() == 429) return Optional.empty();
+        if (response.getStatus() < 200 || response.getStatus() >= 300) return Optional.empty();
+        return parseCard(response, "bestEffort exactName=\"" + exactName + "\"", null);
     }
 
     /** Returns every known Scryfall printing for an exact card name. */
@@ -273,21 +288,25 @@ public final class ScryfallClient implements AutoCloseable, CardCatalogSource {
 
     private HttpResponse<String> request(
             Supplier<HttpResponse<String>> operation, String lookup) {
-        synchronized (requestLock) {
-            HttpResponse<String> response = null;
-            for (int attempt = 0; attempt < MAX_RATE_LIMIT_ATTEMPTS; attempt++) {
-                throttle();
-                response = operation.get();
-                if (response.getStatus() != 429) return response;
+        HttpResponse<String> response = null;
+        for (int attempt = 0; attempt < MAX_RATE_LIMIT_ATTEMPTS; attempt++) {
+            response = requestOnce(operation);
+            if (response.getStatus() != 429) return response;
 
-                String retryAfter = response.getHeaders().getFirst("Retry-After");
-                Duration delay = retryDelay(retryAfter, attempt, Instant.now());
-                System.err.println("[Scryfall] HTTP 429 for " + lookup
-                        + "; retrying after " + delay.toMillis() + " ms");
-                sleep(delay, "rate-limit backoff");
-            }
-            return response;
+            String retryAfter = response.getHeaders().getFirst("Retry-After");
+            Duration delay = retryDelay(retryAfter, attempt, Instant.now());
+            System.err.println("[Scryfall] HTTP 429 for " + lookup
+                    + "; retrying after " + delay.toMillis() + " ms");
+            sleep(delay, "rate-limit backoff");
         }
+        return response;
+    }
+
+    private HttpResponse<String> requestOnce(Supplier<HttpResponse<String>> operation) {
+        synchronized (throttleLock) {
+            throttle();
+        }
+        return operation.get();
     }
 
     static Duration retryDelay(String retryAfter, int attempt, Instant now) {

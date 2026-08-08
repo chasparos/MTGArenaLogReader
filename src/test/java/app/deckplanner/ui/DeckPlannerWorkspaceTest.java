@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -295,6 +296,32 @@ class DeckPlannerWorkspaceTest {
         SwingUtilities.invokeAndWait(workspaceRef.get()::close);
     }
 
+    @Test void workspaceBoundaryControlsHideFiltersAndExpandCandidates() throws Exception {
+        CatalogFilterIndex index = index(card("mill", "U", "Sorcery", "Mill two."));
+        AtomicReference<DeckPlannerWorkspace> ref = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspace workspace = new DeckPlannerWorkspace(
+                    new DeckPlannerFilterModel("standard"), index,
+                    ignored -> CompletableFuture.completedFuture(Optional.empty()),
+                    scheduler, Runnable::run, Duration.ZERO,
+                    DeckPlannerFilterCoordinator.Availability.READY);
+            ref.set(workspace);
+        });
+
+        SwingUtilities.invokeAndWait(() -> {
+            AbstractButton expand = findButtonByTooltip(ref.get(), "Expand candidates");
+            assertNotNull(expand);
+            expand.doClick();
+            assertEquals(760, ref.get().candidates().getPreferredSize().width);
+
+            AbstractButton hide = findButtonByTooltip(ref.get(), "Hide filters");
+            assertNotNull(hide);
+            hide.doClick();
+            assertEquals("Show filters", hide.getToolTipText());
+        });
+        SwingUtilities.invokeAndWait(ref.get()::close);
+    }
+
     private static CatalogFilterIndex index(CardInfo... cards) {
         List<FormatCatalogRepository.CardOutcome> outcomes = java.util.Arrays.stream(cards)
                 .map(card -> new FormatCatalogRepository.CardOutcome(card, "SUCCESS", null)).toList();
@@ -360,4 +387,16 @@ class DeckPlannerWorkspaceTest {
     }
 
     @FunctionalInterface private interface CheckedBoolean { boolean get() throws Exception; }
+    private static AbstractButton findButtonByTooltip(Container root, String tooltip) {
+        for (Component component : root.getComponents()) {
+            if (component instanceof AbstractButton button
+                    && tooltip.equals(button.getToolTipText())) return button;
+            if (component instanceof Container container) {
+                AbstractButton nested = findButtonByTooltip(container, tooltip);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
+
 }

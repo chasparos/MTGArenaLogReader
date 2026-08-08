@@ -41,4 +41,25 @@ class CardImageCacheSourceTest {
         assertTrue(future.isCompletedExceptionally());
         assertThrows(java.util.concurrent.CompletionException.class, future::join);
     }
+    @Test
+    void browserPresentationPrintingOverridesLogicalIdentityResolverForImages() {
+        CardInfo logicalDefault = new CardInfo();
+        logicalDefault.setId("default-print");
+        CardInfo favorite = new CardInfo();
+        favorite.setId("favorite-print");
+        java.util.concurrent.atomic.AtomicReference<CardInfo> loaded =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        CardImageCacheSource source = new CardImageCacheSource(
+                ignored -> Optional.of(logicalDefault),
+                (card, index) -> {
+                    loaded.set(card);
+                    return CompletableFuture.completedFuture(Optional.empty());
+                });
+
+        source.request(new CardBrowserPanel.BrowserCard(
+                "oracle:a", "Alpha", 2, favorite)).join();
+
+        assertSame(favorite, loaded.get());
+    }
+
 }

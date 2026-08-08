@@ -37,9 +37,17 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         }
     }
 
-    public record BrowserCard(String identity, String name, int alternateArtCount) {
+    public record BrowserCard(String identity, String name, int alternateArtCount,
+                              app.model.card.CardInfo card, boolean alternateArtKnown) {
         public BrowserCard(String identity, String name) {
-            this(identity, name, 1);
+            this(identity, name, 1, null, true);
+        }
+        public BrowserCard(String identity, String name, int alternateArtCount) {
+            this(identity, name, alternateArtCount, null, true);
+        }
+        public BrowserCard(String identity, String name, int alternateArtCount,
+                           app.model.card.CardInfo card) {
+            this(identity, name, alternateArtCount, card, true);
         }
         public BrowserCard {
             if (identity == null || identity.isBlank()) throw new IllegalArgumentException("identity required");
@@ -318,7 +326,7 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
             selectedIndexBeforeClick = selectedIndex;
         }
 
-        if (cards.get(index).alternateArtCount() > 1
+        if ((!cards.get(index).alternateArtKnown() || cards.get(index).alternateArtCount() > 1)
                 && CardView.alternateArtBadgeBounds(bounds.width).contains(localX, localY)) {
             alternateArtListener.accept(identity);
             return;
@@ -472,12 +480,13 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         BrowserCard card = cards.get(index);
         cardView.configure(
                 card.name(),
+                card.card(),
                 images.get(card.identity()),
                 index == hoveredIndex,
                 selectedIdentities.contains(card.identity()),
                 candidateIdentities.contains(card.identity()),
                 hasFocus() && index == focusedIndex,
-                card.alternateArtCount());
+                card.alternateArtCount(), card.alternateArtKnown());
         rendererPane.paintComponent(g, cardView, this,
                 bounds.x, bounds.y, bounds.width, bounds.height, true);
     }

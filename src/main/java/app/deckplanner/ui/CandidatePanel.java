@@ -24,6 +24,8 @@ public final class CandidatePanel extends JPanel {
     private final JButton clear = new JButton("Clear");
     private final JButton magicSort = new JButton("Normal MTG sort");
     private final JButton importDeck = new JButton("Import deck");
+    private final JProgressBar busy = new JProgressBar();
+    private final JLabel operationStatus = new JLabel(" ");
     private final JComboBox<String> candidateSets = new JComboBox<>();
     private final JButton saveSet = new JButton("Save set");
     private final JButton loadSet = new JButton("Load set");
@@ -58,7 +60,15 @@ public final class CandidatePanel extends JPanel {
         add(scroll, BorderLayout.CENTER);
 
         JPanel actions = new JPanel(new BorderLayout(4, 4));
-        actions.add(importDeck, BorderLayout.NORTH);
+        JPanel importLine = new JPanel(new BorderLayout(6, 2));
+        importLine.add(importDeck, BorderLayout.WEST);
+        busy.setIndeterminate(true);
+        busy.setBorderPainted(false);
+        busy.setVisible(false);
+        importLine.add(busy, BorderLayout.CENTER);
+        operationStatus.setFont(operationStatus.getFont().deriveFont(Font.PLAIN, 10f));
+        importLine.add(operationStatus, BorderLayout.SOUTH);
+        actions.add(importLine, BorderLayout.NORTH);
 
         JPanel setActions = new JPanel(new BorderLayout(4, 4));
         candidateSets.setEditable(true);
@@ -142,6 +152,17 @@ public final class CandidatePanel extends JPanel {
     public void setImportAction(Runnable importAction) {
         this.importAction = importAction == null ? () -> { } : importAction;
     }
+
+    public void setBusy(boolean active, String message) {
+        assertEdt();
+        busy.setVisible(active);
+        importDeck.setEnabled(!active);
+        operationStatus.setText(message == null || message.isBlank() ? " " : message);
+        revalidate();
+        repaint();
+    }
+
+    public String operationStatus() { return operationStatus.getText(); }
 
     public void setMagicSortAction(Runnable magicSortAction) {
         this.magicSortAction = magicSortAction == null ? () -> { } : magicSortAction;
@@ -331,13 +352,7 @@ public final class CandidatePanel extends JPanel {
             } else {
                 ReplayCardChip chip = new ReplayCardChip(card, false, 1.35f);
                 chip.setToolTipText((entry.legal() ? "" : "Illegal in selected format — ")
-                        + (card.getName() == null ? "Unknown card" : card.getName())
-                        + " — click to choose printing");
-                chip.addMouseListener(new java.awt.event.MouseAdapter() {
-                    @Override public void mouseClicked(java.awt.event.MouseEvent event) {
-                        if (event.getClickCount() == 1) alternateArtAction.accept(identity);
-                    }
-                });
+                        + (card.getName() == null ? "Unknown card" : card.getName()));
                 content = chip;
             }
             add(content, BorderLayout.CENTER);

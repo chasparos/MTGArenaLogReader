@@ -56,3 +56,16 @@ Logical candidate identity remains separate from printing/art choice. Alternate 
 ## Candidate categories and Candidate Sets
 
 Candidate categories are planner organization, not card facts or ownership. Category order is user-controlled. Removing a category must preserve its cards by moving them into an implicit `Uncategorized` category; `Uncategorized` should disappear when empty. Named Candidate Sets preserve an ordered candidate membership plus the planner category organization so a human can save and revisit alternative deck-building directions without treating those sets as observed Arena decks.
+
+## DP-06 responsiveness and incomplete-enrichment intent (2026-08-08)
+
+Persistent local card/catalog data is sufficient to make the planner usable. External enrichment is opportunistic: startup, Candidate rendering, deck import, filtering, resizing, and ordinary selection must not wait for alternate-art enumeration or a Scryfall rate-limit backoff. “Alternate art state unknown” is valid UI state until the human explicitly asks to inspect printings.
+
+A favorite printing is an explicit human preference, not a background inference. Until the human chooses another printing from the Catalog art chooser, use the first local/cached printing consistently. Candidate-chip clicks remain planning/selection gestures and do not open favorite-art selection.
+
+Long-running deck import is represented inside the Candidate panel with progress/status and leaves the rest of Deck Planner interactive. Completion and failure feedback should not use a blocking modal.
+
+Filters and Candidates are adjustable workspace regions. Filters may be hidden/restored from a circular boundary control. Candidates may expand/contract from a matching boundary control; expanded Candidates intentionally compress the Catalog to a single readable card column where space requires it.
+
+A known card without a downloaded image is still a real card. Render a shadow-card placeholder with a large faint question mark and the shared replay card chip as its header rather than presenting it like an unresolved card.
+

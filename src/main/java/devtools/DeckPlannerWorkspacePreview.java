@@ -104,6 +104,9 @@ public final class DeckPlannerWorkspacePreview {
                     frame.revalidate();
                     frame.repaint();
                     created.workspace().start();
+                    if (result.refreshRecommended()) {
+                        loader.execute(() -> DeckPlannerStandardPreviewCatalog.refresh(PERSISTENT_ROOT));
+                    }
                 }));
     }
 
@@ -149,7 +152,7 @@ public final class DeckPlannerWorkspacePreview {
         CardCache observedCardCache = new CardCache(gson, observedDeckDatabase);
         DeckCache observedDeckCache = new DeckCache(gson, observedCardCache, observedDeckDatabase);
         return createSession(databasePath, snapshot, availability, imageSource,
-                new CardNameRepository(index, observedCardCache, nameLookup::findByExactName,
+                new CardNameRepository(index, observedCardCache, nameLookup::findByExactNameBestEffort,
                         nameLookup::findPrintingsByExactName),
                 new DeckCacheKnownArenaDeckSource(observedDeckCache, 24),
                 nameLookup, observedCardCache, observedDeckCache);
@@ -186,6 +189,8 @@ public final class DeckPlannerWorkspacePreview {
                 candidates, ignored -> CollectionQuantity.UNKNOWN,
                 cardNames, knownDecks, workspaceState, candidateSets,
                 new AlternateArtResolver(index, cardNames, printingPreferences));
+        CardImageCache printingImages = new CardImageCache(PERSISTENT_ROOT.resolve("images"));
+        workspace.setPrintingImageLoader(printingImages::get);
 
 
         String sampleArenaDeck = sampleArenaDeck(snapshot);

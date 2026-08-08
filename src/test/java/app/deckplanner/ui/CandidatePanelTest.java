@@ -260,4 +260,22 @@ class CandidatePanelTest {
         }
         return null;
     }
+    @Test
+    void importBusyStateIsNonModalAndReportedInsideCandidatePanel() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<CandidatePanel> ref = new java.util.concurrent.atomic.AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.setBusy(true, "Importing deck…");
+            ref.set(panel);
+        });
+        assertEquals("Importing deck…", ref.get().operationStatus());
+        AbstractButton importButton = findButton(ref.get(), "Import deck");
+        assertNotNull(importButton);
+        assertFalse(importButton.isEnabled());
+
+        SwingUtilities.invokeAndWait(() -> ref.get().setBusy(false, "Imported 12."));
+        assertEquals("Imported 12.", ref.get().operationStatus());
+        assertTrue(importButton.isEnabled());
+    }
+
 }

@@ -9,7 +9,7 @@
 
 ### Mission
 
-Build a responsive Swing workspace for discovering cards legal in a chosen MTG Arena format, narrowing them through structured and semantic filters, collecting candidates candidates, incorporating collection ownership when Arena logs provide authoritative evidence, and exporting those candidates to an LLM with authoritative card rules.
+Build a responsive Swing workspace for discovering cards legal in a chosen MTG Arena format, narrowing them through structured and semantic filters, collecting candidates, incorporating collection ownership when Arena logs provide authoritative evidence, and exporting those candidates to an LLM with authoritative card rules.
 
 ### Accepted constraints
 
@@ -198,6 +198,8 @@ Human-feedback iteration 2 plan (2026-08-08), in implementation order:
    Current implementation slice: `CardCollectionSurface` owns ordered Ctrl/Shift multi-selection and multi-card drag payloads; candidate-internal drops preserve the selected group's relative order, Catalog→Candidates drops add at the indicated insertion point, and Candidates→Catalog drops remove the dragged candidates. Both surfaces use a shared JVM-local card-transfer payload, and drag ghosts are rendered from scaled `ReplayCardChip` painters rather than generic cursors.
 4. **Alternate-art/name resolution and legality visibility.** Make logical-card resolution expose alternate Arena/Scryfall printings, collector-visible favorite art selection, and an explicit Illegal indicator when a resolved card exists but is outside the selected legal format. This must preserve logical candidate identity and must not infer ownership.
 
+5. **Non-blocking enrichment and workspace visibility controls.** Candidate/catalog rendering and deck import must remain usable from persistent cache state without waiting for alternate-art enumeration or Scryfall `Retry-After` delays. Alternate-art completeness is explicitly unknown until the human asks to inspect printings; only an explicit catalog art choice creates a favorite. Deck import reports progress/result in the Candidate panel rather than a blocking completion modal. Add border-centered controls to hide/show Filters and expand/contract Candidates; expanded Candidates intentionally narrow the Catalog to approximately one readable card per row. Known cards without downloaded art render a shadow-card placeholder with a replay-chip header.
+
 Filtering/tag-taxonomy rework remains outside these slices; subtype/tribal handling stays deferred as `SA-MTGA-DEF-004`.
 
 
@@ -231,7 +233,7 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-06 — Candidate workspace` remains active. Candidate vocabulary/layout/presentation is validated at the clean 244-test baseline `a509dcca9f3aa810cd91ff31e2155f90fc94870a`. The active implementation slice is editable persisted categories plus named Candidate Sets. After repository-side validation, continue to the planned multi-selection/cross-surface drag/drop slice; do not start DP-07 until DP-06 is explicitly accepted.
+`DP-06 — Candidate workspace` remains active. The latest accepted baseline before this slice is `77da21656969c2b66cc8af0100c9d03e2c621205` with 259 tests passing. Human click review then found that automatic alternate-art enrichment can make startup/import appear frozen under Scryfall 429 backoff, and requested cache-first non-blocking behavior plus workspace visibility controls and a richer missing-image placeholder. Continue DP-06; do not start DP-07 until explicit human acceptance.
 
 ### Current planning decisions
 

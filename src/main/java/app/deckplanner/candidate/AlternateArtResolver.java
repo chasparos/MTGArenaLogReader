@@ -3,32 +3,31 @@ package app.deckplanner.candidate;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.model.card.CardInfo;
 
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /** Resolves legal state, alternate printings, and a persisted favorite printing per logical card. */
 public final class AlternateArtResolver {
     public record ArtSet(String identity, boolean legal, List<CardInfo> printings,
-                         Optional<String> favoriteScryfallId) {
+                         Optional<String> favoriteScryfallId, boolean complete) {
         public CardInfo preferred() {
             if (favoriteScryfallId.isPresent()) {
                 for (CardInfo card : printings) {
                     if (card != null && favoriteScryfallId.get().equals(card.getId())) return card;
                 }
             }
-            return printings.stream().filter(Objects::nonNull).max(Comparator
-                    .comparing((CardInfo card) -> card.getArenaId() != null)
-                    .thenComparing(card -> card.getReleasedAt() == null ? "" : card.getReleasedAt())
-                    .thenComparing(card -> card.getId() == null ? "" : card.getId()))
-                    .orElse(null);
+            // Without an explicit favorite, keep the first local/cached printing stable.
+            return printings.stream().filter(Objects::nonNull).findFirst().orElse(null);
         }
     }
 
     private final CatalogFilterIndex index;
     private final CardNameRepository cards;
     private final PrintingPreferenceRepository preferences;
+    private final ConcurrentMap<String, List<CardInfo>> enrichedPrintings = new ConcurrentHashMap<>();
 
     public AlternateArtResolver(CatalogFilterIndex index, CardNameRepository cards,
                                 PrintingPreferenceRepository preferences) {
@@ -37,10 +36,21 @@ public final class AlternateArtResolver {
         this.preferences = Objects.requireNonNull(preferences);
     }
 
+    /** Cache-only state used by normal rendering; never performs enrichment. */
+    public ArtSet resolveCached(String identity) {
+        boolean legal = index.cards().stream().anyMatch(card -> card.group().identity().equals(identity));
+        List<CardInfo> enriched = enrichedPrintings.get(identity);
+        List<CardInfo> printings = enriched == null ? cards.cachedPrintings(identity) : enriched;
+        return new ArtSet(identity, legal, List.copyOf(printings), preferences.favorite(identity),
+                enriched != null);
+    }
+
+    /** Explicit user-requested enrichment used only by the catalog art chooser. */
     public ArtSet resolve(String identity) {
         boolean legal = index.cards().stream().anyMatch(card -> card.group().identity().equals(identity));
-        List<CardInfo> printings = cards.printings(identity);
-        return new ArtSet(identity, legal, List.copyOf(printings), preferences.favorite(identity));
+        List<CardInfo> printings = List.copyOf(cards.printings(identity));
+        enrichedPrintings.put(identity, printings);
+        return new ArtSet(identity, legal, printings, preferences.favorite(identity), true);
     }
 
     public void favorite(String identity, CardInfo printing) {

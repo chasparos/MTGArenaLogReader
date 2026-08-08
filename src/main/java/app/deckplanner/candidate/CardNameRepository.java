@@ -87,6 +87,17 @@ public final class CardNameRepository {
                 : persistentCache.findByCatalogIdentity(identity);
     }
 
+    public List<CardInfo> cachedPrintings(String identity) {
+        Optional<app.deckplanner.filter.IndexedCatalogCard> local = index.cards().stream()
+                .filter(card -> identity != null && identity.equals(card.group().identity()))
+                .findFirst();
+        if (local.isPresent() && !local.get().group().printings().isEmpty()) {
+            return List.copyOf(local.get().group().printings());
+        }
+        Optional<CardInfo> cached = resolveIdentity(identity);
+        return cached.map(List::of).orElseGet(List::of);
+    }
+
     public List<CardInfo> printings(String identity) {
         Optional<app.deckplanner.filter.IndexedCatalogCard> local = index.cards().stream()
                 .filter(card -> identity != null && identity.equals(card.group().identity()))

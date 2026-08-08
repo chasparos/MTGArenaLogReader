@@ -33,6 +33,30 @@ class AlternateArtResolverTest {
         }
     }
 
+    @Test void cachedResolutionDoesNotInvokeRemotePrintingEnumerationAndDefaultsToFirstLocalPrinting() {
+        CardInfo first = card("print-a", "oracle-a", "Alpha", 1L);
+        CardInfo second = card("print-b", "oracle-a", "Alpha", 2L);
+        CatalogFilterIndex index = new CatalogFilterIndex(new FormatCatalogRepository.Snapshot(
+                "run", "standard", 1, Instant.EPOCH, Instant.EPOCH,
+                List.of(new FormatCatalogRepository.CardOutcome(first, "SUCCESS", null),
+                        new FormatCatalogRepository.CardOutcome(second, "SUCCESS", null))));
+        java.util.concurrent.atomic.AtomicInteger remoteCalls = new java.util.concurrent.atomic.AtomicInteger();
+        CardNameRepository names = new CardNameRepository(index, null, name -> Optional.empty(),
+                name -> {
+                    remoteCalls.incrementAndGet();
+                    return List.of(second);
+                });
+        try (PrintingPreferenceRepository preferences =
+                     new PrintingPreferenceRepository(temporary.resolve("cached-only"))) {
+            AlternateArtResolver resolver = new AlternateArtResolver(index, names, preferences);
+            AlternateArtResolver.ArtSet cached = resolver.resolveCached("oracle:oracle-a");
+            assertFalse(cached.complete());
+            assertEquals(0, remoteCalls.get());
+            assertEquals("print-a", cached.preferred().getId(),
+                    "without an explicit favorite the first local/cached printing stays stable");
+        }
+    }
+
     private static CardInfo card(String id, String oracle, String name, long arenaId) {
         CardInfo card = new CardInfo();
         card.setId(id); card.setOracleId(oracle); card.setName(name); card.setArenaId(arenaId);

@@ -32,6 +32,9 @@ import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Function;
+import java.awt.image.BufferedImage;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -61,6 +64,12 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private final JPanel statusStrip = new JPanel(new BorderLayout(8, 0));
     private final JLabel availabilityBanner = new JLabel();
     private final JProgressBar refreshProgress = new JProgressBar();
+    private final JScrollPane filterScroll;
+    private final JPanel filterRegion = new JPanel(new BorderLayout());
+    private final JPanel candidateRegion = new JPanel(new BorderLayout());
+    private boolean candidatesExpanded;
+    private Function<CardInfo, CompletableFuture<Optional<BufferedImage>>> printingImageLoader =
+            ignored -> CompletableFuture.completedFuture(Optional.empty());
     private final DeckPlannerFilterCoordinator coordinator;
 
     public DeckPlannerWorkspace(DeckPlannerFilterModel model,
@@ -187,13 +196,13 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                 .filter(this::isResolvedCandidate)
                 .ifPresent(ignored -> filterModel.setCandidateOnly(true)));
         if (alternateArtResolver != null) {
-            candidatePanel.setAlternateArtAction(this::showAlternateArtPicker,
-                    identity -> alternateArtResolver.resolve(identity).preferred());
+            candidatePanel.setAlternateArtAction(null,
+                    identity -> alternateArtResolver.resolveCached(identity).preferred());
         }
         candidatePanel.setPreferredSize(new Dimension(470, 600));
         candidatePanel.setMinimumSize(new Dimension(360, 300));
 
-        JScrollPane filterScroll = new JScrollPane(filters,
+        filterScroll = new JScrollPane(filters,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         filterScroll.setBorder(BorderFactory.createEmptyBorder());
@@ -224,9 +233,34 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         resultCards.add(content, CONTENT);
         resultCards.add(statePanel, STATE);
 
-        add(filterScroll, BorderLayout.WEST);
+        JButton filterToggle = splitButton("‹", "Hide filters");
+        filterToggle.addActionListener(event -> {
+            boolean visible = filterScroll.isVisible();
+            filterScroll.setVisible(!visible);
+            filterToggle.setText(visible ? "›" : "‹");
+            filterToggle.setToolTipText(visible ? "Show filters" : "Hide filters");
+            revalidate();
+        });
+        filterRegion.add(filterScroll, BorderLayout.CENTER);
+        filterRegion.add(centeredRail(filterToggle), BorderLayout.EAST);
+
+        JButton candidateToggle = splitButton("›", "Expand candidates");
+        candidateToggle.addActionListener(event -> {
+            candidatesExpanded = !candidatesExpanded;
+            Dimension size = candidatesExpanded
+                    ? new Dimension(760, 600) : new Dimension(470, 600);
+            candidatePanel.setPreferredSize(size);
+            candidateToggle.setText(candidatesExpanded ? "‹" : "›");
+            candidateToggle.setToolTipText(candidatesExpanded
+                    ? "Contract candidates" : "Expand candidates");
+            revalidate();
+        });
+        candidateRegion.add(centeredRail(candidateToggle), BorderLayout.WEST);
+        candidateRegion.add(candidatePanel, BorderLayout.CENTER);
+
+        add(filterRegion, BorderLayout.WEST);
         add(resultCards, BorderLayout.CENTER);
-        add(candidatePanel, BorderLayout.EAST);
+        add(candidateRegion, BorderLayout.EAST);
         refreshThemeColors();
         showCandidates();
 
@@ -342,40 +376,34 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         if (choice != JOptionPane.OK_OPTION) return;
 
         String deckText = input.getText();
+        candidatePanel.setBusy(true, "Importing deck… local cache first; enrichment stays optional.");
         CompletableFuture
                 .supplyAsync(() -> DeckListImporter.resolve(deckText, cardNames), worker)
                 .whenComplete((result, failure) -> SwingUtilities.invokeLater(() -> {
                     if (failure != null) {
-                        JOptionPane.showMessageDialog(this,
-                                "Deck import failed: " + rootMessage(failure),
-                                "Deck import", JOptionPane.ERROR_MESSAGE);
+                        candidatePanel.setBusy(false, "Import failed: " + rootMessage(failure));
                         return;
                     }
                     candidateModel.add(result.identities());
-                    showImportResult(result);
+                    candidatePanel.setBusy(false, importResultMessage(result));
                 }));
     }
 
-    private void showImportResult(DeckListImporter.Result result) {
+    private String importResultMessage(DeckListImporter.Result result) {
         String message;
         if (result.parsedCardLines() == 0) {
             message = "No Arena deck card lines were found.";
         } else if (result.unresolvedNames().isEmpty()) {
             message = "Imported " + result.resolvedCards() + " unique card" +
-                    (result.resolvedCards() == 1 ? "" : "s") + " into candidates.";
+                    (result.resolvedCards() == 1 ? "" : "s") + ".";
         } else {
-            message = "Imported " + result.resolvedCards() + " unique card" +
-                    (result.resolvedCards() == 1 ? "" : "s") + ". Could not resolve: " +
+            message = "Imported " + result.resolvedCards() + "; unresolved: " +
                     String.join(", ", result.unresolvedNames());
         }
         if (result.fallbackCards() > 0) {
-            message += " " + result.fallbackCards() + " name" +
-                    (result.fallbackCards() == 1 ? " was" : "s were") +
-                    " resolved by exact-name Scryfall fallback.";
+            message += " " + result.fallbackCards() + " used best-effort enrichment.";
         }
-        JOptionPane.showMessageDialog(this, message, "Deck import",
-                result.unresolvedNames().isEmpty()
-                        ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+        return message;
     }
 
     private static String rootMessage(Throwable error) {
@@ -471,7 +499,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                 java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
     }
 
-    private static List<CardBrowserPanel.BrowserCard> toBrowserCards(List<IndexedCatalogCard> cards) {
+    private List<CardBrowserPanel.BrowserCard> toBrowserCards(List<IndexedCatalogCard> cards) {
         return cards.stream()
                 .sorted((left, right) -> {
                     int compared = MagicCardOrdering.normalComparator().compare(
@@ -479,56 +507,148 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                     return compared != 0 ? compared
                             : left.group().identity().compareToIgnoreCase(right.group().identity());
                 })
-                .map(card -> new CardBrowserPanel.BrowserCard(
-                        card.group().identity(), card.group().preferredPrinting().getName(),
-                        card.group().printings().size()))
+                .map(card -> {
+                    AlternateArtResolver.ArtSet art = alternateArtResolver == null
+                            ? null : alternateArtResolver.resolveCached(card.group().identity());
+                    CardInfo presentation = art == null || art.preferred() == null
+                            ? card.group().preferredPrinting() : art.preferred();
+                    int count = art == null ? card.group().printings().size() : art.printings().size();
+                    boolean known = art == null || art.complete();
+                    return new CardBrowserPanel.BrowserCard(
+                            card.group().identity(), presentation.getName(),
+                            count, presentation, known);
+                })
                 .toList();
     }
 
 
+
+    public void setPrintingImageLoader(
+            Function<CardInfo, CompletableFuture<Optional<BufferedImage>>> loader) {
+        printingImageLoader = loader == null
+                ? ignored -> CompletableFuture.completedFuture(Optional.empty()) : loader;
+    }
+
     private void showAlternateArtPicker(String identity) {
         if (alternateArtResolver == null || identity == null) return;
+
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this),
+                "Choose favorite printing", Dialog.ModalityType.MODELESS);
+        JPanel loading = new JPanel(new BorderLayout(8, 8));
+        loading.setBorder(new EmptyBorder(18, 18, 18, 18));
+        JProgressBar progress = new JProgressBar();
+        progress.setIndeterminate(true);
+        loading.add(new JLabel("Loading known printings… you can keep using Deck Planner."),
+                BorderLayout.NORTH);
+        loading.add(progress, BorderLayout.CENTER);
+        dialog.setContentPane(loading);
+        dialog.setSize(520, 140);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+
         CompletableFuture.supplyAsync(() -> alternateArtResolver.resolve(identity), worker)
                 .whenComplete((artSet, failure) -> SwingUtilities.invokeLater(() -> {
+                    if (!dialog.isDisplayable()) return;
                     if (failure != null || artSet == null || artSet.printings().isEmpty()) {
-                        JOptionPane.showMessageDialog(this, "No alternate printings could be resolved.",
-                                "Card art", JOptionPane.INFORMATION_MESSAGE);
+                        JLabel message = new JLabel("No alternate printings are available right now.");
+                        message.setBorder(new EmptyBorder(18, 18, 18, 18));
+                        dialog.setContentPane(message);
+                        dialog.setSize(460, 110);
+                        dialog.revalidate();
                         return;
                     }
-                    DefaultListModel<CardInfo> model = new DefaultListModel<>();
-                    artSet.printings().forEach(model::addElement);
-                    JList<CardInfo> list = new JList<>(model);
-                    list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-                    list.setCellRenderer((values, card, index, selected, focus) -> {
-                        String label = (card.getSet() == null ? "?" : card.getSet().toUpperCase())
-                                + " #" + (card.getCollectorNumber() == null ? "?" : card.getCollectorNumber())
-                                + " — " + (card.getArtist() == null ? "Unknown artist" : card.getArtist());
-                        JLabel rendered = new JLabel(label);
-                        rendered.setOpaque(true);
-                        rendered.setBackground(selected ? AppColors.color("List.selectionBackground",
-                                new Color(0x4C566A)) : values.getBackground());
-                        rendered.setForeground(selected ? AppColors.color("List.selectionForeground",
-                                Color.WHITE) : values.getForeground());
-                        rendered.setBorder(new EmptyBorder(7, 8, 7, 8));
-                        return rendered;
-                    });
-                    artSet.favoriteScryfallId().ifPresent(favorite -> {
-                        for (int i = 0; i < model.size(); i++) {
-                            if (favorite.equals(model.get(i).getId())) list.setSelectedIndex(i);
+
+                    JPanel cards = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+                    ButtonGroup group = new ButtonGroup();
+                    for (CardInfo card : artSet.printings()) {
+                        JToggleButton choice = new JToggleButton();
+                        choice.setVerticalTextPosition(SwingConstants.BOTTOM);
+                        choice.setHorizontalTextPosition(SwingConstants.CENTER);
+                        String set = card.getSet() == null ? "?" : card.getSet().toUpperCase();
+                        String collector = card.getCollectorNumber() == null ? "?" : card.getCollectorNumber();
+                        choice.setText("<html><center>" + set + " #" + collector + "<br>"
+                                + (card.getArtist() == null ? "Unknown artist" : card.getArtist())
+                                + "</center></html>");
+                        choice.setPreferredSize(new Dimension(170, 270));
+                        group.add(choice);
+                        cards.add(choice);
+                        if (artSet.favoriteScryfallId().filter(id -> id.equals(card.getId())).isPresent()) {
+                            choice.setSelected(true);
                         }
-                    });
-                    if (list.getSelectedIndex() < 0) list.setSelectedIndex(0);
-                    JScrollPane scroll = new JScrollPane(list);
-                    scroll.setPreferredSize(new Dimension(520, 260));
-                    String legality = artSet.legal() ? "Legal in selected format" : "ILLEGAL in selected format";
-                    int result = JOptionPane.showConfirmDialog(this, scroll,
-                            "Choose favorite printing — " + legality,
-                            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-                    if (result == JOptionPane.OK_OPTION && list.getSelectedValue() != null) {
-                        alternateArtResolver.favorite(identity, list.getSelectedValue());
-                        showCandidates();
+                        choice.addActionListener(event -> {
+                            alternateArtResolver.favorite(identity, card);
+                            showCandidates();
+                            coordinator.restart();
+                        });
+                        CompletableFuture<Optional<BufferedImage>> imageFuture;
+                        try {
+                            imageFuture = printingImageLoader.apply(card);
+                        } catch (RuntimeException error) {
+                            imageFuture = CompletableFuture.completedFuture(Optional.empty());
+                        }
+                        if (imageFuture != null) {
+                            imageFuture.whenComplete((image, error) -> SwingUtilities.invokeLater(() -> {
+                                if (!dialog.isDisplayable() || error != null
+                                        || image == null || image.isEmpty()) return;
+                                Image scaled = image.get().getScaledInstance(145, 203, Image.SCALE_SMOOTH);
+                                choice.setIcon(new ImageIcon(scaled));
+                            }));
+                        }
                     }
+                    JScrollPane scroll = new JScrollPane(cards,
+                            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+                    scroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
+                    scroll.getHorizontalScrollBar().setUI(new AppScrollBarUI());
+                    JPanel content = new JPanel(new BorderLayout(6, 6));
+                    String legality = artSet.legal() ? "Legal in selected format"
+                            : "ILLEGAL in selected format";
+                    content.add(new JLabel(legality + " — click an image to set an explicit favorite."),
+                            BorderLayout.NORTH);
+                    content.add(scroll, BorderLayout.CENTER);
+                    dialog.setContentPane(content);
+                    dialog.setSize(760, 620);
+                    dialog.revalidate();
+                    dialog.repaint();
                 }));
+    }
+
+    private static JPanel centeredRail(JButton button) {
+        JPanel rail = new JPanel(new GridBagLayout());
+        rail.setOpaque(false);
+        rail.setPreferredSize(new Dimension(26, 10));
+        rail.add(button);
+        return rail;
+    }
+
+    private static JButton splitButton(String text, String tooltip) {
+        JButton button = new JButton(text) {
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = (Graphics2D) graphics.create();
+                try {
+                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                            RenderingHints.VALUE_ANTIALIAS_ON);
+                    Color bg = AppColors.color("Button.background", new Color(0x343941));
+                    g.setColor(bg);
+                    g.fillOval(1, 1, getWidth() - 3, getHeight() - 3);
+                    g.setColor(AppColors.color("Button.foreground", Color.WHITE));
+                    FontMetrics metrics = g.getFontMetrics();
+                    String value = getText();
+                    g.drawString(value, (getWidth() - metrics.stringWidth(value)) / 2,
+                            (getHeight() + metrics.getAscent() - metrics.getDescent()) / 2);
+                } finally {
+                    g.dispose();
+                }
+            }
+        };
+        button.setToolTipText(tooltip);
+        button.setPreferredSize(new Dimension(24, 24));
+        button.setMinimumSize(new Dimension(24, 24));
+        button.setMaximumSize(new Dimension(24, 24));
+        button.setBorderPainted(false);
+        button.setContentAreaFilled(false);
+        button.setFocusPainted(false);
+        return button;
     }
 
     private static void syncScrollbarEnabled(JScrollBar scrollBar) {
