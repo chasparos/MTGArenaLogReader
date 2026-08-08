@@ -127,14 +127,14 @@ class DeckPlannerWorkspacePreviewTest {
 
         List<JCheckBox> steps = findAll(checklist.get(), JCheckBox.class);
         JLabel status = findNamed(checklist.get(), JLabel.class, "dp07-review-status");
-        assertEquals(3, steps.size());
+        assertEquals(4, steps.size());
         assertNotNull(status);
-        assertTrue(status.getText().contains("0/3 checked"));
+        assertTrue(status.getText().contains("0/4 checked"));
         assertTrue(status.getText().contains("DP-07 remains active"));
 
         SwingUtilities.invokeAndWait(() -> steps.forEach(AbstractButton::doClick));
-        assertTrue(status.getText().contains("3/3 checked"));
-        assertTrue(status.getText().contains("note-workflow feedback"));
+        assertTrue(status.getText().contains("4/4 checked"));
+        assertTrue(status.getText().contains("AI-request workflow feedback"));
         assertTrue(status.getText().contains("DP-07 remains active"));
     }
 

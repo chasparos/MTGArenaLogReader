@@ -248,9 +248,10 @@ public final class DeckPlannerWorkspacePreview {
 
     static JPanel acceptanceChecklist() {
         String[] steps = {
-                "Design-note UX: does Edit note feel like a natural place to explain what you are building, why cards are grouped this way, and what direction you want to explore?",
-                "Candidate Set continuity: after Save set / Load set and relaunch, does the note feel attached to the named Candidate Set rather than to a temporary export action?",
-                "DP-07 direction: does this note workflow give you the right human-authored context to carry into the upcoming AI deck-analysis export, or should the editor/persistence behavior change first?"
+                "Candidate Set intent: does the saved note still feel like the right place to explain the deck idea and why cards are grouped as they are?",
+                "AI request review: does AI export clearly separate authoritative card facts, your design note, and the strategic-analysis instructions?",
+                "Analysis usefulness: does the generated brief ask for the kinds of directions you actually want explored (archetypes, packages, interaction, engines, curve/mana, weaknesses, win conditions, removals and missing roles)?",
+                "Workflow fit: does Edit note → Save/Load Candidate Set → AI export feel like one coherent planning workflow rather than an export form bolted onto the side?"
         };
 
         Color background = AppColors.color("Panel.background", new Color(0x202328));
@@ -261,7 +262,7 @@ public final class DeckPlannerWorkspacePreview {
         checklist.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         checklist.setBackground(background);
 
-        JLabel title = new JLabel("DP-07 HUMAN DESIGN REVIEW — CANDIDATE SET NOTES");
+        JLabel title = new JLabel("DP-07 HUMAN DESIGN REVIEW — NOTE + AI REQUEST");
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         title.setForeground(foreground);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -278,7 +279,7 @@ public final class DeckPlannerWorkspacePreview {
             long checked = boxes.stream().filter(AbstractButton::isSelected).count();
             if (checked == steps.length) {
                 status.setText("Acceptance status: " + checked + "/" + steps.length
-                        + " checked — report note-workflow feedback; DP-07 remains active.");
+                        + " checked — report AI-request workflow feedback; DP-07 remains active.");
             } else {
                 status.setText("Acceptance status: " + checked + "/" + steps.length
                         + " checked — DP-07 remains active.");

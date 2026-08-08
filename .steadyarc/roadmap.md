@@ -230,9 +230,9 @@ Accepted constraints:
 
 Implementation sequence:
 
-- **DP-07.1 Candidate Set note contract — implemented; validation pending.** Persist the free-form note in the named Candidate Set record with backward-compatible schema migration, expose `Edit note` in the planner, restore the note when a set is loaded, and use the existing preview harness for human review before exporter work begins.
-- **DP-07.2 Export schema and authoritative card payload — planned.** Define and golden-test deterministic `MTGA_DECK_BUILD_REQUEST_V1` card/category/note encoding.
-- **DP-07.3 Deck-analysis instruction brief and preview export review — planned.** Add the stable analysis framing/instructions, expose generated export in the preview harness, and iterate through human click review before DP-07 acceptance.
+- **DP-07.1 Candidate Set note contract — complete (2026-08-08).** The `0680b6046113db4011defb4cffe80590099687e9` baseline passed 274 tests, and the human confirmed the note workflow looked good. Candidate Set note persistence/editor continuity is accepted as the context foundation for export.
+- **DP-07.2 Export schema and authoritative card payload — implemented; validation pending.** `MTGA_DECK_BUILD_REQUEST_V1` deterministically encodes format, Candidate Set name/note, ordered membership, category aliases, tri-state collection quantity, stable identities, authoritative card metadata, every supplied card face, and explicit unresolved candidates. Focused golden tests cover deterministic note/category/card encoding, multi-face cards, and `-1/0/positive` quantity states.
+- **DP-07.3 Deck-analysis instruction brief and preview export review — implemented; human review pending.** The Candidate panel exposes `AI export`; the modeless review window shows a copyable payload whose stable brief asks for archetype directions, synergy/interaction/engine packages, curve/mana implications, weaknesses/resilience, plausible win conditions, likely removals, and missing cards/roles while forbidding invented card rules. `DeckPlannerWorkspacePreview` now click-reviews the combined note/export workflow.
 
 Acceptance evidence:
 
@@ -257,7 +257,7 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-07 — Authoritative AI deck-building protocol` is active. DP-06 was explicitly accepted by the human on 2026-08-08 after the clean `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` baseline with 272 tests passing. Begin DP-07 with the Candidate Set planning-note persistence/editor contract and export schema/instruction design; retain `DeckPlannerWorkspacePreview` as the human click-test harness throughout DP-07.
+`DP-07 — Authoritative AI deck-building protocol` is active. DP-07.1 Candidate Set notes are accepted on the clean `0680b6046113db4011defb4cffe80590099687e9` 274-test baseline. DP-07.2/DP-07.3 exporter schema, strategic brief, and preview review surface are the current implementation slice; after repository-side validation, use `DeckPlannerWorkspacePreview` for human review of whether the generated request accurately communicates the deck-design problem before closing DP-07.
 
 
 ### Current planning decisions

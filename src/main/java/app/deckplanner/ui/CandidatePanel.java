@@ -36,6 +36,7 @@ public final class CandidatePanel extends JPanel {
     private final JButton saveSet = new JButton("Save set");
     private final JButton loadSet = new JButton("Load set");
     private final JButton editNote = new JButton("Edit note");
+    private final JButton exportAi = new JButton("AI export");
 
     private Runnable importAction = () -> { };
     private Runnable magicSortAction = () -> { };
@@ -45,6 +46,7 @@ public final class CandidatePanel extends JPanel {
     private Supplier<List<String>> candidateSetNames = List::of;
     private Consumer<String> saveSetAction = ignored -> { };
     private Consumer<String> loadSetAction = ignored -> { };
+    private Runnable exportAiAction = () -> { };
     private String noteSetName = "";
     private String candidateSetNote = "";
 
@@ -89,6 +91,7 @@ public final class CandidatePanel extends JPanel {
         setButtons.add(saveSet);
         setButtons.add(loadSet);
         setButtons.add(editNote);
+        setButtons.add(exportAi);
         setActions.add(setButtons, BorderLayout.EAST);
         actions.add(setActions, BorderLayout.CENTER);
 
@@ -108,6 +111,7 @@ public final class CandidatePanel extends JPanel {
         saveSet.addActionListener(event -> selectedSetName().ifPresent(saveSetAction));
         loadSet.addActionListener(event -> selectedSetName().ifPresent(loadSetAction));
         editNote.addActionListener(event -> editCandidateSetNote());
+        exportAi.addActionListener(event -> exportAiAction.run());
         updateActions();
         refreshTheme();
     }
@@ -258,6 +262,22 @@ public final class CandidatePanel extends JPanel {
             dialog.setVisible(true);
             SwingUtilities.invokeLater(editor::requestFocusInWindow);
         });
+    }
+
+    public void setAiExportAction(Runnable action) {
+        exportAiAction = action == null ? () -> { } : action;
+    }
+
+    public Optional<String> currentCandidateSetName() {
+        return selectedSetName();
+    }
+
+    public String currentCandidateSetNote() {
+        return selectedSetName().map(this::candidateSetNoteFor).orElse("");
+    }
+
+    public CandidateWorkspaceState.Snapshot workspaceSnapshot() {
+        return workspaceState.snapshot();
     }
 
     public void setEntries(List<CandidateModel.Entry> entries) {

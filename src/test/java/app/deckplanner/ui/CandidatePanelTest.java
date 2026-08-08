@@ -315,4 +315,21 @@ class CandidatePanelTest {
         assertEquals("", ref.get().candidateSetNoteFor("Different set"));
         assertNotNull(findButton(ref.get(), "Edit note"));
     }
+
+    @Test
+    void aiExportActionIsExposedBesideCandidateSetControls() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        AtomicReference<CandidatePanel> ref = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.setAiExportAction(calls::incrementAndGet);
+            ref.set(panel);
+        });
+
+        AbstractButton export = findButton(ref.get(), "AI export");
+        assertNotNull(export);
+        SwingUtilities.invokeAndWait(export::doClick);
+        assertEquals(1, calls.get());
+    }
+
 }

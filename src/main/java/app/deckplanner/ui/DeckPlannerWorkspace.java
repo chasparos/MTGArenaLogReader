@@ -13,6 +13,7 @@ import app.deckplanner.candidate.AlternateArtResolver;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.deckplanner.filter.DeckPlannerFilterModel;
 import app.deckplanner.filter.IndexedCatalogCard;
+import app.deckplanner.export.DeckBuildRequestExporter;
 import app.ui.AppColors;
 import app.ui.AppScrollBarUI;
 import app.ui.SvgIcon;
@@ -37,6 +38,8 @@ import java.util.function.Function;
 import java.awt.image.BufferedImage;
 import java.util.Optional;
 import java.util.function.ToIntFunction;
+import java.awt.datatransfer.StringSelection;
+import java.awt.Toolkit;
 import java.util.stream.Collectors;
 
 /**
@@ -57,6 +60,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
     private final KnownArenaDeckSource knownDecks;
     private final Executor worker;
     private final AlternateArtResolver alternateArtResolver;
+    private final ToIntFunction<CardInfo> collectionQuantitySource;
     private volatile Set<String> candidateFilterIdentities = Set.of();
     private final CandidateModel.Listener candidateListener;
     private final CardBrowserScrollPane browserScrollPane;
@@ -156,6 +160,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         this.knownDecks = Objects.requireNonNull(knownDecks);
         this.worker = Objects.requireNonNull(worker);
         this.alternateArtResolver = alternateArtResolver;
+        this.collectionQuantitySource = Objects.requireNonNull(collectionQuantitySource);
         this.candidateListener = ignored -> onCandidatesChanged();
         assertEdt();
 
@@ -195,6 +200,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                     }));
         }
         candidatePanel.setImportAction(this::showDeckImportDialog);
+        candidatePanel.setAiExportAction(this::showAiExportDialog);
         candidatePanel.setMagicSortAction(() -> candidateModel.sortByMagic(catalogIndex));
         candidatePanel.setSelectionAction(selection -> selection
                 .filter(this::isResolvedCandidate)
@@ -329,6 +335,64 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                 .map(card -> card.group().preferredPrinting())
                 .toList();
         return ReplayCardChip.createDragImage(cards);
+    }
+
+    public String buildAiRequest() {
+        assertEdt();
+        String setName = candidatePanel.currentCandidateSetName().orElse("Current Candidates");
+        String note = candidatePanel.currentCandidateSetNote();
+        return new DeckBuildRequestExporter().export(
+                filterModel.state().format(),
+                setName,
+                note,
+                candidateModel.identities(),
+                candidateWorkspaceSnapshot(),
+                cardNames::resolveIdentity,
+                collectionQuantitySource);
+    }
+
+    private CandidateWorkspaceState.Snapshot candidateWorkspaceSnapshot() {
+        return candidatePanel.workspaceSnapshot();
+    }
+
+    private void showAiExportDialog() {
+        assertEdt();
+        String payload = buildAiRequest();
+
+        JTextArea text = new JTextArea(payload, 28, 88);
+        text.setEditable(false);
+        text.setLineWrap(false);
+        text.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(text);
+        scroll.getVerticalScrollBar().setUI(new AppScrollBarUI());
+        scroll.getHorizontalScrollBar().setUI(new AppScrollBarUI());
+
+        JButton copy = new JButton("Copy");
+        JLabel status = new JLabel("Review the request before using it.");
+        copy.addActionListener(event -> {
+            Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new StringSelection(payload), null);
+            status.setText("Copied to clipboard.");
+        });
+
+        JPanel buttons = new JPanel(new BorderLayout(8, 0));
+        buttons.add(status, BorderLayout.CENTER);
+        buttons.add(copy, BorderLayout.EAST);
+
+        JPanel content = new JPanel(new BorderLayout(6, 6));
+        content.setBorder(new EmptyBorder(8, 8, 8, 8));
+        content.add(scroll, BorderLayout.CENTER);
+        content.add(buttons, BorderLayout.SOUTH);
+
+        JDialog dialog = new JDialog(
+                SwingUtilities.getWindowAncestor(this),
+                "MTGA deck-build request",
+                Dialog.ModalityType.MODELESS);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setContentPane(content);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
     }
 
     private void showCandidates() {
