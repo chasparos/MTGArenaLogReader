@@ -37,3 +37,15 @@
 - **Resume trigger:** A bounded Deck Planner filter/tag item explicitly designs long-list subtype discovery and selection against the real Standard catalog.
 - **Status:** Open — product/filter design work required.
 
+### SA-MTGA-DEF-005 — Full collection import via MTG Arena process-memory scanning
+
+- **Summary:** Research an optional Windows collection synchronization path that reads the complete MTG Arena collection from the running `MTGA.exe` process when current `Player.log` output does not expose authoritative collection snapshots.
+- **Source:** Human-supplied research note `Deferred_Feature_MTGA_Memory_Collection_Import.md`, referencing the MIT-licensed `NthPhantom10/MTGA-collection-exporter` project as a reference implementation rather than a runtime dependency.
+- **Proposed direction:** Hide the capability behind a provider interface such as `MemoryCollectionProvider`; for the first Windows implementation, prefer JNA over JNI and use `OpenProcess`, `VirtualQueryEx`, `ReadProcessMemory`, and `CloseHandle`.
+- **Candidate extraction strategy:** Locate candidate `(grpId, quantity)` sequences in readable Arena memory, validate `grpId` values against the application's Arena card database, and score candidate blocks using known-card membership, plausible quantities, anchor matches, and penalties for unknown IDs or implausible quantities rather than selecting only the largest block.
+- **Product boundary:** This complements log parsing rather than replacing it. Logs remain authoritative for matches, decks, and gameplay events; the memory scanner would provide a manual full-collection synchronization action.
+- **Risks / research questions:** Arena updates may change memory layout; elevated permissions may sometimes be required; Arena UI state may affect discoverability; initial implementation is Windows-specific; robustness and anti-cheat/process-access implications must be investigated before productization.
+- **Relationship to SA-MTGA-DEF-003:** This is a possible future route for satisfying the missing authoritative collection source, not evidence that the current ownership gap is resolved.
+- **Resume trigger:** Human explicitly opens a bounded research/prototype arc for collection-memory import and supplies or approves investigation of the referenced implementation.
+- **Status:** Open — deferred research mission.
+

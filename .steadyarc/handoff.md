@@ -9,14 +9,14 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 ## Current ownership
 
 - **Owner:** Human repository owner.
-- **Repository baseline inspected for current DP-07 work:** `0680b6046113db4011defb4cffe80590099687e9` on `main`.
-- **Transferred validation:** `.\mvnw.cmd test` passed 274 tests with zero failures/errors/skips on a clean tree.
+- **Repository baseline inspected:** `14c490a691d43bda6b6b2f005c4f996e5d738a20` on `main`.
+- **Transferred validation:** `.\mvnw.cmd test` passed 278 tests with zero failures/errors/skips on a clean tree.
 - **Current arc:** Deck Planner.
-- **Completed roadmap item:** `DP-06 — Candidate workspace`; explicitly accepted by the human on 2026-08-08.
-- **Active roadmap item:** `DP-07 — Authoritative AI deck-building protocol`.
-- **DP-07 direction:** Persist a free-form planning note with each Candidate Set, edit it in the planner, include it verbatim in `MTGA_DECK_BUILD_REQUEST_V1`, and replace the old fixed-question design with a stable deck-analysis brief covering plausible directions, synergies, interaction, engines, curve/mana, weaknesses, and win conditions while preserving authoritative card facts.
-- **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click review throughout DP-07; automated tests cover encoding/schema mechanics, while the human reviews whether the note and generated request express the intended design problem.
-- **Safe next action:** Apply and validate the DP-07.2/DP-07.3 exporter patch. If green, click-review `AI export` in `DeckPlannerWorkspacePreview`, especially whether the human note and generated strategic brief express the intended design problem without conflating inference with authoritative card facts.
+- **Completed roadmap item:** `DP-07 — Authoritative AI deck-building protocol`; explicitly accepted by the human after successful real use of the generated export in a deck-design conversation.
+- **Active roadmap item:** `DP-08 — Integration, performance, and release evidence`.
+- **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click testing during DP-08, focusing on lifecycle, responsiveness, loading/offline/error behavior, and end-to-end flow rather than re-testing deterministic exporter mechanics already covered automatically.
+- **Deferred future mission:** `SA-MTGA-DEF-005` records the human-supplied MTGA process-memory collection-import research. It remains outside DP-08 unless explicitly activated.
+- **Safe next action:** Implement the first bounded DP-08 integration/evidence slice from the current roadmap, preserving the clean 278-test baseline.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
 
 ### DP-06 interaction-polish amendment — 2026-08-08
@@ -62,3 +62,13 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - Unresolved Candidate identities remain explicit `status=UNRESOLVED`; the instruction contract forbids inventing missing card facts.
 - DP-07 remains active after this patch. Human click review of the generated request is required before acceptance, and additional golden coverage for specialized card layouts may still be added if review exposes protocol gaps.
 - Return owner after patch delivery: Human repository owner for application, automated validation, and click review.
+
+
+### DP-07 acceptance / DP-08 activation amendment — 2026-08-08
+
+- Human accepted DP-07 after successfully using the generated `MTGA_DECK_BUILD_REQUEST_V1` prompt in a real deck-design conversation.
+- The accepted baseline is clean `14c490a691d43bda6b6b2f005c4f996e5d738a20` with 278 tests passing.
+- DP-07 is closed and DP-08 becomes active.
+- `DeckPlannerWorkspacePreview` remains the human click-test surface for DP-08 integration and release-evidence work.
+- The human supplied a possible future MTGA collection-import route based on process-memory scanning; it is recorded as deferred issue `SA-MTGA-DEF-005` and does not expand DP-08.
+- Ownership remains with the human until the next bounded DP-08 implementation delegation.

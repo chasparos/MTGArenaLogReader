@@ -210,7 +210,7 @@ Filtering/tag-taxonomy rework remains outside these slices; subtype/tribal handl
 
 #### DP-07 — Authoritative AI deck-building protocol
 
-**State:** active
+**State:** complete — 2026-08-08; automated validation passed 278 tests at `14c490a691d43bda6b6b2f005c4f996e5d738a20`, and the human accepted the generated AI brief after using it in a real deck-design conversation.
 
 Create `MTGA_DECK_BUILD_REQUEST_V1`, following the established authoritative/provenance discipline of game reconstruction exports while using a deck-planning-specific schema and the Candidate Set as the human-authored planning context.
 
@@ -231,8 +231,8 @@ Accepted constraints:
 Implementation sequence:
 
 - **DP-07.1 Candidate Set note contract — complete (2026-08-08).** The `0680b6046113db4011defb4cffe80590099687e9` baseline passed 274 tests, and the human confirmed the note workflow looked good. Candidate Set note persistence/editor continuity is accepted as the context foundation for export.
-- **DP-07.2 Export schema and authoritative card payload — implemented; validation pending.** `MTGA_DECK_BUILD_REQUEST_V1` deterministically encodes format, Candidate Set name/note, ordered membership, category aliases, tri-state collection quantity, stable identities, authoritative card metadata, every supplied card face, and explicit unresolved candidates. Focused golden tests cover deterministic note/category/card encoding, multi-face cards, and `-1/0/positive` quantity states.
-- **DP-07.3 Deck-analysis instruction brief and preview export review — implemented; human review pending.** The Candidate panel exposes `AI export`; the modeless review window shows a copyable payload whose stable brief asks for archetype directions, synergy/interaction/engine packages, curve/mana implications, weaknesses/resilience, plausible win conditions, likely removals, and missing cards/roles while forbidding invented card rules. `DeckPlannerWorkspacePreview` now click-reviews the combined note/export workflow.
+- **DP-07.2 Export schema and authoritative card payload — complete (2026-08-08).** `MTGA_DECK_BUILD_REQUEST_V1` deterministically encodes format, Candidate Set name/note, ordered membership, category aliases, tri-state collection quantity, stable identities, authoritative card metadata, every supplied card face, and explicit unresolved candidates. Focused golden tests cover deterministic note/category/card encoding, multi-face cards, and `-1/0/positive` quantity states.
+- **DP-07.3 Deck-analysis instruction brief and preview export review — complete (2026-08-08).** The Candidate panel exposes `AI export`; the modeless review window shows a copyable payload whose stable brief asks for archetype directions, synergy/interaction/engine packages, curve/mana implications, weaknesses/resilience, plausible win conditions, likely removals, and missing cards/roles while forbidding invented card rules. `DeckPlannerWorkspacePreview` now click-reviews the combined note/export workflow.
 
 Acceptance evidence:
 
@@ -244,7 +244,7 @@ Acceptance evidence:
 
 #### DP-08 — Integration, performance, and release evidence
 
-**State:** planned
+**State:** active
 
 Wire navigation/startup lifecycle, background service shutdown, persistence migration, and end-to-end validation.
 
@@ -257,7 +257,9 @@ Acceptance evidence:
 
 ### Active item
 
-`DP-07 — Authoritative AI deck-building protocol` is active. DP-07.1 Candidate Set notes are accepted on the clean `0680b6046113db4011defb4cffe80590099687e9` 274-test baseline. DP-07.2/DP-07.3 exporter schema, strategic brief, and preview review surface are the current implementation slice; after repository-side validation, use `DeckPlannerWorkspacePreview` for human review of whether the generated request accurately communicates the deck-design problem before closing DP-07.
+`DP-08 — Integration, performance, and release evidence` is active. DP-07 was explicitly accepted by the human on 2026-08-08 after a clean 278-test baseline at `14c490a691d43bda6b6b2f005c4f996e5d738a20` and successful real use of the generated AI deck-design brief.
+
+Begin DP-08 with integration and lifecycle evidence using the existing `DeckPlannerWorkspacePreview` as the human click-test surface. Keep the newly deferred MTGA memory-scanning collection-import research outside DP-08 implementation unless the human explicitly opens that future mission.
 
 
 ### Current planning decisions
