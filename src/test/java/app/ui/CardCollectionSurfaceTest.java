@@ -150,4 +150,28 @@ class CardCollectionSurfaceTest {
         return null;
     }
 
+
+    @Test void pressingAnAlreadySelectedRowPreservesMultiSelectionForDrag() throws Exception {
+        AtomicReference<CardCollectionSurface> ref = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            CardCollectionSurface surface = new CardCollectionSurface();
+            surface.setRows(List.of(row("a"), row("b"), row("c")));
+            ref.set(surface);
+
+            JComponent a = surface.rowComponents().get(0);
+            JComponent b = surface.rowComponents().get(1);
+            a.dispatchEvent(new MouseEvent(a, MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), 0, 3, 3, 1, false));
+            b.dispatchEvent(new MouseEvent(b, MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), MouseEvent.CTRL_DOWN_MASK,
+                    3, 3, 1, false));
+            assertEquals(List.of("a", "b"), surface.selectedIdentities());
+
+            a.dispatchEvent(new MouseEvent(a, MouseEvent.MOUSE_PRESSED,
+                    System.currentTimeMillis(), 0, 3, 3, 1, false));
+            assertEquals(List.of("a", "b"), surface.selectedIdentities(),
+                    "starting a drag from an already selected row must keep the selected group");
+        });
+    }
+
 }

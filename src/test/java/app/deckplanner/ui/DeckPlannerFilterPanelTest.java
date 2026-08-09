@@ -154,4 +154,16 @@ class DeckPlannerFilterPanelTest {
         }
         throw new AssertionError("Button not found: " + label);
     }
+
+    @Test void resetFilterControlMatchesWorkspaceChipHeight() throws Exception {
+        AtomicReference<DeckPlannerFilterPanel> panel = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() ->
+                panel.set(new DeckPlannerFilterPanel(new DeckPlannerFilterModel("standard"), Set.of())));
+
+        AbstractButton candidatesOnly = panel.get().candidateOnlyControl();
+        AbstractButton reset = findButton(panel.get(), "Reset filters");
+        assertNotNull(reset);
+        assertEquals(candidatesOnly.getPreferredSize().height, reset.getPreferredSize().height);
+    }
+
 }

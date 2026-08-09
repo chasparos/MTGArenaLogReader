@@ -609,7 +609,8 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         if (card == null || card.card() == null) return "";
         CardInfo info = card.card();
         return Objects.toString(info.getId(), "") + "|" + Objects.toString(info.getSet(), "")
-                + "|" + Objects.toString(info.getCollectorNumber(), "");
+                + "|" + Objects.toString(info.getCollectorNumber(), "")
+                + "|" + String.join(",", info.previewImageUrls());
     }
 
     private String identityAt(int index) {

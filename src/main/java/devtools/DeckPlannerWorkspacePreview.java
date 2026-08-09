@@ -60,7 +60,7 @@ public final class DeckPlannerWorkspacePreview {
 
     private static void launchRealStandardPreview() {
         assertEdt();
-        JFrame frame = new JFrame("Deck Planner DP-07 Design Review");
+        JFrame frame = new JFrame("Deck Planner DP-08 Integration Review");
         frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         JLabel loading = new JLabel("Loading real Arena-available Standard cards through the catalog pipeline…",
                 SwingConstants.CENTER);

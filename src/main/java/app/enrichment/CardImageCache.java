@@ -51,17 +51,17 @@ public final class CardImageCache {
             return CompletableFuture.completedFuture(Optional.empty());
         }
         var urls = card.previewImageUrls();
-        if (imageIndex < 0 || imageIndex >= urls.size()) {
-            System.out.println(PREFIX + "no URL: name=" + card.getName()
+        String url = imageIndex >= 0 && imageIndex < urls.size() ? urls.get(imageIndex) : null;
+        String rootId = card.getId() != null && !card.getId().isBlank()
+                ? card.getId()
+                : card.getArenaId() != null ? String.valueOf(card.getArenaId())
+                : url != null ? Integer.toHexString(url.hashCode()) : null;
+        if (imageIndex < 0 || rootId == null) {
+            System.out.println(PREFIX + "no cache identity: name=" + card.getName()
                     + " imageIndex=" + imageIndex
                     + " scryfallId=" + card.getId() + " arenaId=" + card.getArenaId());
             return CompletableFuture.completedFuture(Optional.empty());
         }
-        String url = urls.get(imageIndex);
-        String rootId = card.getId() != null && !card.getId().isBlank()
-                ? card.getId()
-                : card.getArenaId() != null ? String.valueOf(card.getArenaId())
-                : Integer.toHexString(url.hashCode());
         String id = imageIndex == 0 ? rootId : rootId + "-face-" + imageIndex;
 
         CompletableFuture<Optional<BufferedImage>> existing = memory.get(id);
@@ -94,6 +94,11 @@ public final class CardImageCache {
                 }
                 System.out.println(PREFIX + "deleting undecodable cache file: " + file);
                 Files.deleteIfExists(file);
+            }
+
+            if (url == null || url.isBlank()) {
+                System.out.println(PREFIX + "no URL and no cached image: id=" + id);
+                return Optional.empty();
             }
 
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))

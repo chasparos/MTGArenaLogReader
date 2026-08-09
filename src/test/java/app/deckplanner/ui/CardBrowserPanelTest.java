@@ -1,5 +1,6 @@
 package app.deckplanner.ui;
 
+import com.google.gson.GsonBuilder;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.SwingUtilities;
@@ -283,6 +284,49 @@ class CardBrowserPanelTest {
         SwingUtilities.invokeAndWait(() -> { });
 
         assertEquals(List.of("printing-a", "printing-b"), requestedPrintings);
+    }
+
+
+    @Test
+    void enrichingSamePrintingWithImageUrlInvalidatesMetadataOnlyPresentation() throws Exception {
+        java.util.List<String> requestedUrls = new java.util.ArrayList<>();
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> {
+                        requestedUrls.add(card.card() == null ? "" :
+                                java.util.Objects.toString(card.card().previewImageUrl(), ""));
+                        return CompletableFuture.completedFuture(Optional.empty());
+                    });
+            holder[0].setSize(120, 500);
+
+            var gson = new GsonBuilder().create();
+            var metadataOnly = gson.fromJson("""
+                    {"id":"same-printing","name":"Same Printing","set":"tst","collector_number":"1"}
+                    """, app.model.card.CardInfo.class);
+            holder[0].setCards(List.of(new CardBrowserPanel.BrowserCard(
+                    "oracle:same", "Same Printing", 1, metadataOnly)));
+            holder[0].updateViewport(new Rectangle(0, 0, 120, 100));
+
+            var enriched = gson.fromJson("""
+                    {
+                      "id":"same-printing",
+                      "name":"Same Printing",
+                      "set":"tst",
+                      "collector_number":"1",
+                      "image_uris":{"normal":"https://example.invalid/same.jpg"}
+                    }
+                    """, app.model.card.CardInfo.class);
+            holder[0].setCards(List.of(new CardBrowserPanel.BrowserCard(
+                    "oracle:same", "Same Printing", 1, enriched)));
+            holder[0].updateViewport(new Rectangle(0, 0, 120, 100));
+        });
+
+        assertEquals(List.of("", "https://example.invalid/same.jpg"), requestedUrls,
+                "enriching the same printing must invalidate the metadata-only image result");
     }
 
 }

@@ -2,9 +2,11 @@ package app.ui;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashSet;
@@ -23,6 +25,8 @@ import java.util.function.Consumer;
  * model constraints.</p>
  */
 public final class CardCollectionSurface extends JPanel implements Scrollable {
+    private static final DataFlavor GROUP_FLAVOR = groupFlavor();
+
     public interface Row {
         String identity();
         JComponent component();
@@ -32,6 +36,11 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
     @FunctionalInterface
     public interface DropHandler {
         void dropped(String source, List<String> identities, int insertionIndex, String groupId);
+    }
+
+    @FunctionalInterface
+    public interface GroupMoveHandler {
+        void moved(String sourceGroupId, String targetGroupId, boolean afterTarget);
     }
 
     public record Group(String id, String title, List<? extends Row> rows, JComponent trailingHeader, boolean collapsed) {
@@ -57,11 +66,20 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
     private DropHandler dropHandler;
     private java.util.function.Function<List<String>, Image> dragImageProvider = identities -> null;
     private final java.util.Map<String, String> groupByIdentity = new java.util.LinkedHashMap<>();
+    private final java.util.Map<String, JComponent> groupSections = new java.util.LinkedHashMap<>();
+    private GroupMoveHandler groupMoveHandler;
     private String transferSource = "surface";
     private final LinkedHashSet<String> selectedIdentities = new LinkedHashSet<>();
     private String selectedIdentity;
     private int selectionAnchor = -1;
     private int dropIndex = -1;
+    private String dropGroupId;
+    private String groupDropTarget;
+    private boolean groupDropAfter;
+    private Point dragHoverPoint;
+    private int autoScrollDirection;
+    private long autoScrollStartedNanos;
+    private final Timer autoScrollTimer;
     private JComponent footer;
     private int horizontalGap = 8;
     private int verticalGap = 8;
@@ -70,6 +88,8 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setOpaque(true);
         setTransferHandler(new SurfaceTransferHandler());
+        autoScrollTimer = new Timer(40, event -> autoScrollTick());
+        autoScrollTimer.setRepeats(true);
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override public void componentResized(java.awt.event.ComponentEvent event) {
                 revalidateGroupBodies();
@@ -106,6 +126,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         removeAll();
         rows.clear();
         groupByIdentity.clear();
+        groupSections.clear();
         clearDropMarker();
 
         if (groups != null) {
@@ -116,18 +137,22 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                 body.setOpaque(false);
                 body.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-                JPanel section = new JPanel(new BorderLayout(0, 3));
+                JPanel section = new JPanel(new BorderLayout(0, 1));
+                section.setName("card-collection-group-section-" + group.id());
                 section.setOpaque(false);
                 section.setAlignmentX(Component.LEFT_ALIGNMENT);
                 section.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+                groupSections.put(group.id(), section);
                 if (!group.title().isBlank() || group.trailingHeader() != null) {
-                    JPanel header = new JPanel(new BorderLayout(6, 0));
+                    JPanel header = new JPanel(new BorderLayout(4, 0));
+                    header.setName("card-collection-group-header-" + group.id());
                     header.setOpaque(false);
                     JLabel heading = new JLabel(group.title());
                     heading.setName("card-collection-group-" + group.id());
                     heading.setFont(heading.getFont().deriveFont(Font.BOLD));
-                    heading.setBorder(BorderFactory.createEmptyBorder(6, 5, 0, 5));
+                    heading.setBorder(BorderFactory.createEmptyBorder(3, 2, 0, 2));
                     header.add(heading, BorderLayout.CENTER);
+                    installGroupWhitespaceInteraction(heading, null, group.id());
                     if (group.trailingHeader() != null) header.add(group.trailingHeader(), BorderLayout.EAST);
                     section.add(header, BorderLayout.NORTH);
                 }
@@ -141,12 +166,19 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                 }
                 body.setVisible(!group.collapsed());
                 section.add(body, BorderLayout.CENTER);
+                installGroupWhitespaceInteraction(section, null, group.id());
+                installGroupWhitespaceInteraction(body, null, group.id());
+                if (section.getComponentCount() > 1 && section.getComponent(0) instanceof JComponent header) {
+                    installGroupWhitespaceInteraction(header, null, group.id());
+                }
                 add(section);
             }
         }
 
         if (footer != null) {
             footer.setAlignmentX(Component.LEFT_ALIGNMENT);
+            footer.setMaximumSize(new Dimension(Integer.MAX_VALUE,
+                    Math.max(1, footer.getPreferredSize().height)));
             add(footer);
         }
 
@@ -227,6 +259,10 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         dropHandler = handler;
     }
 
+    public void setGroupMoveHandler(GroupMoveHandler handler) {
+        groupMoveHandler = handler;
+    }
+
     public void setTransferSource(String source) {
         transferSource = source == null || source.isBlank() ? "surface" : source;
     }
@@ -258,6 +294,40 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         return groupByIdentity.get(rows.get(index).identity());
     }
 
+    private String groupAt(Point point) {
+        if (point == null) return null;
+        for (var entry : groupSections.entrySet()) {
+            JComponent section = entry.getValue();
+            if (!section.isVisible()) continue;
+            Rectangle bounds = SwingUtilities.convertRectangle(
+                    section.getParent(), section.getBounds(), this);
+            if (bounds.contains(point)) return entry.getKey();
+        }
+        return null;
+    }
+
+    private int insertionIndex(Point point, String groupId) {
+        if (groupId == null) return insertionIndex(point);
+        List<Integer> indices = new ArrayList<>();
+        for (int index = 0; index < rows.size(); index++) {
+            if (Objects.equals(groupId, groupByIdentity.get(rows.get(index).identity()))) {
+                indices.add(index);
+            }
+        }
+        if (indices.isEmpty()) return rows.size();
+        Point wanted = point == null ? new Point(Integer.MAX_VALUE, Integer.MAX_VALUE) : point;
+        for (int index : indices) {
+            Rectangle bounds = rowBounds(rows.get(index));
+            int centerY = bounds.y + bounds.height / 2;
+            if (wanted.y < centerY) return index;
+            if (wanted.y <= bounds.y + bounds.height
+                    && wanted.x < bounds.x + bounds.width / 2) {
+                return index;
+            }
+        }
+        return indices.getLast() + 1;
+    }
+
     private Rectangle rowBounds(Row row) {
         JComponent component = row.component();
         Container parent = component.getParent();
@@ -269,10 +339,24 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         JComponent component = row.component();
         MouseAdapter mouse = new MouseAdapter() {
             private Point pressed;
+            private boolean preserveSelectionForDrag;
 
             @Override public void mousePressed(MouseEvent event) {
                 pressed = event.getPoint();
-                select(row.identity(), event.isControlDown(), event.isShiftDown());
+                preserveSelectionForDrag = selectedIdentities.contains(row.identity())
+                        && !event.isControlDown() && !event.isShiftDown()
+                        && selectedIdentities.size() > 1;
+                if (!preserveSelectionForDrag) {
+                    select(row.identity(), event.isControlDown(), event.isShiftDown());
+                }
+            }
+
+            @Override public void mouseReleased(MouseEvent event) {
+                if (preserveSelectionForDrag && pressed != null) {
+                    select(row.identity(), false, false);
+                }
+                pressed = null;
+                preserveSelectionForDrag = false;
             }
 
             @Override public void mouseDragged(MouseEvent event) {
@@ -289,6 +373,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                     handler.exportAsDrag(source, event, TransferHandler.MOVE);
                 }
                 pressed = null;
+                preserveSelectionForDrag = false;
             }
         };
         installMouseInteraction(component, mouse);
@@ -305,6 +390,33 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
                 installMouseInteraction(child, mouse);
             }
         }
+    }
+
+    private void installGroupWhitespaceInteraction(JComponent component,
+                                                   JComponent ignoredChild,
+                                                   String groupId) {
+        if (groupMoveHandler == null || component == null || groupId == null) return;
+        GroupWhitespaceTransferHandler handler = new GroupWhitespaceTransferHandler(groupId);
+        component.setTransferHandler(handler);
+        MouseAdapter mouse = new MouseAdapter() {
+            private Point pressed;
+
+            @Override public void mousePressed(MouseEvent event) {
+                pressed = event.getPoint();
+            }
+
+            @Override public void mouseReleased(MouseEvent event) {
+                pressed = null;
+            }
+
+            @Override public void mouseDragged(MouseEvent event) {
+                if (pressed == null || pressed.distance(event.getPoint()) < 5) return;
+                handler.exportAsDrag(component, event, TransferHandler.MOVE);
+                pressed = null;
+            }
+        };
+        component.addMouseListener(mouse);
+        component.addMouseMotionListener(mouse);
     }
 
     private void select(String identity, boolean control, boolean shift) {
@@ -353,16 +465,64 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
     }
 
     private void clearDropMarker() {
-        if (dropIndex == -1) return;
+        if (dropIndex == -1 && dropGroupId == null
+                && groupDropTarget == null && autoScrollDirection == 0) return;
         dropIndex = -1;
+        dropGroupId = null;
+        groupDropTarget = null;
+        stopAutoScroll();
         repaint();
+    }
+
+    private void updateAutoScroll(Point point) {
+        dragHoverPoint = point;
+        Rectangle visible = getVisibleRect();
+        if (point == null || visible.height <= 0) {
+            stopAutoScroll();
+            return;
+        }
+        int zone = Math.max(28, Math.min(52, visible.height / 6));
+        int direction = point.y < visible.y + zone ? -1
+                : point.y > visible.y + visible.height - zone ? 1 : 0;
+        if (direction == 0) {
+            stopAutoScroll();
+            repaint(visible);
+            return;
+        }
+        if (autoScrollDirection != direction) {
+            autoScrollDirection = direction;
+            autoScrollStartedNanos = System.nanoTime();
+        }
+        if (!autoScrollTimer.isRunning()) autoScrollTimer.start();
+        repaint(visible);
+    }
+
+    private void stopAutoScroll() {
+        autoScrollDirection = 0;
+        dragHoverPoint = null;
+        if (autoScrollTimer.isRunning()) autoScrollTimer.stop();
+    }
+
+    private void autoScrollTick() {
+        if (autoScrollDirection == 0 || !isShowing()) {
+            stopAutoScroll();
+            return;
+        }
+        double elapsed = Math.min(2.0,
+                Math.max(0.0, (System.nanoTime() - autoScrollStartedNanos) / 1_000_000_000.0));
+        double progress = elapsed / 2.0;
+        int step = 4 + (int) Math.round(24 * progress * progress);
+        Rectangle visible = getVisibleRect();
+        int maxY = Math.max(0, getHeight() - visible.height);
+        int targetY = Math.max(0, Math.min(maxY, visible.y + autoScrollDirection * step));
+        if (targetY == visible.y) return;
+        scrollRectToVisible(new Rectangle(visible.x, targetY,
+                Math.max(1, visible.width), Math.max(1, visible.height)));
     }
 
     @Override
     protected void paintChildren(Graphics graphics) {
         super.paintChildren(graphics);
-        if (dropIndex < 0 || rows.isEmpty()) return;
-
         Graphics2D g = (Graphics2D) graphics.create();
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
@@ -371,28 +531,65 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
             g.setColor(marker);
             g.setStroke(new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
-            Rectangle anchor;
-            int x;
-            if (dropIndex >= rows.size()) {
-                anchor = rowBounds(rows.getLast());
-                x = anchor.x + anchor.width + 4;
-            } else {
-                anchor = rowBounds(rows.get(dropIndex));
-                if (dropIndex > 0) {
-                    Rectangle previous = rowBounds(rows.get(dropIndex - 1));
-                    boolean sameVisualRow = Math.abs(
-                            (previous.y + previous.height / 2) - (anchor.y + anchor.height / 2))
-                            < Math.max(previous.height, anchor.height) / 2;
-                    x = sameVisualRow
-                            ? (previous.x + previous.width + anchor.x) / 2
-                            : Math.max(2, anchor.x - 4);
-                } else {
-                    x = Math.max(2, anchor.x - 4);
+            if (groupDropTarget != null) {
+                JComponent section = groupSections.get(groupDropTarget);
+                if (section != null && section.getParent() != null) {
+                    Rectangle bounds = SwingUtilities.convertRectangle(
+                            section.getParent(), section.getBounds(), this);
+                    int y = groupDropAfter ? bounds.y + bounds.height : bounds.y;
+                    g.drawLine(Math.max(4, bounds.x + 4), y,
+                            Math.max(bounds.x + 8, bounds.x + bounds.width - 4), y);
                 }
+            } else if (dropIndex >= 0 && !rows.isEmpty()) {
+                Rectangle anchor;
+                int x;
+                if (dropIndex >= rows.size()) {
+                    anchor = rowBounds(rows.getLast());
+                    x = anchor.x + anchor.width + 2;
+                } else {
+                    anchor = rowBounds(rows.get(dropIndex));
+                    if (dropIndex > 0) {
+                        Rectangle previous = rowBounds(rows.get(dropIndex - 1));
+                        boolean sameVisualRow = Math.abs(
+                                (previous.y + previous.height / 2) - (anchor.y + anchor.height / 2))
+                                < Math.max(previous.height, anchor.height) / 2;
+                        x = sameVisualRow
+                                ? (previous.x + previous.width + anchor.x) / 2
+                                : Math.max(2, anchor.x - 2);
+                    } else {
+                        x = Math.max(2, anchor.x - 2);
+                    }
+                }
+                int y1 = anchor.y + 2;
+                int y2 = anchor.y + Math.max(3, anchor.height - 2);
+                g.drawLine(x, y1, x, y2);
             }
-            int y1 = anchor.y + 3;
-            int y2 = anchor.y + Math.max(4, anchor.height - 3);
-            g.drawLine(x, y1, x, y2);
+
+            if (autoScrollDirection != 0) {
+                Rectangle visible = getVisibleRect();
+                int width = 46;
+                int height = 22;
+                int x = visible.x + Math.max(2, (visible.width - width) / 2);
+                int y = autoScrollDirection < 0
+                        ? visible.y + 5 : visible.y + visible.height - height - 5;
+                Color background = AppColors.color("Panel.background", new Color(0x202328));
+                g.setColor(new Color(background.getRed(), background.getGreen(),
+                        background.getBlue(), 210));
+                g.fillRoundRect(x, y, width, height, height, height);
+                g.setColor(marker);
+                Path2D arrow = new Path2D.Float();
+                if (autoScrollDirection < 0) {
+                    arrow.moveTo(x + width / 2.0, y + 6);
+                    arrow.lineTo(x + width / 2.0 - 7, y + 15);
+                    arrow.lineTo(x + width / 2.0 + 7, y + 15);
+                } else {
+                    arrow.moveTo(x + width / 2.0, y + height - 6);
+                    arrow.lineTo(x + width / 2.0 - 7, y + height - 15);
+                    arrow.lineTo(x + width / 2.0 + 7, y + height - 15);
+                }
+                arrow.closePath();
+                g.fill(arrow);
+            }
         } finally {
             g.dispose();
         }
@@ -425,9 +622,109 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
         scrollBar.setEnabled(range.getExtent() < range.getMaximum() - range.getMinimum());
     }
 
+    private static DataFlavor groupFlavor() {
+        try {
+            return new DataFlavor(DataFlavor.javaJVMLocalObjectMimeType
+                    + ";class=" + String.class.getName());
+        } catch (ClassNotFoundException error) {
+            throw new ExceptionInInitializerError(error);
+        }
+    }
+
     private static void assertEdt() {
         if (!SwingUtilities.isEventDispatchThread()) {
             throw new IllegalStateException("Card collection surface must be used on EDT");
+        }
+    }
+
+    private final class GroupWhitespaceTransferHandler extends TransferHandler {
+        private final String groupId;
+
+        GroupWhitespaceTransferHandler(String groupId) {
+            this.groupId = groupId;
+        }
+
+        @Override protected Transferable createTransferable(JComponent component) {
+            return new Transferable() {
+                @Override public DataFlavor[] getTransferDataFlavors() {
+                    return new DataFlavor[] { GROUP_FLAVOR };
+                }
+
+                @Override public boolean isDataFlavorSupported(DataFlavor flavor) {
+                    return GROUP_FLAVOR.equals(flavor);
+                }
+
+                @Override public Object getTransferData(DataFlavor flavor)
+                        throws java.awt.datatransfer.UnsupportedFlavorException {
+                    if (!GROUP_FLAVOR.equals(flavor)) {
+                        throw new java.awt.datatransfer.UnsupportedFlavorException(flavor);
+                    }
+                    return groupId;
+                }
+            };
+        }
+
+        @Override public int getSourceActions(JComponent component) {
+            return MOVE;
+        }
+
+        @Override public boolean canImport(TransferSupport support) {
+            if (!support.isDrop()) return false;
+            boolean groupMove = groupMoveHandler != null
+                    && support.isDataFlavorSupported(GROUP_FLAVOR);
+            boolean cardMove = support.isDataFlavorSupported(CardDragTransfer.FLAVOR);
+            if (!groupMove && !cardMove) {
+                clearDropMarker();
+                return false;
+            }
+            Point local = support.getDropLocation().getDropPoint();
+            Point surfacePoint = SwingUtilities.convertPoint(
+                    support.getComponent(), local, CardCollectionSurface.this);
+            updateAutoScroll(surfacePoint);
+            if (groupMove) {
+                JComponent section = groupSections.get(groupId);
+                Rectangle bounds = section == null || section.getParent() == null
+                        ? new Rectangle(surfacePoint.x, surfacePoint.y, 1, 1)
+                        : SwingUtilities.convertRectangle(
+                                section.getParent(), section.getBounds(), CardCollectionSurface.this);
+                groupDropTarget = groupId;
+                groupDropAfter = surfacePoint.y >= bounds.y + bounds.height / 2;
+                dropIndex = -1;
+                repaint();
+            } else {
+                groupDropTarget = null;
+                dropGroupId = groupId;
+                setDropIndex(insertionIndex(surfacePoint, groupId));
+            }
+            return true;
+        }
+
+        @Override public boolean importData(TransferSupport support) {
+            if (!canImport(support)) return false;
+            try {
+                if (support.isDataFlavorSupported(GROUP_FLAVOR)) {
+                    String sourceGroup = (String) support.getTransferable()
+                            .getTransferData(GROUP_FLAVOR);
+                    if (groupMoveHandler != null && !Objects.equals(sourceGroup, groupId)) {
+                        groupMoveHandler.moved(sourceGroup, groupId, groupDropAfter);
+                    }
+                    return true;
+                }
+                CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
+                int insertion = dropIndex < 0 ? rows.size() : dropIndex;
+                if (dropHandler != null) {
+                    dropHandler.dropped(payload.source(), payload.identities(), insertion, groupId);
+                }
+                return true;
+            } catch (Exception error) {
+                return false;
+            } finally {
+                clearDropMarker();
+            }
+        }
+
+        @Override protected void exportDone(JComponent source, Transferable data, int action) {
+            clearDropMarker();
         }
     }
 
@@ -473,7 +770,9 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
             Point point = support.getDropLocation().getDropPoint();
             Point surfacePoint = SwingUtilities.convertPoint(
                     support.getComponent(), point, CardCollectionSurface.this);
-            setDropIndex(insertionIndex(surfacePoint));
+            dropGroupId = groupAt(surfacePoint);
+            setDropIndex(insertionIndex(surfacePoint, dropGroupId));
+            updateAutoScroll(surfacePoint);
             return true;
         }
 
@@ -482,7 +781,7 @@ public final class CardCollectionSurface extends JPanel implements Scrollable {
             try {
                 CardDragTransfer.Payload payload = CardDragTransfer.read(support.getTransferable());
                 int insertion = dropIndex < 0 ? rows.size() : dropIndex;
-                String groupId = groupForInsertion(insertion);
+                String groupId = dropGroupId != null ? dropGroupId : groupForInsertion(insertion);
                 if (dropHandler != null) {
                     dropHandler.dropped(payload.source(), payload.identities(), insertion, groupId);
                 } else if (Objects.equals(payload.source(), transferSource)) {

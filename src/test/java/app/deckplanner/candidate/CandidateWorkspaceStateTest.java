@@ -87,4 +87,19 @@ class CandidateWorkspaceStateTest {
         card.setKeywords(List.of());
         return card;
     }
+
+    @Test void categoryDropCanPlaceSourceAfterTargetBoundary() {
+        CandidateWorkspaceState state = CandidateWorkspaceState.transientState();
+        CandidateWorkspaceState.Category custom = state.addCategory("Recursion");
+
+        state.moveCategoryRelative(custom.id(), CandidateWorkspaceState.CREATURES, true);
+
+        assertEquals(List.of(
+                        CandidateWorkspaceState.CREATURES,
+                        custom.id(),
+                        CandidateWorkspaceState.NONCREATURES,
+                        CandidateWorkspaceState.NONBASIC_LANDS),
+                state.categories().stream().map(CandidateWorkspaceState.Category::id).toList());
+    }
+
 }

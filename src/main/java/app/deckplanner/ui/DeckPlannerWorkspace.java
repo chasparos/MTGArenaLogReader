@@ -291,8 +291,12 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             filterRegion.setVisible(!visible);
             filterToggle.setToolTipText(visible ? "Show filters" : "Hide filters");
             updateWorkspaceColumnWidths(workspaceLayer.getWidth());
+            columns.invalidate();
+            columns.doLayout();
+            filterRegion.doLayout();
+            candidateRegion.doLayout();
+            positionWorkspaceToggles(workspaceLayer, filterToggle, candidateToggle);
             workspaceLayer.revalidate();
-            workspaceLayer.doLayout();
             workspaceLayer.repaint();
         });
         candidateToggle.addActionListener(event -> {
@@ -771,7 +775,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                                           JButton candidateToggle) {
         int diameter = 28;
         int y = Math.max(4, (layer.getHeight() - diameter) / 2);
-        int filterX = filterScroll.isVisible() ? filterRegion.getWidth() - diameter / 2 : 0;
+        int filterX = filterRegion.isVisible() ? filterRegion.getWidth() - diameter / 2 : 0;
         int candidateX = layer.getWidth() - candidateRegion.getWidth() - diameter / 2;
         filterToggle.setBounds(Math.max(0, Math.min(layer.getWidth() - diameter, filterX)),
                 y, diameter, diameter);

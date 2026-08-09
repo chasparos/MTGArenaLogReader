@@ -111,6 +111,34 @@ public class ReplayCardChip extends JComponent {
         return presentationScale;
     }
 
+    /**
+     * Shrinks the component to the vector chip's measured content width instead of reserving the
+     * historical fixed replay width. Candidate flow layouts use this to avoid large transparent
+     * gutters between otherwise compact chips.
+     */
+    public void compactToContentWidth() {
+        if (card == null) return;
+        BufferedImage probe = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = probe.createGraphics();
+        try {
+            applyQualityHints(g);
+            g.setFont(effectiveFont());
+            String label = card.getName() == null || card.getName().isBlank()
+                    ? "Unknown card" : card.getName();
+            CardFragment fragment = new CardFragment(card, label, stateLabel, permanent);
+            int logicalWidth = renderer.width(g, fragment) + 10;
+            int width = Math.max(Math.round(110f * presentationScale),
+                    Math.round(logicalWidth * presentationScale));
+            int height = Math.round(BASE_HEIGHT * presentationScale);
+            Dimension compact = new Dimension(width, height);
+            setPreferredSize(compact);
+            setMinimumSize(compact);
+            setMaximumSize(compact);
+        } finally {
+            g.dispose();
+        }
+    }
+
     @Override
     protected void paintComponent(Graphics graphics) {
         Graphics2D g = (Graphics2D) graphics.create();

@@ -259,17 +259,17 @@ Acceptance evidence:
 DP-08 evidence sequence:
 
 - **DP-08.1 Integration/lifecycle fixture — complete (2026-08-09).** Production preview-path integration passed on clean commit `438e2e4a5640721709697894ba3b5b26c350a132` with 279 tests: UI startup, filter refinement, Candidate import, deterministic AI export, and explicit background-service shutdown.
-- **DP-08.2 Performance evidence — implemented; validation pending.** Add lightweight image/browser cache observability and deterministic evidence fixtures that record cached time-to-first-usable catalog, an EDT heartbeat while background work is blocked, viewport-scoped image materialization/reuse across a 600-card catalog, persistent image-cache disk→memory reuse, and bounded cache cardinality without imposing brittle wall-clock thresholds.
+- **DP-08.2 Performance evidence — complete (2026-08-09).** The performance/cache evidence is integrated on clean commit `0cc4b9e3f7d0c504c40513851f4fbd9885553368` with 283 tests passing. Lightweight image/browser cache observability and deterministic fixtures cover cached time-to-first-usable catalog, an EDT heartbeat while background work is blocked, viewport-scoped image materialization/reuse across a 600-card catalog, persistent image-cache disk→memory reuse, and bounded cache cardinality without brittle wall-clock thresholds.
 - **DP-08.3 Release/evaluation evidence — planned.** Run the full supported validation scope, preserve release-candidate evidence, and require final human click acceptance across normal/loading/offline/error lifecycle states.
 
 ### Active item
 
-`DP-08.2 — Performance evidence` is the active bounded slice. DP-08.1 is complete on the clean 279-test `438e2e4a5640721709697894ba3b5b26c350a132` baseline. This slice records performance/cache observations and qualitative invariants without speculative optimization or brittle timing thresholds. DP-08 remains active; release/evaluation evidence follows only after repository-side validation is green.
+`DP-08 — Integration, performance, and release evidence` remains active at a human-review correction point before DP-08.3. DP-08.1 and DP-08.2 are validated; the clean baseline is `0cc4b9e3f7d0c504c40513851f4fbd9885553368` with 283 tests passing. Real-card click review found three release-blocking UX regressions: metadata-only cached cards could fail to reuse already-persisted images when no explicit favorite was selected; the filter/candidate boundary controls could lag their panel layout; and Candidate organization still needed denser flow packing plus category-aware/multi-card drag/drop and drag autoscroll. Correct those regressions and re-run human review before starting DP-08.3 release/evaluation evidence.
 
 
 ### Current planning decisions
 
-- DP-01, DP-03, DP-04, DP-05, and DP-06 are complete. DP-06 was explicitly human-accepted on 2026-08-08 at clean commit `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` with 272 tests passing. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-07 is active. Ownership-dependent displays remain omitted while `SA-MTGA-DEF-003` remains open.
+- DP-01, DP-03, DP-04, DP-05, and DP-06 are complete. DP-06 was explicitly human-accepted on 2026-08-08 at clean commit `6a67dcfef2a3298ee8b1794dcd7a166576d6db75` with 272 tests passing. DP-02 contracts are implemented; live ownership integration is deferred because the current client does not publish authoritative collection quantities in `Player.log`. DP-07 is complete and DP-08 is active. Ownership-dependent displays remain omitted while `SA-MTGA-DEF-003` remains open.
 - Treat collection extraction as a separate truth pipeline from Scryfall enrichment.
 - Reuse `CardInfo`, `CardCache`, `CardImageCache`, and existing exporter conventions where their contracts fit; refactor shared primitives before adding a parallel cache or protocol utility.
 - `AsyncVirtualListPanel` is useful evidence for viewport indexing and EDT discipline, but its custom-painted buffered-row design is not the Card Planner rendering model.

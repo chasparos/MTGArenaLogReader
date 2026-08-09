@@ -9,14 +9,14 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 ## Current ownership
 
 - **Owner:** Human repository owner.
-- **Repository baseline inspected:** `438e2e4a5640721709697894ba3b5b26c350a132` on `main`.
+- **Repository baseline inspected:** `0cc4b9e3f7d0c504c40513851f4fbd9885553368` on `main`.
 - **Transferred validation:** `.\mvnw.cmd test` passed 279 tests with zero failures/errors/skips on a clean tree.
 - **Current arc:** Deck Planner.
 - **Completed roadmap item:** `DP-07 — Authoritative AI deck-building protocol`; explicitly accepted by the human after successful real use of the generated export in a deck-design conversation.
 - **Active roadmap item:** `DP-08 — Integration, performance, and release evidence`.
 - **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click testing during DP-08, focusing on lifecycle, responsiveness, loading/offline/error behavior, and end-to-end flow rather than re-testing deterministic exporter mechanics already covered automatically.
 - **Deferred future mission:** `SA-MTGA-DEF-005` records the human-supplied MTGA process-memory collection-import research. It remains outside DP-08 unless explicitly activated.
-- **Safe next action:** Apply and validate the bounded `DP-08.2` performance-evidence patch. Expected discovery change is +2 tests (279 → 281). If green, continue to DP-08.3 release/evaluation evidence.
+- **Safe next action:** Apply and validate the bounded DP-08 real-card UX regression correction: persistent-image fallback without an explicit favorite, immediate panel-boundary relayout, Workspace reset-control sizing, and denser category-aware/multi-card Candidate drag/drop with autoscroll. Re-run the preview click review before opening DP-08.3 release/evaluation evidence.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
 
 ### DP-06 interaction-polish amendment — 2026-08-08
@@ -88,3 +88,12 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - DP-08.2 adds observability only where evidence was previously unavailable: persistent image-cache hit/network counters and browser image-window/cache cardinality.
 - Evidence fixtures intentionally avoid hard wall-clock acceptance thresholds. They record elapsed values while asserting qualitative contracts: cached startup is usable without refresh, EDT remains serviceable while background work waits, viewport materialization does not request the full catalog, revisiting a viewport reuses images, scrolling grows cache only with distinct requested cards, and persistent image cache transitions disk→memory without network.
 - No optimization or product behavior change is authorized by this slice unless the measurements expose a concrete defect.
+
+
+### DP-08 real-card review correction amendment — 2026-08-09
+
+- DP-08.2 performance evidence is integrated on clean `0cc4b9e3f7d0c504c40513851f4fbd9885553368` with 283 tests passing.
+- Human click review found that cards whose cached metadata lacked image URLs could still render as missing art even when their image file was already persisted. A no-favorite/default-printing path must reuse the persistent image by stable Scryfall/Arena identity before declaring art unavailable.
+- Filter collapse must synchronously relayout/reposition the floating boundary controls; Reset filters should match the neighboring Workspace control height.
+- Candidate organization needs a denser content-width flow layout, category-aware card drops, whole-category whitespace drag handles with boundary-line feedback, reliable multi-card drag preservation, and hover autoscroll during drag.
+- DP-08.3 remains blocked until this correction is green and passes another real-card click review.

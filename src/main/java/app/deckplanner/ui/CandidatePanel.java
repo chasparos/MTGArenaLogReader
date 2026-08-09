@@ -58,14 +58,16 @@ public final class CandidatePanel extends JPanel {
 
     public CandidatePanel() {
         super(new BorderLayout(3, 3));
-        setBorder(new EmptyBorder(4, 4, 4, 4));
+        setBorder(new EmptyBorder(2, 2, 2, 2));
         JLabel title = new JLabel("Candidates");
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         add(title, BorderLayout.NORTH);
 
         surface.setTransferSource("candidates");
-        surface.setWrapGaps(2, 2);
+        surface.setWrapGaps(1, 1);
         surface.setDropHandler(this::handleDrop);
+        surface.setGroupMoveHandler((source, target, after) ->
+                workspaceState.moveCategoryRelative(source, target, after));
         surface.setDragImageProvider(this::dragImage);
         surface.setSelectionListener(selection -> {
             updateActions();
@@ -336,11 +338,14 @@ public final class CandidatePanel extends JPanel {
             }
             createCategoryFor(selected);
         });
-        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 1));
         footer.setName("candidate-new-category-drop-zone");
         footer.setOpaque(false);
+        footer.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        NewCategoryTransferHandler newCategoryTransfer = new NewCategoryTransferHandler();
+        footer.setTransferHandler(newCategoryTransfer);
+        addCategory.setTransferHandler(newCategoryTransfer);
         footer.add(addCategory);
-        footer.setTransferHandler(new NewCategoryTransferHandler());
         surface.setFooter(footer);
         surface.setGroups(groups);
         updateActions();
@@ -524,10 +529,7 @@ public final class CandidatePanel extends JPanel {
             stale = entry.stale();
             CardInfo favorite = preferredPrinting.apply(identity);
             card = stale ? null : (favorite != null ? favorite : entry.resolvedCard().orElse(null));
-            setPreferredSize(new Dimension(320, 52));
-            setMinimumSize(new Dimension(250, 52));
-            setMaximumSize(new Dimension(430, 52));
-            setBorder(new EmptyBorder(1, 1, 1, 1));
+            setBorder(new EmptyBorder(0, 0, 0, 0));
             setOpaque(false);
             if (stale) {
                 JLabel label = new JLabel("Unavailable card — stale; keep or remove");
@@ -535,6 +537,7 @@ public final class CandidatePanel extends JPanel {
                 content = label;
             } else {
                 ReplayCardChip chip = new ReplayCardChip(card, false, 1.35f);
+                chip.compactToContentWidth();
                 chip.setToolTipText((entry.legal() ? "" : "Illegal in selected format — ")
                         + (card.getName() == null ? "Unknown card" : card.getName()));
                 content = chip;
@@ -547,6 +550,14 @@ public final class CandidatePanel extends JPanel {
                 illegal.setBorder(new EmptyBorder(0, 5, 0, 3));
                 add(illegal, BorderLayout.EAST);
             }
+            Dimension contentSize = content.getPreferredSize();
+            int extraWidth = !stale && !entry.legal() ? 54 : 0;
+            Dimension rowSize = new Dimension(
+                    Math.max(1, contentSize.width + extraWidth),
+                    Math.max(1, contentSize.height));
+            setPreferredSize(rowSize);
+            setMinimumSize(rowSize);
+            setMaximumSize(rowSize);
             setSelected(false);
         }
 

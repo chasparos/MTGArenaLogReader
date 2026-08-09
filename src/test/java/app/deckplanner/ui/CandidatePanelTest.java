@@ -332,4 +332,28 @@ class CandidatePanelTest {
         assertEquals(1, calls.get());
     }
 
+
+    @Test
+    void candidateRowsUseCompactChipWidthForFlowPacking() throws Exception {
+        CardInfo card = card("oracle:compact", "Compact");
+        CandidateModel model = new CandidateModel(List.of("oracle:compact"), ignored -> { });
+        AtomicReference<JComponent> rowRef = new AtomicReference<>();
+        AtomicReference<ReplayCardChip> chipRef = new AtomicReference<>();
+
+        SwingUtilities.invokeAndWait(() -> {
+            CandidatePanel panel = new CandidatePanel();
+            panel.bind(model, ignored -> -1);
+            panel.setEntries(model.resolve(index(card)));
+            JComponent row = panel.candidateRows().getFirst();
+            ReplayCardChip chip = find(row, ReplayCardChip.class);
+            rowRef.set(row);
+            chipRef.set(chip);
+        });
+
+        assertNotNull(chipRef.get());
+        assertEquals(chipRef.get().getPreferredSize().height, rowRef.get().getPreferredSize().height);
+        assertTrue(rowRef.get().getPreferredSize().width <= chipRef.get().getPreferredSize().width + 54,
+                "flow rows should not reserve a large transparent fixed-width column");
+    }
+
 }

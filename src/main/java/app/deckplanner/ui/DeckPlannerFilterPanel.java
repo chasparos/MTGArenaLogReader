@@ -67,7 +67,11 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         workspaceLayer.add(candidateOnlyChip);
         JButton reset = new JButton("Reset filters", new SvgIcon("/svg/untap.svg", 14));
         reset.setActionCommand("reset");
-        reset.setMaximumSize(new Dimension(150, 30));
+        int workspaceControlHeight = candidateOnlyChip.getPreferredSize().height;
+        Dimension resetSize = new Dimension(reset.getPreferredSize().width, workspaceControlHeight);
+        reset.setPreferredSize(resetSize);
+        reset.setMinimumSize(resetSize);
+        reset.setMaximumSize(new Dimension(150, workspaceControlHeight));
         workspaceLayer.add(reset);
         putClientProperty("reset", reset);
         add(section("Workspace", workspaceLayer));

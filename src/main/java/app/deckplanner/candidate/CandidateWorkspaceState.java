@@ -117,6 +117,10 @@ public final class CandidateWorkspaceState {
 
 
     public void moveCategoryBefore(String sourceId, String targetId) {
+        moveCategoryRelative(sourceId, targetId, false);
+    }
+
+    public void moveCategoryRelative(String sourceId, String targetId, boolean afterTarget) {
         if (sourceId == null || targetId == null || sourceId.equals(targetId)) return;
         int from = -1;
         int target = -1;
@@ -128,7 +132,8 @@ public final class CandidateWorkspaceState {
         if (from < 0 || target < 0) return;
         Category moved = categories.remove(from);
         if (from < target) target--;
-        categories.add(Math.max(0, Math.min(target, categories.size())), moved);
+        int insertion = target + (afterTarget ? 1 : 0);
+        categories.add(Math.max(0, Math.min(insertion, categories.size())), moved);
         commit();
     }
 

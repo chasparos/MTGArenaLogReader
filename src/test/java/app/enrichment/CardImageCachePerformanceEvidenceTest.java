@@ -45,4 +45,23 @@ class CardImageCachePerformanceEvidenceTest {
                 afterMemory.diskHits(), afterMemory.memoryHits(),
                 afterMemory.networkRequests(), afterMemory.memoryEntries());
     }
+
+    @Test
+    void metadataOnlyCardCanReusePersistedImageByStableId() throws Exception {
+        CardInfo card = new GsonBuilder().create().fromJson("""
+                {
+                  "id":"dp08-cached-only",
+                  "name":"DP08 Cached Only"
+                }
+                """, CardInfo.class);
+        BufferedImage image = new BufferedImage(20, 28, BufferedImage.TYPE_INT_RGB);
+        ImageIO.write(image, "jpg", tempDir.resolve("dp08-cached-only.jpg").toFile());
+
+        CardImageCache cache = new CardImageCache(tempDir);
+        assertTrue(cache.get(card).get(2, TimeUnit.SECONDS).isPresent(),
+                "persistent images should remain usable even when cached metadata lacks an image URL");
+        assertEquals(1, cache.stats().diskHits());
+        assertEquals(0, cache.stats().networkRequests());
+    }
+
 }
