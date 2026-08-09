@@ -1,6 +1,6 @@
 # MTGArenaLogReader
 
-Java 24/Swing desktop application that tails MTG Arena's `Player.log`, reconstructs
+Java 21/Swing desktop application that tails MTG Arena's `Player.log`, reconstructs
 games and matches, enriches cards with Scryfall metadata, and provides replay, deck
 tracking, draft assistance, export, and manual coaching tools.
 

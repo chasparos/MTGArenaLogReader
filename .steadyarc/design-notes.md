@@ -101,3 +101,15 @@ A later UI-consolidation pass should use the shell integration experience to dec
 
 After the Application Shell arc is accepted, the intended next Engineering Arc is the deferred MTG Arena process-memory collection extraction research recorded as `SA-MTGA-DEF-005`.
 
+## UI consolidation evidence-first direction (2026-08-09)
+
+Before making concrete plans for a future application-wide or module-specific look-and-feel consolidation pass, begin with a fresh human click review and user-evidence pass against the then-current application. Treat that evidence as planning input; do not assume the shell-arc inventory or today's visual concerns are still complete.
+
+## Memory-scan collection extraction intent (2026-08-09)
+
+The process-memory collection capability should remain unusually isolated because it is Windows-specific and dependent on MTG Arena client versions. Its process access, memory-layout knowledge, heuristics, diagnostics, scan output, and persistence implementation belong inside the module.
+
+Development begins through a standalone test-harness UI with an **Attempt scan** action, an append-only progress-message log, and a separate output area. The first pass establishes interaction and evidence needs with a fake scanner before concrete memory-layout plans are committed.
+
+The module owns a separate H2 ownership table representing only Arena ID to known copies owned. It does not share tables, models, or repository types with log-observed collection handling. The rest of the application receives only `getCopiesOwned(id)` and `attemptRealCollectionUpdate()`; diagnostic progress and scanner result detail remain harness/internal concerns.
+

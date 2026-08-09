@@ -1,5 +1,5 @@
 # RunWidget.ps1 — repository-local launcher for MTGArenaLogReader
-# Requires: Java 24+, Maven Wrapper (mvnw.cmd)
+# Requires: Java 21+, Maven Wrapper (mvnw.cmd)
 # Usage: .\RunWidget.ps1
 
 $ErrorActionPreference = 'Stop'

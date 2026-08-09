@@ -1,6 +1,10 @@
 package app.application;
 
 
+import app.collection.ui.CollectionModule;
+import app.collection.ui.ArenaCardOptionCatalog;
+import app.collection.memory.MemoryCollectionService;
+import app.collection.memory.extraction.ArenaKnownIdCatalogProducer;
 import app.deck.model.DeckGameState;
 import app.deck.persistence.DeckCache;
 import app.deck.tracking.DeckTracker;
@@ -9,6 +13,7 @@ import app.deck.ui.DeckTrackerFrame;
 import app.draft.export.DraftAiExporter;
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.catalog.FormatCatalogService;
+import app.deckplanner.application.DeckPlannerModule;
 import app.deckplanner.collection.ArenaCollectionLogParser;
 import app.deckplanner.collection.ArenaCollectionObserver;
 import app.deckplanner.collection.ArenaCollectionRepository;
@@ -32,31 +37,26 @@ import app.enrichment.CardEnrichmentService;
 import app.enrichment.CardImageCache;
 import app.enrichment.InformationCollector;
 import app.enrichment.ScryfallClient;
-import app.replay.MainFrame;
+import app.replay.ReplayModule;
+import app.ui.MainFrame;
+import app.ui.SecondaryWindowModule;
 import app.settings.SettingsDialog;
 import app.settings.ThemeService;
 import app.settings.WindowsDpapiApiKeyStore;
 import app.log.LogMessageReader;
 import app.log.LogTailReader;
 import app.log.NamedThreadFactory;
-import app.log.PastedLogScanner;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import javax.swing.*;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * Bootstraps the desktop application and wires the log-ingestion, enrichment, routing, deck-tracking, and Swing presentation pipelines.
@@ -76,6 +76,8 @@ public final class Application implements AutoCloseable {
             3, new NamedThreadFactory("arena-pipeline"));
     private final ExecutorService restExecutor = Executors.newFixedThreadPool(
             2, new NamedThreadFactory("arena-rest"));
+    private final ScheduledExecutorService plannerScheduler = Executors.newSingleThreadScheduledExecutor(
+            new NamedThreadFactory("deck-planner-scheduler"));
 
     private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     private final ScryfallClient scryfallClient = new ScryfallClient(gson);
@@ -102,7 +104,7 @@ public final class Application implements AutoCloseable {
     private InformationCollector informationCollector;
     private DeckCache deckCache;
     private CoachingRepository coachingRepository;
-    private PastedLogScanner pastedLogScanner;
+    private CollectionModule collectionModule;
 
     public static void main(String[] args) {
         ThemeService themes = new ThemeService();
@@ -119,6 +121,8 @@ public final class Application implements AutoCloseable {
 
     private void start(String[] args) {
         Path logPath = args.length > 0 ? Path.of(args[0]) : defaultLogPath();
+        Path applicationData = Path.of(System.getProperty("user.home"), ".arena-log-viewer");
+        Path arenaRoot = Path.of("C:\\Program Files\\Wizards of the Coast\\MTGA");
 
         // 1. Initialize and start the log reader first.
         logTailReader = new LogTailReader(
@@ -129,14 +133,18 @@ public final class Application implements AutoCloseable {
                 this::reportError);
         pipelineExecutor.submit(logTailReader);
 
-        pastedLogScanner = new PastedLogScanner(filteredLogQueue);
+        collectionModule = new CollectionModule(
+                () -> prepareCollection(applicationData, arenaRoot), restExecutor);
 
         // 2. Convert filtered raw entries into LogMessageInterface instances.
         logMessageReader = new LogMessageReader(
                 filteredLogQueue,
                 enrichmentQueue,
                 gson,
-                arenaCollectionObserver,
+                raw -> {
+                    arenaCollectionObserver.accept(raw);
+                    collectionModule.acceptRawLog(raw);
+                },
                 this::reportError);
         pipelineExecutor.submit(logMessageReader);
 
@@ -189,56 +197,64 @@ public final class Application implements AutoCloseable {
                 cardImageCache);
 
         WindowsDpapiApiKeyStore apiKeyStore = new WindowsDpapiApiKeyStore();
-        MainFrame frame = new MainFrame(
+        ReplayModule replayModule = new ReplayModule(
                 uiQueue,
                 deckTracker,
                 deckFrame,
                 draftTracker,
                 draftFrame,
                 coachingFrame::open,
-                this::rescanLog,
-                this::scanPastedLog,
-                () -> replayDraftFixture(draftTracker, draftFrame),
+                this::rescanLog);
+        DeckPlannerModule deckPlannerModule = new DeckPlannerModule(
+                Path.of(System.getProperty("user.home"), ".arena-log-viewer"),
+                formatCatalogRepository, formatCatalogService, cardCache, cardImageCache,
+                deckCache, arenaCollectionRepository, scryfallClient,
+                plannerScheduler, restExecutor);
+        SecondaryWindowModule deckTrackerModule = new SecondaryWindowModule(
+                "deck-tracker", "Deck Tracker",
+                "The retained game timeline remains in its reusable companion window.",
+                () -> {
+                    DeckGameState current = deckTracker.currentState();
+                    deckFrame.showTimeline(current == null ? java.util.List.of()
+                            : deckTracker.statesForGame(current.matchId(), current.gameNumber()));
+                });
+        SecondaryWindowModule draftAssistantModule = new SecondaryWindowModule(
+                "draft-assistant", "Draft Assistant",
+                "Draft controls remain in their reusable companion window.",
+                draftFrame::open);
+        MainFrame frame = new MainFrame(
+                java.util.List.of(replayModule, deckPlannerModule, collectionModule,
+                        deckTrackerModule, draftAssistantModule),
                 owner -> new SettingsDialog(
                         owner, apiKeyStore, themes).open(),
-                ignored -> close());
+                () -> {
+                    replayModule.close();
+                    deckPlannerModule.close();
+                    close();
+                });
         frame.setVisible(true);
     }
 
-
-
-    private CompletionStage<PastedLogScanner.ScanResult> scanPastedLog(String text) {
-        filteredLogQueue.clear();
-        enrichmentQueue.clear();
-        uiQueue.clear();
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return pastedLogScanner.scan(text);
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("Pasted log scan interrupted", interrupted);
-            }
-        }, restExecutor);
-    }
-
-    private void replayDraftFixture(DraftTracker draftTracker, DraftAssistantFrame draftFrame) {
-        draftTracker.reset();
-        restExecutor.submit(() -> {
-            try (InputStream input = Application.class.getResourceAsStream("/logs/premier-draft.log")) {
-                if (input == null) throw new IllegalStateException("Missing /logs/premier-draft.log");
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
-                    long sequence = 9_000_000L;
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (line.isBlank()) continue;
-                        filteredLogQueue.put(new RawLogEntry(sequence++, Instant.now(), line));
-                    }
-                }
-                SwingUtilities.invokeLater(draftFrame::open);
-            } catch (Throwable error) {
-                reportError(error);
-            }
-        });
+    private CollectionModule.Prepared prepareCollection(Path applicationData, Path arenaRoot) {
+        try {
+            Path moduleData = applicationData.resolve("memory-collection");
+            Path knownIds = moduleData.resolve("known-arena-ids.json");
+            new ArenaKnownIdCatalogProducer().produce(arenaRoot, knownIds);
+            var options = new ArenaCardOptionCatalog().load(arenaRoot);
+            MemoryCollectionService update = MemoryCollectionService.windowsGuided(
+                    moduleData.resolve("ownership"), knownIds, () -> options,
+                    ignored -> { }, ignored -> { });
+            return new CollectionModule.Prepared(
+                    update,
+                    option -> cardCache.find(option.arenaId()).flatMap(CardCache.CachedCard::card)
+                            .map(cardImageCache::get)
+                            .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(
+                                    java.util.Optional.empty())),
+                    option -> cardCache.find(option.arenaId()).flatMap(CardCache.CachedCard::card),
+                    options.size(), update);
+        } catch (Exception error) {
+            throw new IllegalStateException(error.getMessage(), error);
+        }
     }
 
     private void rescanLog() {
@@ -265,9 +281,11 @@ public final class Application implements AutoCloseable {
         if (informationCollector != null) informationCollector.close();
         pipelineExecutor.shutdownNow();
         restExecutor.shutdownNow();
+        plannerScheduler.shutdownNow();
         scryfallClient.close();
         if (deckCache != null) deckCache.close();
         if (coachingRepository != null) coachingRepository.close();
+        if (collectionModule != null) collectionModule.close();
         formatCatalogRepository.close();
         arenaCollectionRepository.close();
         cardCache.close();

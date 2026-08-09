@@ -34,10 +34,10 @@ Replay presentation, application navigation, and developer fixture tooling shoul
 | --- | --- | --- | --- |
 | Replay | `GameSessionsPanel` embedded in `app.replay.MainFrame` | Replay frame | Become an application module/panel hosted by `app.ui.MainFrame`. |
 | Deck Planner | `DeckPlannerWorkspace` used by `DeckPlannerWorkspacePreview` | Preview harness | Wire the proven workspace into production as a selectable module; retain the preview harness. |
-| Deck Tracker | `DeckTrackerFrame` | Standalone frame | Initially adapt as a shell entry with explicit detail-window ownership; later decide whether to embed. |
-| Draft Assistant | `DraftAssistantFrame` | Standalone frame | Initially adapt to shell navigation without redesigning draft internals. |
-| Coaching | `CoachingFrame` opened for a selected match | Secondary frame | Keep contextual/secondary ownership explicit; do not force embedding merely to satisfy the shell abstraction. |
-| Settings | `SettingsDialog` | Dialog owned by replay frame | Move ownership to the application shell. |
+| Deck Tracker | `DeckTrackerFrame` | Singleton companion frame reached through `SecondaryWindowModule` | Shell navigation opens the retained timeline window; later decide whether to embed. |
+| Draft Assistant | `DraftAssistantFrame` | Singleton companion frame reached through `SecondaryWindowModule` | Shell navigation opens the existing draft window without redesigning draft internals. |
+| Coaching | `CoachingFrame` opened for a selected match | Replay-contextual secondary frame | Remains a selected-match action owned by Replay; it is not a context-free shell module. |
+| Settings | `SettingsDialog` | Dialog owned by `app.ui.MainFrame` | Remains an application-shell action rather than a content module. |
 | Replay fixture tooling | `replayDraftFixtureAction` exposed by production replay frame | Production frame | Move to a dedicated replay UI dev harness. |
 | Pasted raw-log scan | `PastedLogDialog` exposed by production replay frame | Production frame | Treat as developer/test tooling unless separately promoted as a product feature. |
 
@@ -67,11 +67,11 @@ A module may explicitly own secondary windows. Coaching is a good example: it is
 
 ## Replay developer harness
 
-Create a dedicated repository-owned replay UI harness under `devtools` for developer-only replay interactions.
+`devtools.ReplayUiHarness` is the dedicated repository-owned surface for developer-only replay interactions.
 
-The harness should be the home for replaying bundled fixture logs, pasted raw-log scanning experiments, replay presentation click testing, and any future deterministic replay fixture chooser.
+The harness owns bundled match/draft fixture loading, pasted raw-log scanning, arbitrary log-file selection, replay presentation click testing, and any future deterministic replay fixture chooser. It uses production framing, parsing, routing, and Replay presentation with deterministic empty enrichment, so it does not require Scryfall access.
 
-The production Replay module should receive real/observed application state and expose legitimate user-facing replay controls only.
+The production Replay module receives real/observed application state and exposes legitimate user-facing replay controls only. The obsolete replay `MainFrame` and dormant fixture/paste composition have been removed from production.
 
 ## Deck Planner production integration
 
@@ -114,6 +114,26 @@ Click-test switching, persistence, service reuse, shutdown/relaunch, and module 
 The later consolidation pass should evaluate which standalone frames should become embeddable module panels, which detail/context windows should remain secondary windows, which toolbar/status/navigation concepts are truly shared, which Swing primitives should become project-owned reusable components, how theme/spacing/typography/icon/selection conventions have drifted, whether loading/error/lifecycle states can share one vocabulary, and which accessibility/keyboard-navigation contracts should apply everywhere.
 
 Do not answer those questions by forcing every module into the same component hierarchy during the shell arc.
+
+## Integration findings and later consolidation inventory
+
+The shell integration established these evidence-backed boundaries:
+
+- Replay and Deck Planner are genuine embedded modules and should remain the reference shapes for future embeddable content.
+- Deck Tracker and Draft Assistant remain singleton companion windows. Their shell adapters make ownership honest without duplicating services or pretending their current frame layouts are already embeddable.
+- Coaching remains contextual to a selected reconstructed match. A later pass may add a conversation browser entry, but opening or creating coaching for current play continues to belong to Replay context.
+- Settings is application chrome, not module content. It remains owned by `app.ui.MainFrame`.
+- Developer fixture and pasted-log work is isolated in `devtools.ReplayUiHarness` and must not drift back into production navigation.
+
+The next visual consolidation arc should evaluate, in order:
+
+1. shared top-level spacing, typography, module-tab treatment, status language, and keyboard navigation;
+2. whether Deck Tracker and Draft Assistant can expose embeddable root panels while retaining optional detached-window presentation;
+3. common loading, offline, empty, and failure surfaces across Replay, Deck Planner, Draft, and tracking;
+4. unified ownership and disposal for secondary dialogs/windows, including theme refresh and application shutdown;
+5. accessibility contracts for focus order, selected-module announcement, shortcuts, and high-contrast themes.
+
+The colored horizontal selector is intentionally a first shell treatment, not a frozen design system. Human review required increasing the initial tint contrast, evidence that later theme work must test perceptibility rather than relying only on structurally distinct colors.
 
 ## Deferred next mission: Arena collection extraction
 

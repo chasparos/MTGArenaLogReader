@@ -54,7 +54,7 @@
 - **Date:** 2026-07-31
 - **Changed by:** Copilot task agent
 - **Transition or material change:** Stage 3 completed; delegation advanced to Stage 4 refinement.
-- **Reason:** Build pipeline validated — `mvnw --version` passed (Maven 3.9.9), `mvnw test` blocked only by sandbox JDK 17 vs release 24. `.gitignore` ordering bug fixed; `maven-wrapper.properties` now correctly committed. Evidence recorded in engineering notes and feedback document.
+- **Reason:** Build pipeline validated — `mvnw --version` passed (Maven 3.9.9); the sandbox JDK 17 was below the authoritative Java 21 target. `.gitignore` ordering bug fixed; `maven-wrapper.properties` now correctly committed. Evidence recorded in engineering notes and feedback document.
 - **Authority after change:** Copilot task agent for Stage 4 refinement tasks, or return to human owner if no further agent delegation is needed.
 - **Return condition after change:** Stage 4 decisions made (CI, upstream feedback transfer, deferred issue closure); return report completed.
 
@@ -72,13 +72,13 @@ Complete this section without deleting the original delegation.
 Write the recommended next action for the receiver of the manifest-matching committed payload. Do not instruct that receiver to repeat the finalization which created the payload.
 
 - **Returned:** 2026-07-31
-- **Work completed:** All four Steady Arc bootstrap stages delivered. Stage 1: continuity files and `AGENTS.md`. Stage 2: `RunWidget.ps1`, `BootstrapInfo.java`, `maven-wrapper.properties`. Stage 3: `.gitignore` fix, `maven-wrapper.properties` committed, `mvnw` permissions corrected, build evidence captured. Stage 4: `.github/workflows/ci.yml` (JDK 24), deferred issues closed, feedback document completed.
-- **Verification:** `./mvnw --version` passed (Maven 3.9.9) in Stage 3. `./mvnw test` blocked in sandbox by JDK 17 vs release 24; CI workflow targets JDK 24 to close that gap automatically on first push.
+- **Work completed:** All four Steady Arc bootstrap stages delivered. Stage 1: continuity files and `AGENTS.md`. Stage 2: `RunWidget.ps1`, `BootstrapInfo.java`, `maven-wrapper.properties`. Stage 3: `.gitignore` fix, `maven-wrapper.properties` committed, `mvnw` permissions corrected, build evidence captured. Stage 4: `.github/workflows/ci.yml` (JDK 21), deferred issues closed, feedback document completed.
+- **Verification:** `./mvnw --version` passed (Maven 3.9.9) in Stage 3. `./mvnw test` was blocked in the sandbox by JDK 17; CI targets the authoritative JDK 21 baseline.
 - **Repository changes:** `.github/workflows/ci.yml`, `.steadyarc/roadmap.md`, `.steadyarc/deferred-issues.md`, `.steadyarc/engineering-notes.md`, `docs/steadyarc-copilot-feedback.md`, and this file updated.
 - **Durable notes added or changed:** `engineering-notes.md` updated with Stage 4 refinement summary; arc marked complete.
 - **Deferred issues added or changed:** SA-MTGA-DEF-001 and SA-MTGA-DEF-002 both closed with evidence recorded.
-- **Unresolved issues:** None. `mvnw test` with JDK 24 will be confirmed on first CI run triggered by a push to the repository.
-- **Recommended next action:** Merge or push the working branch to trigger the CI workflow and confirm `./mvnw test` passes with JDK 24. Then optionally transfer `docs/steadyarc-copilot-feedback.md` content upstream to `SteadyArcWorkflow` if write access is available.
+- **Unresolved issues:** None. `mvnw test` with JDK 21 will be confirmed on the first CI run triggered by a push to the repository.
+- **Recommended next action:** Merge or push the working branch to trigger the CI workflow and confirm `./mvnw test` passes with JDK 21. Then optionally transfer `docs/steadyarc-copilot-feedback.md` content upstream to `SteadyArcWorkflow` if write access is available.
 - **Ownership after return:** Human repository owner.
 
 ## Ownership-transition rules

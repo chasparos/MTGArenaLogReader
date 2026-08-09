@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-MTGArenaLogReader is a Windows-oriented Java 24 desktop application that reads MTG
+MTGArenaLogReader is a Windows-oriented Java 21 desktop application that reads MTG
 Arena's `Player.log` and turns Arena observations into:
 
 - a semantic, per-game replay;
@@ -18,6 +18,8 @@ in the other documents under `docs/`.
 
 `app.application.Application` is the composition root. It constructs the queues,
 workers, caches, trackers, repositories, and Swing windows, and owns their shutdown.
+The production `app.ui.MainFrame` hosts application modules through the minimal
+`ApplicationModule` contract; Replay and Deck Planner are the first embedded modules.
 
 ```text
 Player.log
@@ -46,7 +48,7 @@ InformationCollector
   - supplements Arena observations with cached Scryfall metadata
     |
     v
-MainFrame queue pump (Swing event-dispatch thread)
+ReplayModule queue pump (Swing event-dispatch thread)
     |
     +--> GameSessionsPanel --> GameMessageRouter --> MatchSession --> GameSession
     |                                               |                |
@@ -57,6 +59,10 @@ MainFrame queue pump (Swing event-dispatch thread)
     +--> DeckTracker --> DeckTrackerFrame
     |
     +--> DraftTracker --> DraftUiModel --> DraftAssistantFrame
+
+app.ui.MainFrame
+    +--> ReplayModule
+    +--> DeckPlannerModule --> cache-first DeckPlannerWorkspace
 ```
 
 Historical records and newly appended records take the same path. Normal startup

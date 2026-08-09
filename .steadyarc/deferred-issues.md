@@ -47,5 +47,5 @@
 - **Risks / research questions:** Arena updates may change memory layout; elevated permissions may sometimes be required; Arena UI state may affect discoverability; initial implementation is Windows-specific; robustness and anti-cheat/process-access implications must be investigated before productization.
 - **Relationship to SA-MTGA-DEF-003:** This is a possible future route for satisfying the missing authoritative collection source, not evidence that the current ownership gap is resolved.
 - **Resume trigger:** Human explicitly opens a bounded research/prototype arc for collection-memory import and supplies or approves investigation of the referenced implementation.
-- **Status:** Open — deferred research mission.
+- **Status:** Resumed — promoted into the `Memory-Scan Collection Extraction` arc after explicit human approval on 2026-08-09. The new arc supersedes the earlier loose provider proposal with a stricter two-operation application port, isolated H2 table, and harness-first evidence plan.
 

@@ -17,7 +17,7 @@ Capture practical friction points observed while applying Steady Arc in `MTGAren
 3. **Environment-dependent validation gaps (updated Stage 3)**
    - `.mvn/wrapper/maven-wrapper.properties` was absent at Stage 1; added in Stage 2 and committed in Stage 3 after fixing `.gitignore` to properly unexclude it.
    - `mvnw` required a `chmod +x` fix in the sandbox; executed permission was not preserved from the upstream clone.
-   - Sandbox JDK is 17.0.19 (Temurin); `pom.xml` targets `maven.compiler.release=24`. `./mvnw --version` succeeds (Maven 3.9.9 downloaded and ran), but `./mvnw test` fails at compilation with `release version 24 not supported`.
+   - The earlier sandbox JDK was 17.0.19 (Temurin), below the repository's authoritative Java 21 target. `./mvnw --version` succeeded, while compilation required a Java 21 runtime.
    - **Consequence:** The build/test pipeline is fully wired; only the JDK version gap prevents a passing `mvnw test` in this sandbox environment.
 
 4. **`.gitignore` ordering pitfall**
@@ -81,6 +81,6 @@ Capture practical friction points observed while applying Steady Arc in `MTGAren
 
 ## Stage 4 resolution (2026-07-31)
 
-- Added `.github/workflows/ci.yml`: runs `./mvnw test` with JDK 24 (Temurin) on every push and pull request.
+- Added `.github/workflows/ci.yml`: runs `./mvnw test` with the repository's authoritative JDK 21 (Temurin) on every push and pull request.
 - This closes the JDK mismatch gap — CI will validate the build in the correct environment automatically.
 - SA-MTGA-DEF-001 and SA-MTGA-DEF-002 closed.
