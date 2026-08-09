@@ -78,6 +78,36 @@ class AlternateArtResolverTest {
         }
     }
 
+
+    @Test void favoriteUsesRenderableCopyWhenSamePrintingExistsAsMetadataAndEnrichedCard() {
+        CardInfo metadataOnly = card("print-last", "oracle-a", "Alpha", 2L);
+        CardInfo enriched = card("print-last", "oracle-a", "Alpha", 2L);
+        CardImageUris images = new CardImageUris();
+        images.setNormal("https://example.invalid/alpha-last.jpg");
+        enriched.setImageUris(images);
+
+        AlternateArtResolver.ArtSet artSet = new AlternateArtResolver.ArtSet(
+                "oracle:oracle-a", true, List.of(metadataOnly, enriched),
+                Optional.of("print-last"), true);
+
+        assertSame(enriched, artSet.preferred(),
+                "favorite selection must keep the image-capable copy of the chosen printing");
+    }
+
+    @Test void favoriteCanSelectLastPrintingWithoutIndexSpecialCases() {
+        CardInfo first = card("print-a", "oracle-a", "Alpha", 1L);
+        CardInfo last = card("print-z", "oracle-a", "Alpha", 9L);
+        CardImageUris images = new CardImageUris();
+        images.setNormal("https://example.invalid/alpha-z.jpg");
+        last.setImageUris(images);
+
+        AlternateArtResolver.ArtSet artSet = new AlternateArtResolver.ArtSet(
+                "oracle:oracle-a", true, List.of(first, last),
+                Optional.of("print-z"), true);
+
+        assertSame(last, artSet.preferred());
+    }
+
     private static CardInfo card(String id, String oracle, String name, long arenaId) {
         CardInfo card = new CardInfo();
         card.setId(id); card.setOracleId(oracle); card.setName(name); card.setArenaId(arenaId);

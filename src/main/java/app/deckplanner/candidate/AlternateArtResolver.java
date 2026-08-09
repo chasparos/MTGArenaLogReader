@@ -13,11 +13,19 @@ import java.util.concurrent.ConcurrentMap;
 public final class AlternateArtResolver {
     public record ArtSet(String identity, boolean legal, List<CardInfo> printings,
                          Optional<String> favoriteScryfallId, boolean complete) {
+        private static boolean hasRenderableImage(CardInfo card) {
+            return card != null && card.previewImageUrl() != null && !card.previewImageUrl().isBlank();
+        }
+
         public CardInfo preferred() {
             if (favoriteScryfallId.isPresent()) {
-                for (CardInfo card : printings) {
-                    if (card != null && favoriteScryfallId.get().equals(card.getId())) return card;
-                }
+                CardInfo matched = printings.stream()
+                        .filter(Objects::nonNull)
+                        .filter(card -> favoriteScryfallId.get().equals(card.getId()))
+                        .sorted((left, right) -> Boolean.compare(
+                                hasRenderableImage(right), hasRenderableImage(left)))
+                        .findFirst().orElse(null);
+                if (matched != null) return matched;
             }
             // Without an explicit favorite, keep the first usable local/cached printing stable.
             // Some persisted catalog entries may carry card metadata without image URIs; prefer
