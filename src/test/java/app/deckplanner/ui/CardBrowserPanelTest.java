@@ -46,6 +46,33 @@ class CardBrowserPanelTest {
     }
 
     @Test
+    void repeatedViewportUpdateDoesNotCancelStillVisibleFaceRequest() throws Exception {
+        CompletableFuture<Optional<BufferedImage>> image = new CompletableFuture<>();
+        CardBrowserPanel[] holder = new CardBrowserPanel[1];
+
+        SwingUtilities.invokeAndWait(() -> {
+            holder[0] = new CardBrowserPanel(
+                    new CardGridLayout(100, 160, 10, 10, 10),
+                    new ViewportImageWindow(20),
+                    card -> image);
+            holder[0].setSize(120, 500);
+            holder[0].setCards(List.of(
+                    new CardBrowserPanel.BrowserCard("oracle:alpha", "Alpha")));
+            Rectangle viewport = new Rectangle(0, 0, 120, 100);
+            holder[0].updateViewport(viewport);
+            holder[0].updateViewport(viewport);
+        });
+
+        assertFalse(image.isCancelled(),
+                "a repeated viewport observation must retain the pending face request");
+        SwingUtilities.invokeAndWait(() ->
+                image.complete(Optional.of(new BufferedImage(63, 88, BufferedImage.TYPE_INT_RGB))));
+        int[] cached = new int[1];
+        SwingUtilities.invokeAndWait(() -> cached[0] = holder[0].cachedImageCount());
+        assertEquals(1, cached[0]);
+    }
+
+    @Test
     void selectionSurvivesResponsiveRelayoutAndMutationsRequireEdt() throws Exception {
         CardBrowserPanel[] holder = new CardBrowserPanel[1];
         SwingUtilities.invokeAndWait(() -> {

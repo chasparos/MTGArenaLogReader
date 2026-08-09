@@ -652,10 +652,16 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         var iterator = pending.entrySet().iterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
-            if (retained.contains(entry.getKey())) continue;
+            if (retained.contains(identityFromImageKey(entry.getKey()))) continue;
             entry.getValue().cancel(true);
             iterator.remove();
         }
+    }
+
+    private static String identityFromImageKey(String key) {
+        if (key == null) return "";
+        int faceMarker = key.lastIndexOf("#face=");
+        return faceMarker < 0 ? key : key.substring(0, faceMarker);
     }
 
     private void cancelAllPending() {
