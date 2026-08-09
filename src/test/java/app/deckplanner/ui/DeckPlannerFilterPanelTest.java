@@ -115,6 +115,22 @@ class DeckPlannerFilterPanelTest {
         });
     }
 
+
+    @Test void resetFiltersLivesInWorkspaceSectionAndResetsModel() throws Exception {
+        DeckPlannerFilterModel model = new DeckPlannerFilterModel("standard");
+        AtomicReference<DeckPlannerFilterPanel> panel = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> panel.set(new DeckPlannerFilterPanel(model, Set.of())));
+        SwingUtilities.invokeAndWait(() -> {
+            model.toggleColor(CardColor.BLUE);
+            AbstractButton reset = findButton(panel.get(), "Reset filters");
+            assertNotNull(reset);
+            assertSame(findButton(panel.get(), "Candidates only").getParent(), reset.getParent(),
+                    "reset belongs in the always-visible Workspace control group");
+            reset.doClick();
+        });
+        assertEquals(CardFilterState.empty(), model.state().filters());
+    }
+
     private boolean findSelectedButton(Container root, String label) {
         return findButton(root, label).isSelected();
     }

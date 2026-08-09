@@ -323,8 +323,11 @@ class DeckPlannerWorkspaceTest {
             assertFalse(expand.contains(0, 0),
                     "floating boundary control should use a circular hit/rollover shape");
             int collapsedX = expand.getX();
+            int contractedWidth = ref.get().candidates().getPreferredSize().width;
             expand.doClick();
-            assertEquals(760, ref.get().candidates().getPreferredSize().width);
+            int expandedWithFilters = ref.get().candidates().getPreferredSize().width;
+            assertTrue(expandedWithFilters > contractedWidth,
+                    "expanded Candidates should own spare workspace width");
             assertTrue(expand.getX() < collapsedX,
                     "candidate boundary control should move immediately with the resized panel");
 
@@ -333,9 +336,16 @@ class DeckPlannerWorkspaceTest {
             assertFalse(hide.isOpaque());
             int shownX = hide.getX();
             hide.doClick();
+            int expandedWithoutFilters = ref.get().candidates().getPreferredSize().width;
             assertEquals("Show filters", hide.getToolTipText());
+            assertTrue(expandedWithoutFilters > expandedWithFilters,
+                    "with expanded Candidates, hiding Filters gives the freed width to Candidates");
             assertTrue(hide.getX() <= shownX,
                     "filter boundary control should reposition immediately when filters hide");
+
+            expand.doClick();
+            assertEquals(contractedWidth, ref.get().candidates().getPreferredSize().width,
+                    "contracted Candidates keep a fixed width so Catalog owns the remaining space");
         });
         SwingUtilities.invokeAndWait(ref.get()::close);
     }

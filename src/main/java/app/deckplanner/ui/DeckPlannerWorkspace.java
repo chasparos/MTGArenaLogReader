@@ -49,6 +49,8 @@ import java.util.stream.Collectors;
 public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable {
     private static final String CONTENT = "content";
     private static final String STATE = "state";
+    private static final int CONTRACTED_CANDIDATE_WIDTH = 470;
+    private static final int EXPANDED_CATALOG_WIDTH = 430;
 
     private final DeckPlannerFilterModel filterModel;
     private final DeckPlannerFilterPanel filters;
@@ -212,7 +214,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
             candidatePanel.setAlternateArtAction(null,
                     identity -> alternateArtResolver.resolveCached(identity).preferred());
         }
-        candidatePanel.setPreferredSize(new Dimension(470, 600));
+        candidatePanel.setPreferredSize(new Dimension(CONTRACTED_CANDIDATE_WIDTH, 600));
         candidatePanel.setMinimumSize(new Dimension(360, 300));
 
         filterScroll = new JScrollPane(filters,
@@ -261,6 +263,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         JLayeredPane workspaceLayer = new JLayeredPane() {
             @Override public void doLayout() {
                 columns.setBounds(0, 0, getWidth(), getHeight());
+                updateWorkspaceColumnWidths(getWidth());
                 columns.doLayout();
                 filterRegion.doLayout();
                 candidateRegion.doLayout();
@@ -284,19 +287,17 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         workspaceLayer.addComponentListener(overlayRelayout);
 
         filterToggle.addActionListener(event -> {
-            boolean visible = filterScroll.isVisible();
-            filterScroll.setVisible(!visible);
+            boolean visible = filterRegion.isVisible();
+            filterRegion.setVisible(!visible);
             filterToggle.setToolTipText(visible ? "Show filters" : "Hide filters");
+            updateWorkspaceColumnWidths(workspaceLayer.getWidth());
             workspaceLayer.revalidate();
             workspaceLayer.doLayout();
             workspaceLayer.repaint();
         });
         candidateToggle.addActionListener(event -> {
             candidatesExpanded = !candidatesExpanded;
-            Dimension size = candidatesExpanded
-                    ? new Dimension(760, 600) : new Dimension(470, 600);
-            candidatePanel.setPreferredSize(size);
-            candidateRegion.setPreferredSize(size);
+            updateWorkspaceColumnWidths(workspaceLayer.getWidth());
             columns.invalidate();
             columns.doLayout();
             candidateRegion.doLayout();
@@ -316,6 +317,24 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         coordinator.setAvailability(availability);
         candidateModel.addListener(candidateListener);
         showCandidates();
+    }
+
+    private void updateWorkspaceColumnWidths(int workspaceWidth) {
+        int height = Math.max(300, candidatePanel.getPreferredSize().height);
+        if (!candidatesExpanded) {
+            Dimension fixed = new Dimension(CONTRACTED_CANDIDATE_WIDTH, height);
+            candidatePanel.setPreferredSize(fixed);
+            candidateRegion.setPreferredSize(fixed);
+            return;
+        }
+        int filterWidth = filterRegion.isVisible()
+                ? Math.max(filterRegion.getPreferredSize().width, filterScroll.getPreferredSize().width)
+                : 0;
+        int available = Math.max(CONTRACTED_CANDIDATE_WIDTH,
+                workspaceWidth - filterWidth - EXPANDED_CATALOG_WIDTH);
+        Dimension expanded = new Dimension(available, height);
+        candidatePanel.setPreferredSize(expanded);
+        candidateRegion.setPreferredSize(expanded);
     }
 
     public void start() {

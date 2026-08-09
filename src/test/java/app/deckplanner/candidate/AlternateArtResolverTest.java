@@ -3,6 +3,7 @@ package app.deckplanner.candidate;
 import app.deckplanner.catalog.FormatCatalogRepository;
 import app.deckplanner.filter.CatalogFilterIndex;
 import app.model.card.CardInfo;
+import app.model.card.CardImageUris;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,6 +55,26 @@ class AlternateArtResolverTest {
             assertEquals(0, remoteCalls.get());
             assertEquals("print-a", cached.preferred().getId(),
                     "without an explicit favorite the first local/cached printing stays stable");
+        }
+    }
+
+
+    @Test void cachedResolutionPrefersFirstImageCapablePrintingWhenNoFavoriteExists() {
+        CardInfo metadataOnly = card("print-a", "oracle-a", "Alpha", 1L);
+        CardInfo renderable = card("print-b", "oracle-a", "Alpha", 2L);
+        CardImageUris images = new CardImageUris();
+        images.setNormal("https://example.invalid/alpha.jpg");
+        renderable.setImageUris(images);
+        CatalogFilterIndex index = new CatalogFilterIndex(new FormatCatalogRepository.Snapshot(
+                "run", "standard", 1, Instant.EPOCH, Instant.EPOCH,
+                List.of(new FormatCatalogRepository.CardOutcome(metadataOnly, "SUCCESS", null),
+                        new FormatCatalogRepository.CardOutcome(renderable, "SUCCESS", null))));
+        CardNameRepository names = new CardNameRepository(index, name -> Optional.empty());
+        try (PrintingPreferenceRepository preferences =
+                     new PrintingPreferenceRepository(temporary.resolve("renderable-default"))) {
+            AlternateArtResolver resolver = new AlternateArtResolver(index, names, preferences);
+            assertEquals("print-b", resolver.resolveCached("oracle:oracle-a").preferred().getId(),
+                    "metadata-only cached printings must not shadow a renderable default");
         }
     }
 

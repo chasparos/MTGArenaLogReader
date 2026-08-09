@@ -19,8 +19,15 @@ public final class AlternateArtResolver {
                     if (card != null && favoriteScryfallId.get().equals(card.getId())) return card;
                 }
             }
-            // Without an explicit favorite, keep the first local/cached printing stable.
-            return printings.stream().filter(Objects::nonNull).findFirst().orElse(null);
+            // Without an explicit favorite, keep the first usable local/cached printing stable.
+            // Some persisted catalog entries may carry card metadata without image URIs; prefer
+            // the first cached printing that can actually render before falling back to metadata-only.
+            CardInfo renderable = printings.stream()
+                    .filter(Objects::nonNull)
+                    .filter(card -> card.previewImageUrl() != null && !card.previewImageUrl().isBlank())
+                    .findFirst().orElse(null);
+            return renderable != null ? renderable
+                    : printings.stream().filter(Objects::nonNull).findFirst().orElse(null);
         }
     }
 

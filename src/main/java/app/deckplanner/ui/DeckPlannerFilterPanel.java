@@ -65,6 +65,11 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
         candidateOnlyChip.setToolTipText(
                 "Restrict the catalog to cards currently candidates without changing other filters");
         workspaceLayer.add(candidateOnlyChip);
+        JButton reset = new JButton("Reset filters", new SvgIcon("/svg/untap.svg", 14));
+        reset.setActionCommand("reset");
+        reset.setMaximumSize(new Dimension(150, 30));
+        workspaceLayer.add(reset);
+        putClientProperty("reset", reset);
         add(section("Workspace", workspaceLayer));
         JPanel colors = flow();
         for (CardColor color : CardColor.values()) {
@@ -123,14 +128,7 @@ public final class DeckPlannerFilterPanel extends JPanel implements Scrollable {
             }
             add(section(title(entry.getKey().name()), tagPanel));
         }
-        JButton reset = new JButton("Reset filters", new SvgIcon("/svg/untap.svg", 14));
-        reset.setAlignmentX(Component.LEFT_ALIGNMENT);
-        reset.setActionCommand("reset");
-        reset.setMaximumSize(new Dimension(150, 30));
-        add(Box.createVerticalStrut(6));
-        add(reset);
         putClientProperty("semantics", semantics);
-        putClientProperty("reset", reset);
     }
 
     AbstractButton candidateOnlyControl() {
