@@ -9,14 +9,16 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 ## Current ownership
 
 - **Owner:** Human repository owner.
-- **Repository baseline inspected:** `0cc4b9e3f7d0c504c40513851f4fbd9885553368` on `main`.
-- **Transferred validation:** `.\mvnw.cmd test` passed 279 tests with zero failures/errors/skips on a clean tree.
-- **Current arc:** Deck Planner.
-- **Completed roadmap item:** `DP-07 — Authoritative AI deck-building protocol`; explicitly accepted by the human after successful real use of the generated export in a deck-design conversation.
-- **Active roadmap item:** `DP-08 — Integration, performance, and release evidence`.
-- **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click testing during DP-08, focusing on lifecycle, responsiveness, loading/offline/error behavior, and end-to-end flow rather than re-testing deterministic exporter mechanics already covered automatically.
-- **Deferred future mission:** `SA-MTGA-DEF-005` records the human-supplied MTGA process-memory collection-import research. It remains outside DP-08 unless explicitly activated.
-- **Safe next action:** Apply and validate the bounded DP-08 real-card UX regression correction: persistent-image fallback without an explicit favorite, immediate panel-boundary relayout, Workspace reset-control sizing, and denser category-aware/multi-card Candidate drag/drop with autoscroll. Re-run the preview click review before opening DP-08.3 release/evaluation evidence.
+- **Repository baseline inspected:** `58d4ba1dc2bbbbb560b0f7ac91dcf4dcfa9307b0` on `main`.
+- **Transferred validation:** `.\mvnw.cmd test` passed 294 tests with zero failures/errors/skips on a clean tree.
+- **Completed arc:** Deck Planner. DP-08 is human-accepted after real-card click review confirmed the card-image cancellation race fix and the full planner workflow.
+- **Current arc:** Application Shell & UI Consolidation Preparation.
+- **Completed roadmap item in current arc:** `AS-01 — Inventory current UI ownership and define the shell migration contract`.
+- **Next roadmap item:** `AS-02 — Introduce the true application MainFrame and module host`.
+- **Architecture artifact:** `docs/architecture/ui-consolidation-preparation.md`.
+- **Temporary diagnostics:** Targeted `CardImageTrace` logging for Marketback Walker / Agent Maria Hill is removed in the AS-01 transition patch; the confirmed root cause was viewport cancellation comparing logical identities with `identity#face=N` pending keys.
+- **Intended next arc after shell acceptance:** `SA-MTGA-DEF-005` MTG Arena process-memory collection extraction research.
+- **Safe next action:** Apply and validate the AS-01 transition/cleanup patch. After a green return, explicitly delegate AS-02 to implement `app.ui.MainFrame` and the minimal module host.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
 
 ### DP-06 interaction-polish amendment — 2026-08-08
@@ -97,3 +99,15 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - Filter collapse must synchronously relayout/reposition the floating boundary controls; Reset filters should match the neighboring Workspace control height.
 - Candidate organization needs a denser content-width flow layout, category-aware card drops, whole-category whitespace drag handles with boundary-line feedback, reliable multi-card drag preservation, and hover autoscroll during drag.
 - DP-08.3 remains blocked until this correction is green and passes another real-card click review.
+
+
+### Deck Planner acceptance / Application Shell activation amendment — 2026-08-09
+
+- Human explicitly accepted the Deck Planner after the image cancellation race was confirmed fixed in real-card preview use.
+- Accepted repository baseline: clean `58d4ba1dc2bbbbb560b0f7ac91dcf4dcfa9307b0`, 294 tests passing.
+- DP-08 and the Deck Planner arc are closed.
+- Temporary targeted card-image diagnostics are removed after serving their purpose.
+- The new primary arc is `Application Shell & UI Consolidation Preparation`.
+- `AS-01` documents the current UI/window ownership and target shell/module boundary before production refactoring starts.
+- The intended next arc after Application Shell acceptance is `SA-MTGA-DEF-005` process-memory collection extraction research.
+- Ownership returns to the human for transition-patch application and validation before AS-02 implementation.

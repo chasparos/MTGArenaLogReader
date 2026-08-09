@@ -630,33 +630,6 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         return favorite == null ? catalogDefault : favorite;
     }
 
-    private static void traceCatalogPresentation(
-            IndexedCatalogCard indexed,
-            AlternateArtResolver.ArtSet art,
-            CardInfo presentation) {
-        String name = indexed.group().preferredPrinting().getName();
-        if (!isImageTraceCard(name)) return;
-        CardInfo catalog = indexed.group().preferredPrinting();
-        System.err.println("[CardImageTrace] workspace name=" + name
-                + " identity=" + indexed.group().identity()
-                + " catalogId=" + catalog.getId()
-                + " catalogSet=" + catalog.getSet()
-                + " catalogCollector=" + catalog.getCollectorNumber()
-                + " catalogUrls=" + catalog.previewImageUrls()
-                + " artState=" + (art == null ? "<none>" : ("complete=" + art.complete()
-                        + ", favorite=" + art.favoriteScryfallId().orElse("<none>")
-                        + ", printings=" + art.printings().size()))
-                + " selectedId=" + (presentation == null ? "<null>" : presentation.getId())
-                + " selectedSet=" + (presentation == null ? "<null>" : presentation.getSet())
-                + " selectedCollector=" + (presentation == null ? "<null>" : presentation.getCollectorNumber())
-                + " selectedUrls=" + (presentation == null ? List.of() : presentation.previewImageUrls()));
-    }
-
-    private static boolean isImageTraceCard(String name) {
-        return "Marketback Walker".equalsIgnoreCase(name)
-                || "Agent Maria Hill".equalsIgnoreCase(name);
-    }
-
     private static Collection<app.deckplanner.filter.SemanticTag> allTags(List<IndexedCatalogCard> cards) {
         return cards.stream().flatMap(card -> card.tags().stream()).collect(
                 java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
@@ -674,7 +647,6 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                     AlternateArtResolver.ArtSet art = alternateArtResolver == null
                             ? null : alternateArtResolver.resolveCached(card.group().identity());
                     CardInfo presentation = catalogPresentation(card, art);
-                    traceCatalogPresentation(card, art, presentation);
                     int count = art == null ? card.group().printings().size() : art.printings().size();
                     boolean known = art == null || art.complete();
                     return new CardBrowserPanel.BrowserCard(

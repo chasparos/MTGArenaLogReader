@@ -348,81 +348,21 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         BrowserCard card = cards.get(index);
         int faceIndex = visibleFaceByIdentity.getOrDefault(card.identity(), 0);
         String key = imageKey(card.identity(), faceIndex);
-        boolean trace = isImageTraceCard(card.name());
-        if (images.containsKey(key)) {
-            if (trace) {
-                BufferedImage cached = images.get(key);
-                System.err.println("[CardImageTrace] browser name=" + card.name()
-                        + " key=" + key + " decision=memory-hit"
-                        + " image=" + cached.getWidth() + "x" + cached.getHeight());
-            }
-            return;
-        }
-        if (pending.containsKey(key)) {
-            if (trace) {
-                System.err.println("[CardImageTrace] browser name=" + card.name()
-                        + " key=" + key + " decision=request-already-pending");
-            }
-            return;
-        }
-        if (trace) {
-            CardInfo info = card.card();
-            System.err.println("[CardImageTrace] browser name=" + card.name()
-                    + " identity=" + card.identity()
-                    + " key=" + key
-                    + " decision=request-image"
-                    + " cardId=" + (info == null ? "<null>" : info.getId())
-                    + " arenaId=" + (info == null ? "<null>" : info.getArenaId())
-                    + " set=" + (info == null ? "<null>" : info.getSet())
-                    + " collector=" + (info == null ? "<null>" : info.getCollectorNumber())
-                    + " urls=" + (info == null ? java.util.List.of() : info.previewImageUrls()));
-        }
+        if (images.containsKey(key) || pending.containsKey(key)) return;
         CompletableFuture<Optional<BufferedImage>> future = imageSource.requestFace(card, faceIndex);
         pending.put(key, future);
         future.whenComplete((image, error) -> SwingUtilities.invokeLater(() -> {
-            if (requestGeneration != generation) {
-                if (trace) {
-                    System.err.println("[CardImageTrace] browser name=" + card.name()
-                            + " key=" + key + " result=ignored reason=generation-changed"
-                            + " requestedGeneration=" + requestGeneration
-                            + " currentGeneration=" + generation);
-                }
-                return;
-            }
+            if (requestGeneration != generation) return;
             pending.remove(key);
-            if (!requestedIdentities.contains(card.identity())) {
-                if (trace) {
-                    System.err.println("[CardImageTrace] browser name=" + card.name()
-                            + " key=" + key + " result=ignored reason=outside-request-window");
-                }
-                return;
-            }
+            if (!requestedIdentities.contains(card.identity())) return;
             if (error == null && image != null && image.isPresent()) {
                 images.put(key, image.get());
-                if (trace) {
-                    BufferedImage loaded = image.get();
-                    System.err.println("[CardImageTrace] browser name=" + card.name()
-                            + " key=" + key + " result=image-ready image="
-                            + loaded.getWidth() + "x" + loaded.getHeight());
-                }
                 int currentIndex = indexOfIdentity(card.identity());
                 if (currentIndex >= 0 && currentIndex < layoutResult.bounds().size()) {
                     repaint(layoutResult.bounds().get(currentIndex));
                 }
-            } else if (trace) {
-                System.err.println("[CardImageTrace] browser FALLBACK name=" + card.name()
-                        + " key=" + key
-                        + " reason=" + (error != null ? ("request-error " + error)
-                        : image == null ? "request-result-null"
-                        : "request-result-empty")
-                        + " => shadow-card");
             }
         }));
-    }
-
-    private static boolean isImageTraceCard(String name) {
-        return "Marketback Walker".equalsIgnoreCase(name)
-                || "Agent Maria Hill".equalsIgnoreCase(name);
     }
 
     private static String imageKey(String identity, int faceIndex) {

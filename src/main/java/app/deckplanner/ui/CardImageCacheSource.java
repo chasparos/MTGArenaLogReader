@@ -28,7 +28,20 @@ public final class CardImageCacheSource implements CardBrowserPanel.ImageSource 
 
     @Override
     public CompletableFuture<Optional<BufferedImage>> request(CardBrowserPanel.BrowserCard card) {
-        return requestFace(card, 0);
+        if (card == null) return CompletableFuture.completedFuture(Optional.empty());
+        Optional<CardInfo> resolved;
+        try {
+            resolved = card.card() != null
+                    ? Optional.of(card.card())
+                    : cardResolver.apply(card.identity());
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
+        }
+        if (resolved == null || resolved.isEmpty()) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        CompletableFuture<Optional<BufferedImage>> future = loader.apply(resolved.get(), 0);
+        return future == null ? CompletableFuture.completedFuture(Optional.empty()) : future;
     }
     @Override
     public CompletableFuture<Optional<BufferedImage>> requestFace(
@@ -36,72 +49,18 @@ public final class CardImageCacheSource implements CardBrowserPanel.ImageSource 
         if (card == null || faceIndex < 0) {
             return CompletableFuture.completedFuture(Optional.empty());
         }
-        boolean trace = isImageTraceCard(card.name());
         Optional<CardInfo> resolved;
-        String resolutionSource;
         try {
-            if (card.card() != null) {
-                resolved = Optional.of(card.card());
-                resolutionSource = "BrowserCard.card";
-            } else {
-                resolved = cardResolver.apply(card.identity());
-                resolutionSource = "identity-resolver";
-            }
+            resolved = card.card() != null
+                    ? Optional.of(card.card())
+                    : cardResolver.apply(card.identity());
         } catch (RuntimeException error) {
-            if (trace) {
-                System.err.println("[CardImageTrace] source name=" + card.name()
-                        + " identity=" + card.identity()
-                        + " face=" + faceIndex
-                        + " resolution=ERROR " + error);
-            }
             return CompletableFuture.failedFuture(error);
         }
-        if (trace) {
-            CardInfo info = resolved == null ? null : resolved.orElse(null);
-            System.err.println("[CardImageTrace] source name=" + card.name()
-                    + " identity=" + card.identity()
-                    + " face=" + faceIndex
-                    + " resolution=" + resolutionSource
-                    + " resolved=" + (info != null)
-                    + " id=" + (info == null ? "<null>" : info.getId())
-                    + " arenaId=" + (info == null ? "<null>" : info.getArenaId())
-                    + " set=" + (info == null ? "<null>" : info.getSet())
-                    + " collector=" + (info == null ? "<null>" : info.getCollectorNumber())
-                    + " urls=" + (info == null ? java.util.List.of() : info.previewImageUrls()));
-        }
         if (resolved == null || resolved.isEmpty()) {
-            if (trace) {
-                System.err.println("[CardImageTrace] source FALLBACK name=" + card.name()
-                        + " reason=no resolved CardInfo");
-            }
             return CompletableFuture.completedFuture(Optional.empty());
         }
         CompletableFuture<Optional<BufferedImage>> future = loader.apply(resolved.get(), faceIndex);
-        if (future == null) {
-            if (trace) {
-                System.err.println("[CardImageTrace] source FALLBACK name=" + card.name()
-                        + " reason=image loader returned null future");
-            }
-            return CompletableFuture.completedFuture(Optional.empty());
-        }
-        if (!trace) return future;
-        return future.whenComplete((image, error) -> {
-            if (error != null) {
-                System.err.println("[CardImageTrace] source FALLBACK name=" + card.name()
-                        + " reason=image loader failed error=" + error);
-            } else if (image == null || image.isEmpty()) {
-                System.err.println("[CardImageTrace] source FALLBACK name=" + card.name()
-                        + " reason=image loader returned empty");
-            } else {
-                BufferedImage loaded = image.get();
-                System.err.println("[CardImageTrace] source SUCCESS name=" + card.name()
-                        + " image=" + loaded.getWidth() + "x" + loaded.getHeight());
-            }
-        });
-    }
-
-    private static boolean isImageTraceCard(String name) {
-        return "Marketback Walker".equalsIgnoreCase(name)
-                || "Agent Maria Hill".equalsIgnoreCase(name);
+        return future == null ? CompletableFuture.completedFuture(Optional.empty()) : future;
     }
 }

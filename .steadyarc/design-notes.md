@@ -91,3 +91,13 @@ Authoritative supplied card data and the human-authored note have different role
 
 Human acceptance for DP-07 remains click-driven through `DeckPlannerWorkspacePreview`. The human should review whether editing/saving/loading the note feels natural and whether the generated request accurately communicates the deck-design problem; deterministic encoding, escaping, schema completeness, and card-fact preservation belong to automated tests.
 
+## Application shell and later UI consolidation direction (2026-08-09)
+
+The production application should have one true top-level `app.ui.MainFrame` that selects and displays application modules. Replay is one module, not the application shell. Deck Planner should be wired into that shell using the same workspace and persistent services proven in its preview harness.
+
+Developer-only replay fixture actions and pasted-log experiments should move into a dedicated replay UI harness rather than occupying production navigation. Existing Deck Tracker, Draft Assistant, Coaching, and Replay visuals should be adapted incrementally; the shell arc is not permission for a big-bang visual redesign.
+
+A later UI-consolidation pass should use the shell integration experience to decide which frames should become embedded modules, which should remain secondary windows, and which visual/lifecycle primitives are truly shared. `docs/architecture/ui-consolidation-preparation.md` is the living preparation document for that future pass.
+
+After the Application Shell arc is accepted, the intended next Engineering Arc is the deferred MTG Arena process-memory collection extraction research recorded as `SA-MTGA-DEF-005`.
+
