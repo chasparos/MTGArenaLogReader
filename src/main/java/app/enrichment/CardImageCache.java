@@ -63,14 +63,28 @@ public final class CardImageCache {
             return CompletableFuture.completedFuture(Optional.empty());
         }
         String id = imageIndex == 0 ? rootId : rootId + "-face-" + imageIndex;
+        boolean trace = isImageTraceCard(card.getName());
+        if (trace) {
+            System.err.println("[CardImageTrace] cache name=" + card.getName()
+                    + " imageIndex=" + imageIndex
+                    + " rootId=" + rootId
+                    + " key=" + id
+                    + " urlCount=" + urls.size()
+                    + " selectedUrl=" + (url == null ? "<none>" : url)
+                    + " memoryPresent=" + memory.containsKey(id));
+        }
 
         CompletableFuture<Optional<BufferedImage>> existing = memory.get(id);
         if (existing != null) {
             memoryHits.incrementAndGet();
+            if (trace) {
+                System.err.println("[CardImageTrace] cache name=" + card.getName()
+                        + " key=" + id + " decision=memory-hit");
+            }
             return existing;
         }
         CompletableFuture<Optional<BufferedImage>> created =
-                CompletableFuture.supplyAsync(() -> load(id, url));
+                CompletableFuture.supplyAsync(() -> load(id, url, card.getName()));
         CompletableFuture<Optional<BufferedImage>> raced = memory.putIfAbsent(id, created);
         CompletableFuture<Optional<BufferedImage>> result = raced == null ? created : raced;
         if (raced != null) memoryHits.incrementAndGet();
@@ -80,16 +94,28 @@ public final class CardImageCache {
         });
     }
 
-    private Optional<BufferedImage> load(String id, String url) {
+    private Optional<BufferedImage> load(String id, String url, String cardName) {
+        boolean trace = isImageTraceCard(cardName);
         try {
             Files.createDirectories(directory);
             Path file = directory.resolve(id.replaceAll("[^A-Za-z0-9._-]", "_") + ".jpg");
+            if (trace) {
+                System.err.println("[CardImageTrace] cache name=" + cardName
+                        + " key=" + id
+                        + " file=" + file.toAbsolutePath()
+                        + " diskExists=" + Files.exists(file)
+                        + " selectedUrl=" + (url == null ? "<none>" : url));
+            }
 
             if (Files.exists(file)) {
                 BufferedImage cached = ImageIO.read(file.toFile());
                 if (cached != null) {
                     diskHits.incrementAndGet();
                     System.out.println(PREFIX + "disk hit: " + file.getFileName());
+                    if (trace) {
+                        System.err.println("[CardImageTrace] cache SUCCESS name=" + cardName
+                                + " decision=disk-hit image=" + cached.getWidth() + "x" + cached.getHeight());
+                    }
                     return Optional.of(cached);
                 }
                 System.out.println(PREFIX + "deleting undecodable cache file: " + file);
@@ -98,6 +124,10 @@ public final class CardImageCache {
 
             if (url == null || url.isBlank()) {
                 System.out.println(PREFIX + "no URL and no cached image: id=" + id);
+                if (trace) {
+                    System.err.println("[CardImageTrace] cache FALLBACK name=" + cardName
+                            + " key=" + id + " reason=no-disk-image-and-no-selected-url");
+                }
                 return Optional.empty();
             }
 
@@ -113,16 +143,30 @@ public final class CardImageCache {
                     + " bytes=" + bytes + " url=" + response.uri());
 
             if (response.statusCode() / 100 != 2 || response.body() == null || response.body().length == 0) {
+                if (trace) {
+                    System.err.println("[CardImageTrace] cache FALLBACK name=" + cardName
+                            + " key=" + id + " reason=http-status-" + response.statusCode()
+                            + " bytes=" + bytes);
+                }
                 return Optional.empty();
             }
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(response.body()));
             if (image == null) {
                 System.out.println(PREFIX + "ImageIO could not decode response for " + id);
+                if (trace) {
+                    System.err.println("[CardImageTrace] cache FALLBACK name=" + cardName
+                            + " key=" + id + " reason=network-image-decode-failed");
+                }
                 return Optional.empty();
             }
             Files.write(file, response.body());
             System.out.println(PREFIX + "cached " + image.getWidth() + "x" + image.getHeight()
                     + " at " + file.toAbsolutePath());
+            if (trace) {
+                System.err.println("[CardImageTrace] cache SUCCESS name=" + cardName
+                        + " decision=network image=" + image.getWidth() + "x" + image.getHeight()
+                        + " cachedFile=" + file.toAbsolutePath());
+            }
             return Optional.of(image);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
@@ -134,6 +178,11 @@ public final class CardImageCache {
             return Optional.empty();
         }
     }
+    private static boolean isImageTraceCard(String name) {
+        return "Marketback Walker".equalsIgnoreCase(name)
+                || "Agent Maria Hill".equalsIgnoreCase(name);
+    }
+
     public Stats stats() {
         return new Stats(memoryHits.get(), diskHits.get(), networkRequests.get(), memory.size());
     }
