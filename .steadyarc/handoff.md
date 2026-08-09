@@ -16,7 +16,7 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - **Active roadmap item:** `DP-08 — Integration, performance, and release evidence`.
 - **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click testing during DP-08, focusing on lifecycle, responsiveness, loading/offline/error behavior, and end-to-end flow rather than re-testing deterministic exporter mechanics already covered automatically.
 - **Deferred future mission:** `SA-MTGA-DEF-005` records the human-supplied MTGA process-memory collection-import research. It remains outside DP-08 unless explicitly activated.
-- **Safe next action:** Implement the first bounded DP-08 integration/evidence slice from the current roadmap, preserving the clean 278-test baseline.
+- **Safe next action:** Apply and validate the bounded `DP-08.1` integration/lifecycle fixture patch. Expected discovery change is +1 test (278 → 279). If green, continue to DP-08.2 performance evidence.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
 
 ### DP-06 interaction-polish amendment — 2026-08-08
@@ -72,3 +72,11 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - `DeckPlannerWorkspacePreview` remains the human click-test surface for DP-08 integration and release-evidence work.
 - The human supplied a possible future MTGA collection-import route based on process-memory scanning; it is recorded as deferred issue `SA-MTGA-DEF-005` and does not expand DP-08.
 - Ownership remains with the human until the next bounded DP-08 implementation delegation.
+
+
+### DP-08.1 integration/lifecycle amendment — 2026-08-09
+
+- Scope is evidence, not new planner functionality: exercise the production preview catalog path through startup, filter refinement, Candidate import, deterministic AI export, and shutdown.
+- `DeckPlannerWorkspacePreview` human review is retargeted from DP-07 prompt quality to DP-08 startup/lifecycle, offline/degraded states, end-to-end workflow continuity, and clean shutdown/relaunch.
+- Expected test discovery change: +1 integration fixture (278 → 279).
+- Ownership returns to the human for repository-side validation and click review after this patch.

@@ -248,21 +248,21 @@ public final class DeckPlannerWorkspacePreview {
 
     static JPanel acceptanceChecklist() {
         String[] steps = {
-                "Candidate Set intent: does the saved note still feel like the right place to explain the deck idea and why cards are grouped as they are?",
-                "AI request review: does AI export clearly separate authoritative card facts, your design note, and the strategic-analysis instructions?",
-                "Analysis usefulness: does the generated brief ask for the kinds of directions you actually want explored (archetypes, packages, interaction, engines, curve/mana, weaknesses, win conditions, removals and missing roles)?",
-                "Workflow fit: does Edit note → Save/Load Candidate Set → AI export feel like one coherent planning workflow rather than an export form bolted onto the side?"
+                "Startup/lifecycle: does the workspace become usable promptly from the persistent catalog and remain responsive while background refresh or images continue?",
+                "Offline/degraded states: do Ready, Partial cache, and Offline cache communicate what is happening without blocking normal cached-card planning?",
+                "End-to-end flow: does filter/refine → Candidates → note/set workflow → AI export still feel coherent after the integration work?",
+                "Shutdown/relaunch: after closing and reopening the preview, does persisted planning state return cleanly without stale dialogs, hung work, or duplicated background activity?"
         };
 
         Color background = AppColors.color("Panel.background", new Color(0x202328));
         Color foreground = AppColors.color("Label.foreground", Color.WHITE);
         JPanel checklist = new JPanel();
-        checklist.setName("dp07-review-checklist");
+        checklist.setName("dp08-review-checklist");
         checklist.setLayout(new BoxLayout(checklist, BoxLayout.Y_AXIS));
         checklist.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         checklist.setBackground(background);
 
-        JLabel title = new JLabel("DP-07 HUMAN DESIGN REVIEW — NOTE + AI REQUEST");
+        JLabel title = new JLabel("DP-08 HUMAN INTEGRATION REVIEW");
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         title.setForeground(foreground);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -270,7 +270,7 @@ public final class DeckPlannerWorkspacePreview {
         checklist.add(Box.createVerticalStrut(4));
 
         JLabel status = new JLabel();
-        status.setName("dp07-review-status");
+        status.setName("dp08-review-status");
         status.setForeground(foreground);
         status.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -278,17 +278,17 @@ public final class DeckPlannerWorkspacePreview {
         Runnable updateStatus = () -> {
             long checked = boxes.stream().filter(AbstractButton::isSelected).count();
             if (checked == steps.length) {
-                status.setText("Acceptance status: " + checked + "/" + steps.length
-                        + " checked — report AI-request workflow feedback; DP-07 remains active.");
+                status.setText("Integration review: " + checked + "/" + steps.length
+                        + " checked — report lifecycle/performance observations; DP-08 remains active.");
             } else {
-                status.setText("Acceptance status: " + checked + "/" + steps.length
-                        + " checked — DP-07 remains active.");
+                status.setText("Integration review: " + checked + "/" + steps.length
+                        + " checked — DP-08 remains active.");
             }
         };
 
         for (int index = 0; index < steps.length; index++) {
             JCheckBox box = new JCheckBox((index + 1) + ". " + steps[index]);
-            box.setName("dp07-review-step-" + (index + 1));
+            box.setName("dp08-review-step-" + (index + 1));
             box.setOpaque(false);
             box.setForeground(foreground);
             box.setAlignmentX(Component.LEFT_ALIGNMENT);

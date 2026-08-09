@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -121,21 +122,116 @@ class DeckPlannerWorkspacePreviewTest {
     }
 
     @Test
+    void dp08IntegrationFixtureCoversCatalogFilterCandidatesExportAndShutdown() throws Exception {
+        List<CardInfo> sourceCards = cards(0, 8);
+        CardCatalogSource source = new CardCatalogSource() {
+            @Override public CardCatalogPage firstPage(String normalizedFormat) {
+                assertEquals("standard", normalizedFormat);
+                return new CardCatalogPage(sourceCards, null);
+            }
+
+            @Override public CardCatalogPage nextPage(String cursor) {
+                fail("single-page integration fixture must not request another page");
+                return new CardCatalogPage(List.of(), null);
+            }
+        };
+
+        DeckPlannerStandardPreviewCatalog.LoadResult loaded =
+                DeckPlannerStandardPreviewCatalog.load(
+                        tempDir.resolve("dp08-catalog"), source, ignored -> { }, 32);
+        assertTrue(loaded.snapshot().isPresent());
+
+        AtomicReference<DeckPlannerWorkspacePreview.PreviewSession> session = new AtomicReference<>();
+        SwingUtilities.invokeAndWait(() -> {
+            DeckPlannerWorkspacePreview.PreviewSession created =
+                    DeckPlannerWorkspacePreview.createSession(
+                            tempDir.resolve("dp08-session"),
+                            loaded.snapshot().orElseThrow(),
+                            loaded.availability(),
+                            ignored -> CompletableFuture.completedFuture(Optional.empty()));
+            session.set(created);
+            created.workspace().start();
+        });
+
+        try {
+            DeckPlannerWorkspace workspace = session.get().workspace();
+            await(() -> onEdt(() -> workspace.browser().cards().size() == 8));
+
+            AbstractButton blue = findButton(session.get().content(), "Blue");
+            assertNotNull(blue);
+            SwingUtilities.invokeAndWait(blue::doClick);
+            await(() -> onEdt(() -> workspace.browser().cards().size() == 4));
+
+            AtomicReference<DeckListImporter.Result> imported = new AtomicReference<>();
+            SwingUtilities.invokeAndWait(() -> imported.set(
+                    workspace.importDeckText(DeckPlannerWorkspacePreview.sampleArenaDeck(
+                            loaded.snapshot().orElseThrow()))));
+            assertEquals(4, imported.get().resolvedCards());
+
+            AtomicReference<String> firstExport = new AtomicReference<>();
+            AtomicReference<String> secondExport = new AtomicReference<>();
+            SwingUtilities.invokeAndWait(() -> {
+                firstExport.set(workspace.buildAiRequest());
+                secondExport.set(workspace.buildAiRequest());
+            });
+            assertEquals(firstExport.get(), secondExport.get(),
+                    "integration export must remain deterministic");
+            assertTrue(firstExport.get().contains("MTGA_DECK_BUILD_REQUEST_V1"));
+            assertTrue(firstExport.get().contains("FORMAT \"standard\""));
+        } finally {
+            SwingUtilities.invokeAndWait(session.get()::close);
+        }
+
+        assertTrue(session.get().scheduler().isShutdown());
+        assertTrue(session.get().worker().isShutdown());
+        assertTrue(session.get().scheduler().awaitTermination(1, TimeUnit.SECONDS));
+        assertTrue(session.get().worker().awaitTermination(1, TimeUnit.SECONDS));
+    }
+
+    @Test
     void acceptanceChecklistRequiresExplicitHumanCompletion() throws Exception {
         AtomicReference<JPanel> checklist = new AtomicReference<>();
         SwingUtilities.invokeAndWait(() -> checklist.set(DeckPlannerWorkspacePreview.acceptanceChecklist()));
 
         List<JCheckBox> steps = findAll(checklist.get(), JCheckBox.class);
-        JLabel status = findNamed(checklist.get(), JLabel.class, "dp07-review-status");
+        JLabel status = findNamed(checklist.get(), JLabel.class, "dp08-review-status");
         assertEquals(4, steps.size());
         assertNotNull(status);
         assertTrue(status.getText().contains("0/4 checked"));
-        assertTrue(status.getText().contains("DP-07 remains active"));
+        assertTrue(status.getText().contains("DP-08 remains active"));
 
         SwingUtilities.invokeAndWait(() -> steps.forEach(AbstractButton::doClick));
         assertTrue(status.getText().contains("4/4 checked"));
-        assertTrue(status.getText().contains("AI-request workflow feedback"));
-        assertTrue(status.getText().contains("DP-07 remains active"));
+        assertTrue(status.getText().contains("lifecycle/performance observations"));
+        assertTrue(status.getText().contains("DP-08 remains active"));
+    }
+
+    private static void await(java.util.function.BooleanSupplier condition) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) return;
+            Thread.sleep(20);
+        }
+        fail("condition did not become true before timeout");
+    }
+
+    private static <T> T onEdt(java.util.concurrent.Callable<T> action) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            try { return action.call(); }
+            catch (Exception error) { throw new RuntimeException(error); }
+        }
+        AtomicReference<T> value = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                try { value.set(action.call()); }
+                catch (Throwable error) { failure.set(error); }
+            });
+        } catch (Exception error) {
+            throw new RuntimeException(error);
+        }
+        if (failure.get() != null) throw new RuntimeException(failure.get());
+        return value.get();
     }
 
     private static FormatCatalogRepository.Snapshot snapshot(int count) {

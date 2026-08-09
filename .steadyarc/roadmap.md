@@ -255,11 +255,16 @@ Acceptance evidence:
 - Performance evidence records EDT responsiveness, time to first usable catalog view, scroll behavior with a full target-format catalog, image-cache hit behavior, and bounded memory/cache growth.
 - Human visual validation covers normal interaction and the required loading/offline/error states.
 
+
+DP-08 evidence sequence:
+
+- **DP-08.1 Integration/lifecycle fixture — implemented; validation pending.** Exercise the production preview catalog path through UI startup, filter refinement, Candidate import, deterministic AI export, and explicit background-service shutdown. Retarget the preview checklist to lifecycle/offline/end-to-end review.
+- **DP-08.2 Performance evidence — planned.** Record EDT responsiveness, time to first usable catalog, full-catalog scrolling behavior, image-cache hit behavior, and bounded cache/memory observations without turning measurements into speculative optimization work.
+- **DP-08.3 Release/evaluation evidence — planned.** Run the full supported validation scope, preserve release-candidate evidence, and require final human click acceptance across normal/loading/offline/error lifecycle states.
+
 ### Active item
 
-`DP-08 — Integration, performance, and release evidence` is active. DP-07 was explicitly accepted by the human on 2026-08-08 after a clean 278-test baseline at `14c490a691d43bda6b6b2f005c4f996e5d738a20` and successful real use of the generated AI deck-design brief.
-
-Begin DP-08 with integration and lifecycle evidence using the existing `DeckPlannerWorkspacePreview` as the human click-test surface. Keep the newly deferred MTGA memory-scanning collection-import research outside DP-08 implementation unless the human explicitly opens that future mission.
+`DP-08.1 — Integration/lifecycle fixture` is the active bounded slice. It adds automated end-to-end evidence for catalog acquisition → workspace startup → filtering → Candidates → deterministic AI export → shutdown, and retargets `DeckPlannerWorkspacePreview` to human lifecycle/offline/end-to-end review. DP-08 remains active after this slice; performance evidence follows only after repository-side validation is green.
 
 
 ### Current planning decisions
