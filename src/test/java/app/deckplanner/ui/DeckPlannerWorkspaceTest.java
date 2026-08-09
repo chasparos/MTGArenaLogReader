@@ -296,6 +296,49 @@ class DeckPlannerWorkspaceTest {
         SwingUtilities.invokeAndWait(workspaceRef.get()::close);
     }
 
+    @Test void catalogDefaultPrintingWinsOverCachedMetadataWhenNoFavoriteExists() {
+        CardInfo catalog = card("catalog-art", "W", "Creature", "");
+        app.model.card.CardImageUris uris = new app.model.card.CardImageUris();
+        uris.setNormal("https://img.example/catalog.jpg");
+        catalog.setImageUris(uris);
+
+        CardInfo metadataOnly = card("cached-metadata", "W", "Creature", "");
+        metadataOnly.setId(catalog.getId());
+        metadataOnly.setOracleId(catalog.getOracleId());
+
+        app.deckplanner.catalog.FormatCatalogRepository.CardGroup group =
+                new app.deckplanner.catalog.FormatCatalogRepository.CardGroup(
+                        "oracle:" + catalog.getOracleId(), catalog, List.of(catalog));
+        IndexedCatalogCard indexed = new IndexedCatalogCard(
+                group, Set.of(CardColor.WHITE), Set.of(CardColor.WHITE),
+                Set.of(BaseCardType.CREATURE), 2.0, Set.of());
+        app.deckplanner.candidate.AlternateArtResolver.ArtSet art =
+                new app.deckplanner.candidate.AlternateArtResolver.ArtSet(
+                        group.identity(), true, List.of(metadataOnly), Optional.empty(), false);
+
+        assertSame(catalog, DeckPlannerWorkspace.catalogPresentation(indexed, art),
+                "without an explicit favorite the current catalog printing must own presentation");
+    }
+
+    @Test void explicitFavoriteMayOverrideCatalogDefaultPresentation() {
+        CardInfo catalog = card("catalog-art", "W", "Creature", "");
+        CardInfo favorite = card("favorite-art", "W", "Creature", "");
+        favorite.setOracleId(catalog.getOracleId());
+
+        app.deckplanner.catalog.FormatCatalogRepository.CardGroup group =
+                new app.deckplanner.catalog.FormatCatalogRepository.CardGroup(
+                        "oracle:" + catalog.getOracleId(), catalog, List.of(catalog));
+        IndexedCatalogCard indexed = new IndexedCatalogCard(
+                group, Set.of(CardColor.WHITE), Set.of(CardColor.WHITE),
+                Set.of(BaseCardType.CREATURE), 2.0, Set.of());
+        app.deckplanner.candidate.AlternateArtResolver.ArtSet art =
+                new app.deckplanner.candidate.AlternateArtResolver.ArtSet(
+                        group.identity(), true, List.of(favorite),
+                        Optional.of(favorite.getId()), true);
+
+        assertSame(favorite, DeckPlannerWorkspace.catalogPresentation(indexed, art));
+    }
+
     @Test void workspaceBoundaryControlsHideFiltersAndExpandCandidates() throws Exception {
         CatalogFilterIndex index = index(card("mill", "U", "Sorcery", "Mill two."));
         AtomicReference<DeckPlannerWorkspace> ref = new AtomicReference<>();

@@ -621,6 +621,15 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
         refreshProgress.setForeground(AppColors.color("App.accent", new Color(0xC69B52)));
     }
 
+    static CardInfo catalogPresentation(
+            IndexedCatalogCard card,
+            AlternateArtResolver.ArtSet art) {
+        CardInfo catalogDefault = card.group().preferredPrinting();
+        if (art == null || art.favoriteScryfallId().isEmpty()) return catalogDefault;
+        CardInfo favorite = art.preferred();
+        return favorite == null ? catalogDefault : favorite;
+    }
+
     private static Collection<app.deckplanner.filter.SemanticTag> allTags(List<IndexedCatalogCard> cards) {
         return cards.stream().flatMap(card -> card.tags().stream()).collect(
                 java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
@@ -637,8 +646,7 @@ public final class DeckPlannerWorkspace extends JPanel implements AutoCloseable 
                 .map(card -> {
                     AlternateArtResolver.ArtSet art = alternateArtResolver == null
                             ? null : alternateArtResolver.resolveCached(card.group().identity());
-                    CardInfo presentation = art == null || art.preferred() == null
-                            ? card.group().preferredPrinting() : art.preferred();
+                    CardInfo presentation = catalogPresentation(card, art);
                     int count = art == null ? card.group().printings().size() : art.printings().size();
                     boolean known = art == null || art.complete();
                     return new CardBrowserPanel.BrowserCard(
