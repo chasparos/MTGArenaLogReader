@@ -214,6 +214,25 @@ public final class CardBrowserPanel extends JComponent implements Scrollable {
         return Collections.unmodifiableSet(new LinkedHashSet<>(selectedIdentities));
     }
 
+    /** Lightweight DP-08 observability; call on the EDT. */
+    public int cachedImageCount() {
+        assertEdt();
+        return images.size();
+    }
+
+    /** Lightweight DP-08 observability; call on the EDT. */
+    public int pendingImageCount() {
+        assertEdt();
+        return pending.size();
+    }
+
+    /** Number of logical cards in the current viewport/prefetch request window. */
+    public int requestedImageIdentityCount() {
+        assertEdt();
+        return requestedIdentities.size();
+    }
+
+
     public List<BrowserCard> selectedCards() {
         return cards.stream().filter(card -> selectedIdentities.contains(card.identity())).toList();
     }

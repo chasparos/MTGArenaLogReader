@@ -258,13 +258,13 @@ Acceptance evidence:
 
 DP-08 evidence sequence:
 
-- **DP-08.1 Integration/lifecycle fixture — implemented; validation pending.** Exercise the production preview catalog path through UI startup, filter refinement, Candidate import, deterministic AI export, and explicit background-service shutdown. Retarget the preview checklist to lifecycle/offline/end-to-end review.
-- **DP-08.2 Performance evidence — planned.** Record EDT responsiveness, time to first usable catalog, full-catalog scrolling behavior, image-cache hit behavior, and bounded cache/memory observations without turning measurements into speculative optimization work.
+- **DP-08.1 Integration/lifecycle fixture — complete (2026-08-09).** Production preview-path integration passed on clean commit `438e2e4a5640721709697894ba3b5b26c350a132` with 279 tests: UI startup, filter refinement, Candidate import, deterministic AI export, and explicit background-service shutdown.
+- **DP-08.2 Performance evidence — implemented; validation pending.** Add lightweight image/browser cache observability and deterministic evidence fixtures that record cached time-to-first-usable catalog, an EDT heartbeat while background work is blocked, viewport-scoped image materialization/reuse across a 600-card catalog, persistent image-cache disk→memory reuse, and bounded cache cardinality without imposing brittle wall-clock thresholds.
 - **DP-08.3 Release/evaluation evidence — planned.** Run the full supported validation scope, preserve release-candidate evidence, and require final human click acceptance across normal/loading/offline/error lifecycle states.
 
 ### Active item
 
-`DP-08.1 — Integration/lifecycle fixture` is the active bounded slice. It adds automated end-to-end evidence for catalog acquisition → workspace startup → filtering → Candidates → deterministic AI export → shutdown, and retargets `DeckPlannerWorkspacePreview` to human lifecycle/offline/end-to-end review. DP-08 remains active after this slice; performance evidence follows only after repository-side validation is green.
+`DP-08.2 — Performance evidence` is the active bounded slice. DP-08.1 is complete on the clean 279-test `438e2e4a5640721709697894ba3b5b26c350a132` baseline. This slice records performance/cache observations and qualitative invariants without speculative optimization or brittle timing thresholds. DP-08 remains active; release/evaluation evidence follows only after repository-side validation is green.
 
 
 ### Current planning decisions

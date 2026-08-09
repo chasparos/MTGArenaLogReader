@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Asynchronous memory + disk cache for Scryfall preview images.
  * <p><strong>Architectural role:</strong> This type belongs to the optional enrichment boundary; external metadata may supplement but never replace Arena-observed truth.</p>
@@ -28,6 +29,12 @@ public final class CardImageCache {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
     private final ConcurrentMap<String, CompletableFuture<Optional<BufferedImage>>> memory = new ConcurrentHashMap<>();
+    private final AtomicLong memoryHits = new AtomicLong();
+    private final AtomicLong diskHits = new AtomicLong();
+    private final AtomicLong networkRequests = new AtomicLong();
+
+    /** Snapshot of cache behavior for DP-08 observability and diagnostics. */
+    public record Stats(long memoryHits, long diskHits, long networkRequests, int memoryEntries) { }
 
     public CardImageCache(Path directory) {
         this.directory = directory;
@@ -57,11 +64,20 @@ public final class CardImageCache {
                 : Integer.toHexString(url.hashCode());
         String id = imageIndex == 0 ? rootId : rootId + "-face-" + imageIndex;
 
-        return memory.computeIfAbsent(id, ignored -> CompletableFuture.supplyAsync(() -> load(id, url)))
-                .whenComplete((image, error) -> {
-                    // A transient network/decode failure should be retryable on the next hover.
-                    if (error != null || image == null || image.isEmpty()) memory.remove(id);
-                });
+        CompletableFuture<Optional<BufferedImage>> existing = memory.get(id);
+        if (existing != null) {
+            memoryHits.incrementAndGet();
+            return existing;
+        }
+        CompletableFuture<Optional<BufferedImage>> created =
+                CompletableFuture.supplyAsync(() -> load(id, url));
+        CompletableFuture<Optional<BufferedImage>> raced = memory.putIfAbsent(id, created);
+        CompletableFuture<Optional<BufferedImage>> result = raced == null ? created : raced;
+        if (raced != null) memoryHits.incrementAndGet();
+        return result.whenComplete((image, error) -> {
+            // A transient network/decode failure should be retryable on the next hover.
+            if (error != null || image == null || image.isEmpty()) memory.remove(id, result);
+        });
     }
 
     private Optional<BufferedImage> load(String id, String url) {
@@ -72,6 +88,7 @@ public final class CardImageCache {
             if (Files.exists(file)) {
                 BufferedImage cached = ImageIO.read(file.toFile());
                 if (cached != null) {
+                    diskHits.incrementAndGet();
                     System.out.println(PREFIX + "disk hit: " + file.getFileName());
                     return Optional.of(cached);
                 }
@@ -83,6 +100,7 @@ public final class CardImageCache {
                     .header("User-Agent", "ArenaLogViewer/0.2 (personal desktop application)")
                     .header("Accept", "image/jpeg,image/png,*/*")
                     .GET().build();
+            networkRequests.incrementAndGet();
             HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
             String contentType = response.headers().firstValue("Content-Type").orElse("<missing>");
             int bytes = response.body() == null ? 0 : response.body().length;
@@ -111,4 +129,8 @@ public final class CardImageCache {
             return Optional.empty();
         }
     }
+    public Stats stats() {
+        return new Stats(memoryHits.get(), diskHits.get(), networkRequests.get(), memory.size());
+    }
+
 }

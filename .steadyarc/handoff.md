@@ -9,14 +9,14 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 ## Current ownership
 
 - **Owner:** Human repository owner.
-- **Repository baseline inspected:** `14c490a691d43bda6b6b2f005c4f996e5d738a20` on `main`.
-- **Transferred validation:** `.\mvnw.cmd test` passed 278 tests with zero failures/errors/skips on a clean tree.
+- **Repository baseline inspected:** `438e2e4a5640721709697894ba3b5b26c350a132` on `main`.
+- **Transferred validation:** `.\mvnw.cmd test` passed 279 tests with zero failures/errors/skips on a clean tree.
 - **Current arc:** Deck Planner.
 - **Completed roadmap item:** `DP-07 — Authoritative AI deck-building protocol`; explicitly accepted by the human after successful real use of the generated export in a deck-design conversation.
 - **Active roadmap item:** `DP-08 — Integration, performance, and release evidence`.
 - **Human acceptance surface:** Continue using `DeckPlannerWorkspacePreview` for click testing during DP-08, focusing on lifecycle, responsiveness, loading/offline/error behavior, and end-to-end flow rather than re-testing deterministic exporter mechanics already covered automatically.
 - **Deferred future mission:** `SA-MTGA-DEF-005` records the human-supplied MTGA process-memory collection-import research. It remains outside DP-08 unless explicitly activated.
-- **Safe next action:** Apply and validate the bounded `DP-08.1` integration/lifecycle fixture patch. Expected discovery change is +1 test (278 → 279). If green, continue to DP-08.2 performance evidence.
+- **Safe next action:** Apply and validate the bounded `DP-08.2` performance-evidence patch. Expected discovery change is +2 tests (279 → 281). If green, continue to DP-08.3 release/evaluation evidence.
 - **Managed-tool update:** Still blocked on delivery of the verified `steady-arc-knowledge-<version>.zip` release archive. Do not reconstruct or replace managed artifacts from knowledge prose.
 
 ### DP-06 interaction-polish amendment — 2026-08-08
@@ -80,3 +80,11 @@ The pre–Steady Arc 1.0 Deck Planner record `SA-MTGA-DECK-PLANNER-005` remains 
 - `DeckPlannerWorkspacePreview` human review is retargeted from DP-07 prompt quality to DP-08 startup/lifecycle, offline/degraded states, end-to-end workflow continuity, and clean shutdown/relaunch.
 - Expected test discovery change: +1 integration fixture (278 → 279).
 - Ownership returns to the human for repository-side validation and click review after this patch.
+
+
+### DP-08.2 performance-evidence amendment — 2026-08-09
+
+- DP-08.1 is complete on clean commit `438e2e4a5640721709697894ba3b5b26c350a132` with 279 tests passing.
+- DP-08.2 adds observability only where evidence was previously unavailable: persistent image-cache hit/network counters and browser image-window/cache cardinality.
+- Evidence fixtures intentionally avoid hard wall-clock acceptance thresholds. They record elapsed values while asserting qualitative contracts: cached startup is usable without refresh, EDT remains serviceable while background work waits, viewport materialization does not request the full catalog, revisiting a viewport reuses images, scrolling grows cache only with distinct requested cards, and persistent image cache transitions disk→memory without network.
+- No optimization or product behavior change is authorized by this slice unless the measurements expose a concrete defect.
