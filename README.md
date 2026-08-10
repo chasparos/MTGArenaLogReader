@@ -1,268 +1,92 @@
 # MTGArenaLogReader
 
-Java 21/Swing desktop application that tails MTG Arena's `Player.log`, reconstructs
-games and matches, enriches cards with Scryfall metadata, and provides replay, deck
-tracking, draft assistance, export, and manual coaching tools.
+MTGArenaLogReader is a Java desktop application for MTG Arena players. It tails
+Arena's `Player.log` file, reconstructs your matches and games in real time, and
+enriches the observed cards with Scryfall metadata. It is not a bot, macro tool,
+or automation aid — it only reads the log file Arena already writes and presents
+that information back to you.
 
-The maintained architectural overview is
-[`docs/architecture/current-state.md`](docs/architecture/current-state.md).
+## What it does
 
-## Workflow continuity
+- **Live game replay** — reconstructs each game turn-by-turn (plays, casts,
+  triggers, combat, zone changes, life/poison totals) from Arena's own log
+  messages, with hover previews of card art and rules text.
+- **Match and session tracking** — groups games into matches and sessions as
+  Arena reports them, and supports rescanning a log file from the start.
+- **Deck tracker** — correlates your selected Arena deck to the current match and
+  shows remaining library/graveyard/exile contents and draw odds live.
+- **Draft assistant** — surfaces draft-related information and export options
+  while drafting.
+- **Deck planner** — a cache-backed workspace for browsing and analyzing your
+  card pool and decks.
+- **Manual coaching tools** — lets a reviewer annotate a replay for post-game
+  study.
+- **Export** — copies a selected game as compact plain text for sharing.
 
-This repository now includes Steady Arc project-memory files under `.steadyarc/`
-for ownership handoff, roadmap continuity, durable engineering notes, and deferred
-issues. Agent entry instructions are in `AGENTS.md`.
+Card data (images, rules text, legalities, etc.) is fetched from the
+[Scryfall](https://scryfall.com/) API and cached locally so repeat lookups don't
+require network access.
 
-## Pipeline
+## Requirements
 
-```
-Player.log
-  -> LogTailReader
-  -> BlockingQueue<RawLogEntry>
-  -> LogMessageReader
-  -> BlockingQueue<LogMessageInterface>
-  -> InformationCollector
-       -> immediately: BlockingQueue<LogMessageInterface> for consumers
-       -> asynchronously: CompletableFuture<ModelObject> with card metadata
-  -> MainFrame
-       -> GameSessionsPanel / match and game reconstruction
-       -> DeckTracker
-       -> DraftTracker
-```
+- **Java 21** (JDK) to build and run the application.
+- **Apache Maven** (or the bundled `mvnw` / `mvnw.cmd` wrapper — no separate Maven
+  install required).
+- **Windows** is the primary supported platform. Some features (such as
+  Windows-DPAPI-backed secret storage) are Windows-specific; the core log-reading
+  and replay functionality is otherwise platform-independent Java/Swing.
+- **MTG Arena** installed and generating a `Player.log` file to read.
+- Outbound internet access to reach the Scryfall API for card metadata (cached
+  locally after first fetch).
 
-## Run
+### Tech stack
 
-```bash
-mvn compile exec:java
-```
+- Java 21, Swing for the desktop UI
+- Maven for build/dependency management
+- [Gson](https://github.com/google/gson) for JSON parsing
+- [Unirest](https://kong.github.io/unirest-java/) for HTTP calls to Scryfall
+- [H2](https://www.h2database.com/) embedded database for local card/deck/ownership caches
+- [JNA](https://github.com/java-native-access/jna) for native Windows integration
+- [JSVG](https://github.com/weisJ/jsvg) for SVG rendering
+- SLF4J for logging
+- JUnit 5 for tests
 
-By default the application starts at the current end of `Player.log`. The rescan
-action in the UI replays the current file from byte zero. To use another file:
+## Getting started
 
-```bash
-mvn compile exec:java -Dexec.args="C:\\path\\to\\Player.log"
-```
-
-## JSON framing
-
-Arena emits a mixture of one-line diagnostics and pretty-printed multi-line JSON. `LogRecordFramer`
-tracks object/array nesting while respecting quoted strings and only emits a JSON record after the
-root object or array closes. Filtering happens after framing, so isolated `{` lines are no longer
-forwarded as `RAW` messages.
-
-## Persistent REST cache
-
-Scryfall responses, including 404/negative results, are stored in an embedded H2 database at:
-
-```text
-~/.arena-log-viewer/card-cache.mv.db
-```
-
-Lookup order is in-memory cache, H2 cache, then throttled Scryfall request. New REST results are
-written back to H2 immediately.
-
-## Game view
-
-The `Game` tab uses `app.replay.GameView`, a custom-painted `JPanel` backed by
-`app.model.GameModel`. Messages are held until their `Future<ModelObject>` is
-complete, then projected in original sequence order by `GameEventProjector`.
-Each event records the active turn, player, phase and step when Arena exposes
-that information. The view uses `paintComponent` rather than one Swing child
-component per event.
-
-## Historical feature notes
-
-The sections below record major feature increments. For current subsystem ownership
-and runtime flow, use the
-[architecture overview](docs/architecture/current-state.md).
-
-## v4 game projection changes
-
-- The application can replay an existing Player.log from byte offset 0 via rescan.
-- H2 uses an embedded file connection without `AUTO_SERVER`.
-- Zone names are learned from each match's `zones` collection; numeric zone IDs are match-local.
-- The game projector maintains a `GameState` and compares successive object states.
-- Transient Limbo/Pending/Suppressed transitions are hidden.
-- Common transitions are rendered semantically, including land plays, casts, resolutions, draws, graveyard moves, exile, and recursion.
-- Phase changes remain event context and are no longer emitted as standalone rows.
-
-## Multiple-game session support
-
-Version 5 introduces `GameMessageRouter` and `GameSessionsPanel`.
-
-- The log is consumed once in chronological order.
-- `matchId` is learned from `matchGameRoomStateChangedEvent`.
-- `gameNumber` is learned from `gameStateMessage.gameInfo.gameNumber`.
-- Each `(matchId, gameNumber)` pair receives its own `GameModel`,
-  `GameEventProjector`, `GameView`, scroll pane, and tab.
-- Historical startup replay and live appended records use the same routing path.
-- The selected game can be copied as compact plain text with the
-  **Copy selected game** button.
-
-Historical rescan and live appended records use the same routing and reconstruction
-path.
-
-## Annotation-aware replay
-
-The replay projector now consumes Arena annotations for authoritative zone transfers,
-object-ID replacement, target selection, and ability classification. `UserActionTaken`
-action type 2 identifies activated abilities; `TriggeringObject` identifies triggered
-abilities. Unknown ability kinds are rendered conservatively rather than as spell casts.
-
-## Revision 7 additions
-
-- Captures the local player's visible kept opening hand and includes it in clipboard export.
-- Retains Scryfall card faces, rules text, characteristics, legalities, and image URIs.
-- Hover a replay event to see the first involved card's image and rules text. Images are cached under `~/.arena-log-viewer/images`.
-- Ability events retain `(sourceGrpId, abilityGrpId)` metadata.
-- Right-click an ability event to assign a persistent human name. Names are stored with Java Preferences and reused in future games.
-- Before asking for a manual name, conservative heuristics use a unique triggered/activated Oracle-text paragraph when one can be identified unambiguously.
-
-Opening-hand detection is intentionally conservative: it snapshots the largest visible hand before play begins. Arena does not reveal the opponent's hidden hand.
-
-
-## Revision 8: full Scryfall domain metadata
-
-- `CardInfo` now mirrors a broad replay-useful subset of the Scryfall Card object: identifiers,
-  images, faces, rules text, characteristics, color data, keywords, produced mana, legalities,
-  Arena-supported games, set/printing metadata, related parts/tokens, official links, and ranks.
-- `GameObjectState` retains its resolved `CardInfo`, so card metadata travels with objects and
-  events instead of being flattened to a name.
-- Multifaced cards use face-level Oracle text and images when top-level fields are absent.
-- Hover details include rules text, P/T, loyalty/defense, set, collector number, and rarity.
-- The H2 cache is schema-versioned. Entries written by older revisions (which contained only a
-  name and partial rules text) are automatically invalidated and fetched again from Scryfall.
-- Positive entries refresh after 90 days; negative results refresh after 7 days.
-
-The first run of revision 8 will therefore re-fetch old cached cards once. This specifically fixes
-`previewUrl=null` and `scryfallId=null` caused by revision 7 reading stale JSON from the existing H2
-cache. Deleting `~/.arena-log-viewer/card-cache.mv.db` is no longer necessary.
-
-
-## Revision 9
-
-- Best-effort token identification using the creating card's Scryfall `all_parts` token relationships and Arena characteristics (subtypes, colors, power/toughness).
-- Descriptive token fallback instead of raw `ArenaCard#...` labels.
-- Start-of-turn player snapshots with life totals, poison counters when Arena exposes them, and hand sizes from zone counts.
-- Related token card images and rules metadata are fetched from Scryfall for hover previews.
-
-
-## v10 — Combat reconstruction
-
-Combat declarations are reconstructed from Arena's canonical object state rather than rendered directly from GRE messages.
-
-The projector now records:
-
-- `attackState` and `attackInfo.targetId`
-- `blockState` and `blockInfo.attackerIds`
-- structured `CombatAttackAssignment` and `CombatBlockAssignment` payloads on `GameEvent`
-- human-readable attacker and blocker declaration events
-- idempotent declaration signatures to suppress repeated GRE snapshots
-
-Attackers are finalized when the game reaches declare blockers or a later combat step. Blockers are finalized when the game reaches combat damage or end combat. This first pass deliberately does not infer damage assignment, lethal damage, trample overflow, or which creature killed another.
-
-
-## v10 combat reconstruction adjustments
-
-- Combat declarations are derived only from the current battlefield representative of each logical object.
-- Historical Arena object-ID aliases no longer accumulate as duplicate attackers or blockers.
-- Attack and block declarations are labelled with their semantic declaration steps.
-- Target annotations fall back to `abilityGrpId` card identity when the affector object is absent, avoiding misleading `Seat <objectId>` text.
-
-
-## v10 combat reconstruction — land entry and UI refinements
-
-- Permanent entry events now include Arena's explicit tapped/untapped state when supplied.
-- Land-play events are ordered before that land's own enters-the-battlefield ability in the same Arena state message.
-- Combat phase/step labels are shortened for the fixed-width UI context column.
-- Target annotations treat `abilityGrpId` as an ability identifier and resolve its owning card instead of displaying it as an Arena card number.
-
-
-## Revision 11 — Deck tracker
-
-Revision 11 adds `app.decklist`, an H2-backed deck cache, best-effort correlation of the selected Arena deck to a newly started match, and a separate live Swing deck-tracker window. The window is shown only when a deck is known and the game is active. It displays the Arena-style quantity/name list, color-identity backgrounds, library/graveyard/exile totals, known copies remaining, and approximate next-draw percentages.
-
-
-## v12 game-state additions
-
-- Tracks player poison counters and emits poison-change events.
-- Stores all permanent counter types in canonical `GameObjectState`; the first UI iteration renders only Arena's total power/toughness.
-- Adds a passive `BoardStateMonitor` and multiline start-of-turn battlefield snapshots.
-- Reconstructs winner and likely result reason (damage, poison, empty library, concession, draw, or unknown/effect).
-
-
-## Tests
-
-The test suite uses JUnit 5.
+Build and run with the Maven wrapper:
 
 ```bash
-mvn test
+./mvnw compile exec:java
 ```
 
-`ArenaLogReplayHarness` replays finite fixtures through the production log framer,
-message parser, game router, event projector, and per-game models without starting
-Swing or making Scryfall requests. Regression fixtures belong in:
+On Windows:
 
-```text
-src/test/resources/logs/
+```powershell
+.\mvnw.cmd compile exec:java
 ```
 
-The planned `multigame.log` fixture should contain two best-of-three matches so routing,
-game-number transitions, match boundaries, and state isolation can be asserted together.
+By default the application starts at the current end of `Player.log`. Use the
+rescan action in the UI to replay the current file from byte zero, or point at a
+specific log file:
 
-
-### End-to-end regression fixture
-
-`src/test/resources/logs/multigame.log` contains two complete best-of-three matches
-(six games). `MultigameLogReplayTest` sends it through the production framer,
-message parser, game router, event projector, and per-game models while replacing
-network enrichment with deterministic empty bundles.
-
-The fixture has stable pseudonyms for player, user, and session identifiers. Keep the
-fixture immutable; add focused synthetic tests or a separate sanitized fixture for new
-edge cases.
-
-
-## Maintenance refactoring status
-
-The source tree now uses architectural packages for ingestion, routing, projection,
-enrichment, replay, export, snapshots, models, and deck tracking.
-
-The first behavioral extraction from `GameEventProjector` is
-`app.projection.OpeningHandTracker`. It owns opening-hand and mulligan correlation while
-the projector remains the orchestration boundary. Regression coverage includes the
-two-match `multigame.log` replay fixture and focused opening-hand tracker tests.
-
-
-- `AttachmentTracker` owns persistent attachment annotation bookkeeping and exposes stable logical-object relationships to battlefield snapshots.
-- `ObjectIdentityTracker` owns Arena instance-alias correlation, current-instance selection, and identity-aware object lookup.
-- `CounterProjector` owns permanent-counter identity, naming, and count mutation; annotation interpretation and player-counter events remain in `GameEventProjector`.
-- `TokenResolver` owns token related-card matching, ambiguity rejection, and deterministic fallback naming.
-- `CombatProjector` owns stable attacker/blocker declaration projection and duplicate suppression.
-
-
-### Maintenance refactoring status
-
-Phase 1 maintenance decomposition is complete. Zone-transition rule precedence is
-isolated in `ZoneTransitionClassifier`, while `ZoneEventProjector` formats already
-classified transitions. `GameEventProjector` remains the orchestration boundary for
-state mutation, card resolution, collaborator coordination, and immutable event creation.
-
-The multigame replay test now also verifies deterministic projected event text across
-repeated replays, protecting the completed extraction boundary before match-lifecycle
-work begins.
-
-
-## Manual coaching workbench
-
-The coaching window supports an explicit, API-free copy/paste workflow. Context can be selected at match, game, turn, or selected-turn scope, translated into the versioned `MTGA_COACH_REQUEST_V1` request, and copied to the clipboard. Imported replies are persisted unchanged.
-
-The coaching instructions are maintained as a resource template:
-
-```text
-src/main/resources/coach/protocols/coach_request.txt
+```bash
+./mvnw compile exec:java -Dexec.args="C:\\path\\to\\Player.log"
 ```
 
-It requires `${question}` and `${context}` properties. Scoped context is sliced from the canonical `MTGA_MATCH_V4` reconstruction so event, card, object, and turn references remain stable.
+Run the test suite with:
 
-In the conversation view, card tokens such as `[c3]` and `[c3#194]` are resolved from the reconstruction's card dictionary while retaining the original token for traceability. See [`docs/coaching/manual-coaching-protocol.md`](docs/coaching/manual-coaching-protocol.md) for protocol boundaries, context rules, and the planned treatment of Arena-observed offered actions.
+```bash
+./mvnw test
+```
+
+## More technical documentation
+
+This README intentionally stays focused on what the application is and what you
+need to run it. For architecture, subsystem details, and project history, see:
+
+- [`docs/`](docs) — architecture overview, subsystem guides, and coaching
+  protocol documentation. Start with
+  [`docs/architecture/current-state.md`](docs/architecture/current-state.md).
+- [`.steadyarc/`](.steadyarc) — the project's living memory: roadmap, ownership
+  handoffs, and durable engineering/design notes for anyone continuing
+  development on the repository.
