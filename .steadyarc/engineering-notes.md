@@ -1,32 +1,59 @@
 # Steady Arc Engineering Notes
 
+## Project-wide engineering conventions
+
+These patterns emerged independently across the Deck Planner, Application
+Shell, and Memory-Scan Collection Extraction arcs and are now treated as
+standing repository conventions rather than one-arc decisions:
+
+- **Harness-first development.** New interaction or protocol surfaces are
+  proven in a standalone `devtools` harness (fake data or a fake
+  scanner/provider first) before real production wiring or real external
+  access. Production integration follows only after a human click-review
+  approves the harness.
+- **Human click-review is the acceptance gate.** An item or arc closes only
+  after explicit human review of real interaction (and, for Arena-dependent
+  work, real-client evidence) — automated test counts alone do not close an
+  item. Acceptance can be revoked if later review finds the accepted
+  behavior misleading (see the Memory-Scan quantity-semantics correction).
+- **Atomic, fail-closed publication.** Any durable state derived from
+  external/uncertain input (catalog snapshots, candidate persistence, memory
+  scan ownership) is replaced as a whole only after validation succeeds;
+  partial, cancelled, ambiguous, or failed attempts must leave the previous
+  complete state untouched.
+- **Explicit unknown-vs-known-absent provenance.** Collection-shaped
+  quantities use a signed convention (`-1` unknown, `0` known-absent from a
+  complete observation, `n > 0` observed) rather than defaulting missing data
+  to zero. This convention originated in log-observed collection tracking
+  and was reused verbatim by the memory-scan module.
+- **EDT confinement.** Network, disk, decode, and scan work runs off the
+  Swing event thread; only state mutation and repaint/UI updates return to
+  the EDT. Long-running work exposes progress and cancellation rather than
+  blocking the UI.
+- **Narrow module boundaries via two-way ports.** Windows/JNA-, Arena-
+  version-, or implementation-specific detail (memory scanning, process
+  access, anchor/candidate models) stays behind a small, explicitly named
+  application-facing interface; the rest of the application must not import
+  the implementation types even transitively.
+- **Incremental adapters over big-bang rewrites.** Introducing shared
+  infrastructure (the application shell, a new module boundary) wires
+  existing functionality through adapters first; visual/structural
+  consolidation of existing modules is deferred to a separate, evidence-led
+  arc rather than bundled into the infrastructure change.
+
 ## Durable repository facts
 
 - MTGArenaLogReader is a Maven-based Java 21 desktop application using Swing, Gson, H2, Unirest, and JUnit 5.
 - The runtime entry point is `app.application.Application`.
 - Arena-observed log data is authoritative for gameplay and account state. Scryfall is optional enrichment and may supply card rules, legality, identifiers, and images, but may not overwrite Arena observations.
 - Existing architecture documentation in `README.md` and `docs/architecture/` remains authoritative for replay/game semantics.
-- The Memory-Scan Collection Extraction module exposes batch `CollectionOwnership.getCopiesOwned(ids)` plus the neutral `CollectionUpdate` session conversation. JNA, Windows handles, process/region models, scan heuristics, diagnostics, output evidence, provider persistence, and anchor terminology remain internal.
+- The Memory-Scan Collection Extraction module exposes batch `CollectionOwnership.getCopiesOwned(ids)` plus the neutral `CollectionUpdate` session conversation. JNA, Windows handles, process/region models, scan heuristics, diagnostics, output evidence, provider persistence, and anchor terminology remain internal. Memory-derived ownership uses a separate atomic H2 ID→copies table that must not reuse or join the log-observation collection schema.
 - The main application owns synchronization UI language and visuals. Protocol card options carry stable card/set/collector identity; the UI may resolve set icons and other presentation without making the provider depend on application catalogs or image services.
 - Provider-owned verified-card state is separate from ownership publication. Quantity-four cards are preferred for retries because ordinary Arena ownership is monotonic, but every stored card/quantity remains a hypothesis that must match current memory; no stored value bypasses consensus.
 - Cancellation is a publication barrier: the worker is interrupted and cancellation is checked after scanning and immediately before transaction entry. Only one terminal session event is emitted.
-- Memory-derived ownership uses a separate atomic H2 ID→copies table. It must not reuse or join the log-observation collection schema, and incomplete/failed scans must not replace the last complete table.
-- MSC-02 Win32 evidence: `VirtualQueryEx` requires a process handle with query rights and returns homogeneous virtual-memory regions; the implementation opens `MTGA.exe` with query/read rights and closes every acquired handle in `finally`. Region inventory deliberately performs no collection extraction and cannot publish ownership.
-- The approved `NthPhantom10/MTGA-collection-exporter` reference reports that collection discoverability may depend on visiting/scrolling Arena's Collection or Decks UI and that access permissions can fail. Preserve these as harness diagnostics/evidence questions, not timeless extraction assumptions.
-- Reference inspection for MSC-03 found little-endian unsigned `(arenaId, quantity)` pairs, anchor-pattern search, bounded windows around hits, candidate extraction at 8/12/16-byte strides, and scoring by known-ID ratio, exact anchors, anchor IDs, and block size. Our implementation must be independently structured, fixture-driven, bounded, and stricter about ambiguity; the reference is MIT-licensed research evidence.
-- MSC-03's pure extractor now enforces fail-closed size, known-ID, exact-anchor, duplicate-conflict, and distinct-map ambiguity gates. Candidate evidence must remain internal and harness-facing; this component has no authority to read process memory or publish the ownership table.
-- Native memory reads are exact and bounded to one previously inventoried committed-readable region, with an 8 MiB hard ceiling. A partial `ReadProcessMemory` result is failure, never a truncated candidate fixture.
-- Scanner confidence inputs are explicit evidence: a scanner-owned JSON catalog records its client/catalog identity and Arena-ID domain; the human confirms at least two owned ID/copy anchors. Configuration validation occurs before process acquisition and cannot consult application repositories.
-- Current Arena `0.1.13636.1303683` uses Unity Mono, not IL2CPP. Managed symbols support investigating `ClientPlayerInventory` / `_cardInventory` / `GetPlayerCards` and possible `Dictionary<int,int>`-like storage, while the observed/reference 8/12/16-byte pair layouts remain a separate projection/backing-storage hypothesis.
-- The authoritative scanner-known ID domain comes from Arena's own read-only `Raw_CardDatabase_*.mtga` SQLite `Cards.GrpId` values. The producer emits no names or application data, and atomically writes a versioned JSON document for the harness.
-- Real anchor discovery traverses only committed writable `MEM_PRIVATE` regions, searches every configured 8-byte little-endian anchor in one pass, and overlaps 1 MiB chunks by seven bytes. Hit evidence has no publication authority; candidate-window extraction remains a separate next step.
-- Anchor hits are clustered only within the same inventoried region, with an 8 MiB maximum candidate window. Candidate selection can report accepted evidence but the scanner deliberately returns an incomplete result until MSC-04 publication gates are designed and approved.
-- Multiple individually accepted windows require authoritative-domain consensus. Real evidence found unequal raw 3,337- and 3,322-entry maps; the scanner compares their known-ID projections and preserves raw differences as diagnostics rather than treating unknown boundary pairs as ownership.
-- Raw plausible pairs outside the current Arena-local `Cards.GrpId` domain are boundary/noise evidence, not ownership. Global consensus is evaluated on known-ID projections; raw and known-domain differences remain visible independently so normalization cannot conceal a real quantity conflict.
-- MSC-04 publication requires at least two independent accepted windows with identical non-empty known-domain maps. The scanner alone decides completeness; the service atomically replaces only complete results and leaves the previous table untouched for rejected, ambiguous, cancelled, exceptional, or invalid results.
-- Known-domain structural consensus is necessary but not sufficient for ownership publication. Quantity semantics were subsequently established by an evidence-only before/after pack-opening experiment: the baseline contained 3,322 positive entries; the new generation contained 3,325; exactly three pack cards were marked First; six quantities changed; and fifth-copy cards did not exceed four. Publication additionally requires exact user confirmations, quantities 1..4, and independently supported uniquely monotonic generation consensus.
+- A successful scan publishes atomically; incomplete/failed/ambiguous scans must not replace the last complete table. Structural (known-domain) consensus across independent scan windows is necessary but not sufficient for ownership semantics — publication additionally requires independently supported, uniquely monotonic generation consensus on quantities, because Arena ownership only increases between comparable scans.
 - The accepted production baseline is Arena client `2026.61.30.13636` / Unity player `0.1.13636.1303683`, catalog `Raw_CardDatabase_7bc4fb29468604399aa7f1c7afb07405.mtga` with 26,126 known IDs. Future drift procedure and recovery guidance live in `docs/guides/memory-collection-sync-maintenance.md`.
-- The Memory-Scan Collection Extraction arc closed with MSC-01 through MSC-06 complete, 338 automated tests green, and human approval of the production synchronization flow.
+- The Memory-Scan Collection Extraction arc closed with MSC-01 through MSC-06 complete, 338 automated tests green, and human approval of the production synchronization flow. The full research/implementation narrative (Win32 evidence, MIT reference research, candidate-extraction/consensus gates, anchor discovery) is preserved in `docs/architecture/memory-scan-collection-extraction.md`.
 
 ## Existing Deck Planner foundations
 
@@ -102,7 +129,7 @@
 - Image request selection is likewise a side-effect-free viewport contract. Visible cards are mandatory; only a small directional prefetch margin may be added. Network/disk/decode execution remains delegated to the asynchronous image cache.
 
 
-## 2026-08-06 â DP-04 Swing browser panel
+## 2026-08-06 — DP-04 Swing browser panel
 
 - `CardBrowserPanel` is EDT-confined for model mutation and Swing state changes.
 - Image sources return `CompletableFuture<Optional<BufferedImage>>`; completion is marshalled back to the EDT and repaints only the affected card bounds.
@@ -133,12 +160,6 @@
 - The responsive browser uses a reusable `CardView` Swing component rendered through `CellRendererPane`; it does not create one heavyweight child hierarchy per catalog entry.
 - `CardBrowserPanel` remains authoritative for responsive bounds, viewport materialization, hit testing, focus, selection, and repaint regions.
 - `CardView` receives immutable display state immediately before paint. Cached `BufferedImage` instances are drawn as inputs only; interaction overlays are painted afterward and never written into the cache image.
-
-
-## 2026-08-06 — DP-04 human review harness
-
-- `DeckPlannerCardBrowserPreview` is a standalone devtools surface, not production navigation. It exercises responsive resize, viewport scheduling, delayed image arrival, scrolling, mouse selection, and keyboard focus/selection.
-- `PreviewDeckPlannerCardBrowser.ps1` is the supported human-session entry point; review criteria are recorded in `docs/guides/deck-planner-card-browser-review.md`.
 
 
 ## 2026-08-06 — DP-04 human review harness
