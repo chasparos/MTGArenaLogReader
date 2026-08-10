@@ -15,12 +15,22 @@ that information back to you.
   Arena reports them, and supports rescanning a log file from the start.
 - **Deck tracker** — correlates your selected Arena deck to the current match and
   shows remaining library/graveyard/exile contents and draw odds live.
-- **Draft assistant** — surfaces draft-related information and export options
-  while drafting.
+- **Draft assistant** — surfaces draft-related information and can copy
+  pick/ranking requests as AI-speak text for pasting into an external AI chat
+  client while drafting.
 - **Deck planner** — a cache-backed workspace for browsing and analyzing your
   card pool and decks.
+- **Collection synchronization** — an isolated, fail-closed Windows scanner that
+  reads your owned card quantities directly from Arena's memory and publishes
+  them to a local ownership cache for the deck planner, without ever
+  overwriting the last good result on ambiguous or partial reads. See
+  [`docs/guides/memory-collection-sync-maintenance.md`](docs/guides/memory-collection-sync-maintenance.md).
 - **Manual coaching tools** — lets a reviewer annotate a replay for post-game
-  study.
+  study, then use **Translate to/from AI-speak** to copy a structured prompt to
+  the clipboard for any external AI chat client and import its reply back into
+  the conversation — no AI API integration or network call is made by the
+  application itself. See
+  [`docs/coaching/manual-coaching-protocol.md`](docs/coaching/manual-coaching-protocol.md).
 - **Export** — copies a selected game as compact plain text for sharing.
 
 Card data (images, rules text, legalities, etc.) is fetched from the
