@@ -105,6 +105,29 @@ After the Application Shell arc is accepted, the intended next Engineering Arc i
 
 Before making concrete plans for a future application-wide or module-specific look-and-feel consolidation pass, begin with a fresh human click review and user-evidence pass against the then-current application. Treat that evidence as planning input; do not assume the shell-arc inventory or today's visual concerns are still complete.
 
+## Project-wide product/design preferences
+
+These preferences recurred across the Deck Planner, Application Shell, and
+Memory-Scan arcs and now apply by default to new product work rather than
+being re-derived per feature:
+
+- Truth/authority claims about the user's real Arena state (ownership,
+  collection, progress language) must not be asserted until they are
+  causally validated against real evidence, not merely structurally
+  plausible; premature claims are corrected even after apparent acceptance.
+- New workspaces and wizards favor additive, cancellable, non-blocking
+  interaction: importing, syncing, or scanning should leave the rest of the
+  UI usable and communicate progress/cancellation rather than freezing.
+  A modal busy state is acceptable only where concurrent interaction with
+  the same operation would itself be unsafe (for example, during an active
+  memory scan or catalog build).
+- Product-visible identity (Candidate, Candidate Set, logical card identity)
+  is kept stable and separate from presentation choices (favorite art,
+  printing) so refreshes and catalog updates do not lose user intent.
+- Look-and-feel or consolidation work always starts from a fresh human
+  click-review/evidence pass rather than reusing an earlier inventory,
+  because visual concerns and available evidence change between arcs.
+
 ## Memory-scan collection extraction intent (2026-08-09)
 
 The process-memory collection capability should remain unusually isolated because it is Windows-specific and dependent on MTG Arena client versions. Its process access, memory-layout knowledge, heuristics, diagnostics, scan output, and persistence implementation belong inside the module.
